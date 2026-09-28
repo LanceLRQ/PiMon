@@ -21,8 +21,8 @@ PiMon 是一个自托管的桌面监控看板：树莓派运行中枢服务（hu
 ## 技术栈
 
 - **服务端**：Go（模块根目录 `src/`），`pimon-hub` 与 `pimon-agent` 两个单二进制；SQLite（`modernc.org/sqlite`，CGO_ENABLED=0）；WebSocket over TLS（自签名证书 + 指纹钉扎）。
-- **前端**：React + Vite + TypeScript，shadcn/ui + lucide 图标 + Tailwind CSS；图表用 shadcn charts（Recharts）；构建产物经 `go:embed` 打包进 `pimon-hub`。
-- **其他**：树莓派 4B + Raspberry Pi OS Bookworm 64 位，Chromium kiosk 显示 `/screen`；前端 TS 类型由 tygo 从 Go 模型生成。
+- **前端**：React + Vite + TypeScript，shadcn/ui + lucide 图标 + Tailwind CSS；图表用 shadcn charts（Recharts）；中英双语；构建产物经 `go:embed` 打包进 `pimon-hub`。
+- **其他**：树莓派 4B + Raspberry Pi OS Trixie 64 位（labwc），Chromium kiosk 显示 `/screen`；网页端口 31415、agent 通道 31418；可选 nginx 反代提供 HTTPS；前端 TS 类型由 tygo 从 Go 模型生成。
 
 ## 实现现状
 

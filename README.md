@@ -20,10 +20,11 @@ PiMon 是一个自托管的桌面监控看板。树莓派运行中枢服务，�
 - **一切皆插件**：AI 额度（Codex、Claude、GLM、Qoder、各类 API 余额）、主机资源、SMART 与 RAID/Btrfs 存储健康、Docker、systemd、HTTP/TCP/Ping 探测、代理与多节点连通性都以插件提供；支持内置 Go 插件、任意语言的 exec 插件和 HTTP 插件。
 - **轻量 agent**：被监控机器运行单文件 Go agent；局域网设备主动连接中枢，公网 VPS 由中枢主动连接，全程 TLS 加密并校验证书指纹。
 - **告警推送**：阈值、状态与事件规则，支持通用 Webhook、Telegram、飞书/钉钉/企业微信、Bark、Gotify；免打扰时段与临时静音。
+- **中英双语**：屏幕与管理界面均支持中文和 English；屏幕可按时段切换深浅色或夜间关屏。
 
 ## 硬件与运行环境
 
-- 树莓派 4B（Raspberry Pi OS Bookworm 64 位）
+- 树莓派 4B（Raspberry Pi OS Trixie 64 位）
 - 7 寸左右 HDMI 显示器（支持 USB 触摸更佳）
 - 被监控端：Linux（amd64/arm64）或 macOS（Apple Silicon）
 
