@@ -21,8 +21,8 @@ func (s hubStats) WriteErrors() int64 { return s.inst.WriteErrors() + s.hist.Wri
 // OnlineAgents 在 M2 接入 agent 之前恒为 0。
 func (hubStats) OnlineAgents() int { return 0 }
 
-// ScreenOnline 在 M1c 接入屏幕会话之前恒为 false。
-func (hubStats) ScreenOnline() bool { return false }
+// ScreenOnline 在 M1c 接入屏幕会话之前恒为未知（known=false），不当作离线（Ruling 50）。
+func (hubStats) ScreenOnline() (online, known bool) { return false, false }
 
 // PushFailures 在 M4 接入推送之前恒为 0。
 func (hubStats) PushFailures() int64 { return 0 }

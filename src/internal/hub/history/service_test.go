@@ -666,3 +666,23 @@ func TestFirstRoundAggregatesBeforeCleanupAfterLongDowntime(t *testing.T) {
 		t.Fatalf("停机前最后一段应已聚合进 5m: %+v", rows)
 	}
 }
+
+// 本拍聚合失败时不清理原始表：否则持续失败会把尚未聚合的原始数据静默删掉。
+func TestAggregateFailureSkipsCleanup(t *testing.T) {
+	f := newFx(t)
+	f.rec("i1", "temp", t0.Add(time.Minute), 7)
+	f.flush()
+	f.clk.Advance(30 * time.Hour) // 已超过 raw 保留期
+	if _, err := f.db.Exec(`ALTER TABLE history_5m RENAME TO history_5m_off`); err != nil {
+		t.Fatal(err)
+	}
+	loopCtx, cancel := context.WithCancel(context.Background())
+	done := f.svc.Start(loopCtx)
+	defer func() { cancel(); <-done }()
+	waitFor(t, "循环就绪", func() bool { return f.clk.Waiters() >= 1 })
+	f.clk.Advance(60 * time.Second)
+	waitFor(t, "首轮结束", func() bool { return f.clk.Waiters() >= 1 && f.svc.WriteErrors() > 0 })
+	if f.count("history_raw") != 1 {
+		t.Fatalf("聚合失败时不应清理原始表: raw=%d", f.count("history_raw"))
+	}
+}

@@ -50,8 +50,8 @@ type Stats interface {
 	WriteErrors() int64
 	// OnlineAgents 是在线 agent 数。
 	OnlineAgents() int
-	// ScreenOnline 报告是否有屏幕在线。
-	ScreenOnline() bool
+	// ScreenOnline 报告是否有屏幕在线；known 为 false 表示来源尚未接入（未知，不当作离线）。
+	ScreenOnline() (online, known bool)
 	// PushFailures 是推送失败累计次数。
 	PushFailures() int64
 	// StartedAt 是中枢启动时间。
@@ -176,7 +176,11 @@ func (p *Plugin) diskItem(dir string) report.Item {
 
 // screenItem 屏幕离线只标 warning，不拉高整份报告的状态：
 // 没有屏幕连着属于正常的部署形态。
-func screenItem(online bool) report.Item {
+// screenItem 输出屏幕在线项：来源未接入时为 unknown（未知显示为未知，Ruling 50）。
+func screenItem(online, known bool) report.Item {
+	if !known {
+		return report.Item{Key: keyScreenOnline, Type: report.TypeState, State: report.StatusUnknown, Text: "unknown"}
+	}
 	if online {
 		return report.Item{Key: keyScreenOnline, Type: report.TypeState, State: report.StatusOK, Text: "online"}
 	}

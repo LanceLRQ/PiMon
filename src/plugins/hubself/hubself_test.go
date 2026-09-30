@@ -20,17 +20,19 @@ type fakeStats struct {
 	writeErrs int64
 	agents    int
 	screens   bool
-	pushFails int64
-	started   time.Time
-	dir       string
+	// screensKnown 为 false 表示屏幕在线来源尚未接入（M1c 之前）。
+	screensKnown bool
+	pushFails    int64
+	started      time.Time
+	dir          string
 }
 
-func (f *fakeStats) WriteErrors() int64   { return f.writeErrs }
-func (f *fakeStats) OnlineAgents() int    { return f.agents }
-func (f *fakeStats) ScreenOnline() bool   { return f.screens }
-func (f *fakeStats) PushFailures() int64  { return f.pushFails }
-func (f *fakeStats) StartedAt() time.Time { return f.started }
-func (f *fakeStats) DataDir() string      { return f.dir }
+func (f *fakeStats) WriteErrors() int64                 { return f.writeErrs }
+func (f *fakeStats) OnlineAgents() int                  { return f.agents }
+func (f *fakeStats) ScreenOnline() (online, known bool) { return f.screens, f.screensKnown }
+func (f *fakeStats) PushFailures() int64                { return f.pushFails }
+func (f *fakeStats) StartedAt() time.Time               { return f.started }
+func (f *fakeStats) DataDir() string                    { return f.dir }
 
 var t0 = time.Date(2026, 9, 28, 22, 47, 0, 0, time.UTC)
 
@@ -118,8 +120,8 @@ func TestItemsFromStats(t *testing.T) {
 		t.Fatalf("磁盘项错误: %+v", d)
 	}
 	s := rep.Find("hub.screens_online")
-	if s == nil || s.Type != report.TypeState || s.State == report.StatusOK {
-		t.Fatalf("屏幕离线不应为 ok: %+v", s)
+	if s == nil || s.Type != report.TypeState || s.State != report.StatusUnknown || s.Text != "unknown" {
+		t.Fatalf("屏幕在线来源未接入时应为 unknown（Ruling 50）: %+v", s)
 	}
 	if rep.Status != report.StatusOK {
 		t.Errorf("一切正常时 status 应为 ok: %v", rep.Status)
@@ -248,5 +250,20 @@ func TestStatDiskReal(t *testing.T) {
 	free, total, err := statDisk(t.TempDir())
 	if err != nil || total == 0 || free > total {
 		t.Fatalf("真实磁盘查询异常: %d %d %v", free, total, err)
+	}
+}
+
+func TestScreenOnlineKnownStates(t *testing.T) {
+	for _, c := range []struct {
+		online bool
+		state  report.Status
+		text   string
+	}{{true, report.StatusOK, "online"}, {false, report.StatusWarning, "offline"}} {
+		st := &fakeStats{screens: c.online, screensKnown: true, started: t0, dir: "/d"}
+		p, clk := newBound(t, st, okDisk(40, 100))
+		it := collect(t, p, clk, nil).Find("hub.screens_online")
+		if it == nil || it.State != c.state || it.Text != c.text {
+			t.Fatalf("online=%v: %+v", c.online, it)
+		}
 	}
 }

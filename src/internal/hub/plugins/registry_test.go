@@ -294,3 +294,21 @@ func TestWatchDiscoversNewDirAfterDebounce(t *testing.T) {
 		t.Fatal("ctx 结束后监视未停止")
 	}
 }
+
+// 插件根目录读取失败（这里用同名文件模拟）不让扫描失败：内置插件照常注册，失败记为一条加载问题。
+func TestUnreadablePluginDirIsIssueNotError(t *testing.T) {
+	f := newFixture(t, builtin(t, "core"))
+	must(t, os.RemoveAll(f.dir))
+	must(t, os.WriteFile(f.dir, []byte("x"), 0o644))
+	s := f.scan(t)
+	if len(s.Plugins) != 1 || s.Plugins[0].ID != "core" {
+		t.Fatalf("内置插件应照常注册: %+v", s.Plugins)
+	}
+	is := issueFor(t, s, f.dir)
+	if is.Kind != IssueDirUnreadable || is.Message == "" {
+		t.Fatalf("应记为插件目录不可读: %+v", is)
+	}
+	if _, ok := f.reg.Get("core"); !ok {
+		t.Fatal("Get 应能取到内置插件")
+	}
+}

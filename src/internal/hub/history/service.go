@@ -450,7 +450,8 @@ func (s *Service) cleanupAggregates(ctx context.Context) error {
 
 // Start 启动后台循环：每个写盘间隔（默认 60 秒）写一次原始表，每 5 分钟聚合到 5 分钟表，
 // 每小时再聚合到 1 小时表并清理三张表（聚合表的 bucket 有索引，每次只删约一小时的过期量）。
-// 每一轮都先聚合后清理，首轮（启动后第一拍）也是：停机超过保留期后，停机前最后一段数据仍能先进入聚合表。
+// 每一轮都先聚合后清理，首轮（启动后第一拍）也是：停机超过保留期后，停机前最后一段数据仍能先进入聚合表；
+// 这一拍任何聚合失败则跳过清理。
 // ctx 结束后做最后一次写盘；返回的 channel 在循环退出后关闭。
 func (s *Service) Start(ctx context.Context) <-chan struct{} {
 	done := make(chan struct{})
@@ -467,21 +468,30 @@ func (s *Service) Start(ctx context.Context) <-chan struct{} {
 				return
 			}
 			s.warn("历史写盘失败", s.Flush(bg))
+			aggFailed := false
 			if tick == 1 || tick%n5m == 0 {
-				s.warn("5 分钟聚合失败", s.Aggregate5m(bg))
+				aggFailed = s.warn("5 分钟聚合失败", s.Aggregate5m(bg))
 			}
 			if tick == 1 || tick%n1h == 0 {
-				s.warn("1 小时聚合失败", s.Aggregate1h(bg))
-				s.warn("原始历史清理失败", s.cleanupRaw(bg))
-				s.warn("聚合历史清理失败", s.cleanupAggregates(bg))
+				aggFailed = s.warn("1 小时聚合失败", s.Aggregate1h(bg)) || aggFailed
+				// 本拍聚合失败时跳过清理：尚未聚合的数据留到下一拍，持续失败也不会被静默删掉。
+				if aggFailed {
+					s.log.Warn("本轮历史聚合失败，跳过过期清理，下一轮重试")
+				} else {
+					s.warn("原始历史清理失败", s.cleanupRaw(bg))
+					s.warn("聚合历史清理失败", s.cleanupAggregates(bg))
+				}
 			}
 		}
 	}()
 	return done
 }
 
-func (s *Service) warn(msg string, err error) {
+// warn 在 err 非空时记 Warn，返回是否出错。
+func (s *Service) warn(msg string, err error) bool {
 	if err != nil {
 		s.log.Warn(msg, "err", err)
+		return true
 	}
+	return false
 }

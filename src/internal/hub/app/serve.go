@@ -47,15 +47,17 @@ func (a *App) Serve(ctx context.Context) error {
 		defer wg.Done()
 		a.backups.RunDaily(bg)
 	}()
-	watchDone, err := a.plugins.Watch(bg)
-	if err != nil {
-		return fmt.Errorf("监视插件目录: %w", err)
+	// 监视失败（目录不可建、inotify 额度用尽等）不影响中枢运行：记 Warn，
+	// 插件目录的变化改靠 POST /api/plugins/rescan 手动重新扫描。
+	if watchDone, err := a.plugins.Watch(bg); err != nil {
+		slog.Warn("无法监视插件目录，插件变化需在管理界面手动重新扫描", "dir", a.cfg.PluginDir(), "err", err)
+	} else {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-watchDone
+		}()
 	}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		<-watchDone
-	}()
 	// 调度器与 30 秒落盘循环：bg 结束后先停调度、再做最后一次落盘，wg 等它们做完。
 	instDone := a.instances.Start(bg)
 	wg.Add(1)

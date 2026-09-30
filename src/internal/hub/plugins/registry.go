@@ -52,6 +52,8 @@ const (
 	IssueNotExecutable   IssueKind = "not_executable"
 	IssueInsecure        IssueKind = "insecure"
 	IssueConflict        IssueKind = "conflict"
+	// IssueDirUnreadable 表示插件根目录本身读取失败（权限、不是目录等），此时只有内置插件可用。
+	IssueDirUnreadable IssueKind = "dir_unreadable"
 )
 
 // Issue 是某个插件目录未能加载的原因。
@@ -134,7 +136,8 @@ func (r *Registry) OnChange(fn func()) {
 }
 
 // Scan 重新扫描内置插件与插件目录，更新内存快照并把 manifest 同步入库，然后通知 OnChange 回调。
-// 某个目录加载失败只记为该条目的 Issue，不影响其他插件。
+// 某个目录加载失败只记为该条目的 Issue，不影响其他插件；插件根目录读取失败同样只记一条 Issue，
+// 内置插件照常注册。只有 manifest 入库失败才返回错误。
 func (r *Registry) Scan(ctx context.Context) (Snapshot, error) {
 	snap, err := r.scan(ctx)
 	if err != nil {
@@ -160,10 +163,7 @@ func (r *Registry) scan(ctx context.Context) (Snapshot, error) {
 		builtinIDs[m.ID] = true
 		plugins = append(plugins, Plugin{ID: m.ID, Origin: OriginBuiltin, Manifest: m, Source: s})
 	}
-	execPlugins, issues, err := r.scanExec(builtinIDs)
-	if err != nil {
-		return Snapshot{}, err
-	}
+	execPlugins, issues := r.scanExec(builtinIDs)
 	plugins = append(plugins, execPlugins...)
 	sort.Slice(plugins, func(i, j int) bool { return plugins[i].ID < plugins[j].ID })
 	sort.Slice(issues, func(i, j int) bool { return issues[i].Dir < issues[j].Dir })

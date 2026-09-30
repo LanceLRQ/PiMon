@@ -11,7 +11,7 @@ config_schema:
   - key: url
     type: url
     title: {zh: 地址, en: URL}
-    help: {zh: 返回报告格式 JSON 的地址。数据项由响应自动识别，只能用通用小组件显示。, en: "Endpoint returning a report-format JSON. Items are detected from the response and shown with generic widgets only."}
+    help: {zh: "返回报告格式 JSON 的地址。数据项由响应自动识别，只能用通用小组件显示。地址按普通配置明文保存并回显，令牌等凭据请放进下方请求头（值按密钥保存），不要写在查询参数里。", en: "Endpoint returning a report-format JSON. Items are detected from the response and shown with generic widgets only. The URL is stored and shown in plain text: put tokens and other credentials in the request headers below (values are stored as secrets), not in query parameters."}
     required: true
     allow_query: true
     allow_public_http: true

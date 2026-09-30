@@ -172,3 +172,19 @@ func TestSameHostRedirectFollowed(t *testing.T) {
 		t.Fatalf("同主机重定向应跟随: %v", err)
 	}
 }
+
+// url 是普通字段（明文保存、回显），帮助文字引导把凭据放进请求头（值按密钥保存），不要写进查询参数。
+func TestURLHelpSteersCredentialsToHeaders(t *testing.T) {
+	for _, f := range src(t).Manifest().ConfigSchema {
+		if f.Key != "url" {
+			continue
+		}
+		zh, en := f.Help.Get("zh"), f.Help.Get("en")
+		if !strings.Contains(zh, "请求头") || !strings.Contains(zh, "查询参数") ||
+			!strings.Contains(en, "header") || !strings.Contains(en, "query") {
+			t.Fatalf("url 帮助应引导凭据放请求头: zh=%q en=%q", zh, en)
+		}
+		return
+	}
+	t.Fatal("缺少 url 字段")
+}

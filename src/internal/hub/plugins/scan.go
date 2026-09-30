@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,14 +18,16 @@ const (
 	runFile = "run"
 )
 
-// scanExec 扫描插件目录下的每个子目录。目录不存在视为没有 exec 插件。
-func (r *Registry) scanExec(builtinIDs map[string]bool) ([]Plugin, []Issue, error) {
+// scanExec 扫描插件目录下的每个子目录。目录不存在视为没有 exec 插件；
+// 根目录读取失败降级为一条 IssueDirUnreadable 并记日志，不让中枢起不来。
+func (r *Registry) scanExec(builtinIDs map[string]bool) ([]Plugin, []Issue) {
 	entries, err := os.ReadDir(r.cfg.Dir)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil, nil
+		return nil, nil
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("读取插件目录 %s: %w", r.cfg.Dir, err)
+		slog.Warn("读取插件目录失败，只加载内置插件", "dir", r.cfg.Dir, "err", err)
+		return nil, []Issue{{Dir: r.cfg.Dir, Kind: IssueDirUnreadable, Message: fmt.Sprintf("无法读取插件目录: %v", err)}}
 	}
 	var plugins []Plugin
 	var issues []Issue
@@ -41,7 +44,7 @@ func (r *Registry) scanExec(builtinIDs map[string]bool) ([]Plugin, []Issue, erro
 		}
 		plugins = append(plugins, *p)
 	}
-	return plugins, issues, nil
+	return plugins, issues
 }
 
 // loadExec 加载一个 exec 插件目录；失败时返回该目录的加载问题。

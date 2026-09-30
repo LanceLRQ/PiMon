@@ -526,3 +526,38 @@ func TestBuiltinPluginsRegisteredAndHubSelfBound(t *testing.T) {
 		t.Errorf("运行时长异常: %+v", u)
 	}
 }
+
+// 插件目录不可读、无法监视时中枢照常启动（内置插件可用，靠 rescan 兜底）。
+func TestServeSurvivesBrokenPluginDir(t *testing.T) {
+	cfg := testConfig(t)
+	if err := os.MkdirAll(cfg.DataDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg.PluginDir(), []byte("不是目录"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addrCh := make(chan string, 1)
+	a := openApp(t, cfg, WithOnListen(func(addr string) { addrCh <- addr }))
+	if _, ok := a.plugins.Get("hub-self"); !ok {
+		t.Fatal("插件目录不可读时内置插件仍应注册")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- a.Serve(ctx) }()
+	select {
+	case <-addrCh:
+	case err := <-done:
+		t.Fatalf("监视失败不应让 Serve 退出: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("等待监听超时")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("退出超时")
+	}
+}
