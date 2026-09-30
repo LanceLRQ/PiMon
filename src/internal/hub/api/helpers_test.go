@@ -16,6 +16,7 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
@@ -23,6 +24,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
+	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
 )
 
 const testPassword = "correct horse"
@@ -67,7 +69,10 @@ type env struct {
 	tokenFn   string
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T) *env { return newEnvWith(t) }
+
+// newEnvWith 在默认测试插件之外追加内置插件。
+func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 	t.Helper()
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "pimon.db"))
@@ -96,13 +101,15 @@ func newEnv(t *testing.T) *env {
 	refs := &fakeReferrers{refs: map[string][]model.ProxyReferrer{}}
 	pluginDir := filepath.Join(dir, "plugins")
 	reg := plugins.New(plugins.Config{
-		Dir: pluginDir, DB: db, Clock: clk, Builtins: testBuiltins(t),
+		Dir: pluginDir, DB: db, Clock: clk, Builtins: append(testBuiltins(t), extra...),
 	})
 	if _, err := reg.Scan(ctx); err != nil {
 		t.Fatal(err)
 	}
+	inst := instances.New(instances.Config{DB: db, Box: box, Clock: clk, Plugins: reg})
 	deps := Deps{
 		Plugins:      reg,
+		Instances:    inst,
 		Settings:     st,
 		Hasher:       hasher,
 		Limiter:      auth.NewLimiter(clk, 10, 15*time.Minute),
@@ -116,6 +123,7 @@ func newEnv(t *testing.T) *env {
 		}),
 		Proxies: proxies.New(proxies.Config{DB: db, Box: box, Clock: clk, Referrers: refs}),
 	}
+	inst.UseProxies(deps.Proxies)
 	if err := deps.ScreenTokens.EnsureExists(ctx); err != nil {
 		t.Fatal(err)
 	}

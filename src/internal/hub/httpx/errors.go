@@ -22,6 +22,10 @@ package httpx
 //	plugin.invalid_manifest  manifest 不合法，details.problems 带行号  400
 //	proxy.not_found          代理不存在                            404
 //	proxy.in_use             代理被实例引用，details.instances     409
+//	instance.not_found       实例不存在                            404
+//	instance.in_use          实例被 screen 引用，details.screens    409
+//	run.timeout              采集超时（或上游请求超时），details.message 可选  504
+//	run.failed               采集失败（或上游请求失败），details.message 可选  502
 //	internal                 内部错误                              500
 const (
 	CodeInvalidJSON           = "request.invalid_json"
@@ -40,5 +44,9 @@ const (
 	CodePluginInvalidManifest = "plugin.invalid_manifest"
 	CodeProxyNotFound         = "proxy.not_found"
 	CodeProxyInUse            = "proxy.in_use"
+	CodeInstanceNotFound      = "instance.not_found"
+	CodeInstanceInUse         = "instance.in_use"
+	CodeRunTimeout            = "run.timeout"
+	CodeRunFailed             = "run.failed"
 	CodeInternal              = "internal"
 )

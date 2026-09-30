@@ -14,6 +14,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/sdnotify"
@@ -44,6 +45,7 @@ type App struct {
 	screen     *auth.ScreenTokens
 	backups    *backup.Service
 	plugins    *plugins.Registry
+	instances  *instances.Service
 	notifier   *sdnotify.Notifier
 	handler    http.Handler
 	closed     bool
@@ -126,8 +128,22 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	if _, err := a.plugins.Scan(ctx); err != nil {
 		return fmt.Errorf("扫描插件: %w", err)
 	}
+	a.instances = instances.New(instances.Config{
+		DB: a.db, Box: a.box, Clock: o.clk, Plugins: a.plugins,
+	})
+	proxyStore := proxies.New(proxies.Config{
+		DB: a.db, Box: a.box, Clock: o.clk,
+		Referrers: a.instances,
+		// 代理被修改或删除后，引用它的实例要按新内容重新排程。
+		OnChange: a.instances.Refresh,
+	})
+	a.instances.UseProxies(proxyStore)
+	if err := a.instances.Load(ctx); err != nil {
+		return fmt.Errorf("恢复实例状态: %w", err)
+	}
 	a.handler = api.New(api.Deps{
 		Plugins:      a.plugins,
+		Instances:    a.instances,
 		Settings:     st,
 		Hasher:       auth.Hasher{Params: o.params},
 		Limiter:      auth.NewLimiter(o.clk, loginMaxFailures, loginLockTime),
@@ -136,23 +152,10 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		Sessions:     a.sessions,
 		ScreenTokens: a.screen,
 		Backups:      a.backups,
-		Proxies: proxies.New(proxies.Config{
-			DB: a.db, Box: a.box, Clock: o.clk,
-			// B6 由实例仓库替换：此前没有实例，代理恒无引用。
-			Referrers: noReferrers{},
-		}),
+		Proxies:      proxyStore,
 	})
 	return nil
 }
-
-// noReferrers 是"无引用"的空实现：实例仓库落地前没有任何实例会引用代理。
-type noReferrers struct{}
-
-func (noReferrers) ListByProxy(context.Context, string) ([]model.ProxyReferrer, error) {
-	return nil, nil
-}
-
-func (noReferrers) ResetToDirect(context.Context, string) error { return nil }
 
 // Handler 返回完整的 HTTP 处理器，测试用 httptest 直接挂载。
 func (a *App) Handler() http.Handler { return a.handler }

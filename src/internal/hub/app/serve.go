@@ -56,6 +56,13 @@ func (a *App) Serve(ctx context.Context) error {
 		defer wg.Done()
 		<-watchDone
 	}()
+	// 调度器与 30 秒落盘循环：bg 结束后先停调度、再做最后一次落盘，wg 等它们做完。
+	instDone := a.instances.Start(bg)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-instDone
+	}()
 	if iv, ok := a.notifier.WatchdogInterval(); ok {
 		wg.Add(1)
 		go func() {

@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -72,7 +74,7 @@ func (s *server) lookupPlugin(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	cands, err := lk.Lookup(ctx, key, req.Query, s.requestLang(r))
 	if err != nil {
-		internalError(w, r, err)
+		writeUpstreamError(w, r, err)
 		return
 	}
 	out := model.PluginLookupResponse{Candidates: make([]model.PluginCandidate, 0, len(cands))}
@@ -80,6 +82,17 @@ func (s *server) lookupPlugin(w http.ResponseWriter, r *http.Request) {
 		out.Candidates = append(out.Candidates, model.PluginCandidate{Value: c.Value, Label: c.Label})
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+// writeUpstreamError 把插件访问上游失败映射为 504（超时）或 502（其它失败）。
+// 上游错误文字可能带地址，不回给前端，只记日志。
+func writeUpstreamError(w http.ResponseWriter, r *http.Request, err error) {
+	slog.Warn("插件请求上游失败", "method", r.Method, "path", r.URL.Path, "err", err)
+	if errors.Is(err, runtime.ErrTimeout) || errors.Is(err, context.DeadlineExceeded) {
+		httpx.WriteError(w, http.StatusGatewayTimeout, httpx.CodeRunTimeout, nil)
+		return
+	}
+	httpx.WriteError(w, http.StatusBadGateway, httpx.CodeRunFailed, nil)
 }
 
 func hasLookupField(m *manifest.Manifest, key string) bool {

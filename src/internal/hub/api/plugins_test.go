@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -60,8 +61,11 @@ func (plainSource) Collect(context.Context, runtime.Input) (*report.Report, erro
 type lookupSource struct{ plainSource }
 
 func (lookupSource) Lookup(_ context.Context, key, query, lang string) ([]runtime.Candidate, error) {
-	if query == "boom" {
+	switch query {
+	case "boom":
 		return nil, errors.New("upstream down")
+	case "slow":
+		return nil, fmt.Errorf("上游太慢: %w", context.DeadlineExceeded)
 	}
 	return []runtime.Candidate{{Value: key + ":" + query, Label: lang + "/" + query}}, nil
 }
@@ -217,8 +221,14 @@ func TestLookup(t *testing.T) {
 		}
 	}
 
+	// 上游失败：502 run.failed，超时：504 run.timeout；错误文字不回给前端
 	resp, data = e.do(admin, "POST", "/api/plugins/looker/lookup/city", model.PluginLookupRequest{Query: "boom"})
-	e.expectError(resp, data, http.StatusInternalServerError, "internal")
+	e.expectError(resp, data, http.StatusBadGateway, "run.failed")
+	if strings.Contains(string(data), "upstream down") {
+		t.Fatalf("上游错误文字不应回给前端: %s", data)
+	}
+	resp, data = e.do(admin, "POST", "/api/plugins/looker/lookup/city", model.PluginLookupRequest{Query: "slow"})
+	e.expectError(resp, data, http.StatusGatewayTimeout, "run.timeout")
 
 	resp, data = e.do(admin, "POST", "/api/plugins/looker/lookup/city", map[string]any{"query": 1})
 	e.expectError(resp, data, http.StatusBadRequest, "request.invalid_json")

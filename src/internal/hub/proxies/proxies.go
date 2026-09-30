@@ -56,19 +56,22 @@ type Config struct {
 	Box       *secret.Box
 	Clock     clock.Clock
 	Referrers Referrers
+	// OnChange 在代理被更新或删除之后调用（可选），让引用它的实例按新内容重新排程。
+	OnChange func()
 }
 
 // Store 是代理仓库。
 type Store struct {
-	db   *store.DB
-	box  *secret.Box
-	clk  clock.Clock
-	refs Referrers
+	db       *store.DB
+	box      *secret.Box
+	clk      clock.Clock
+	refs     Referrers
+	onChange func()
 }
 
 // New 创建代理仓库。
 func New(c Config) *Store {
-	return &Store{db: c.DB, box: c.Box, clk: c.Clock, refs: c.Referrers}
+	return &Store{db: c.DB, box: c.Box, clk: c.Clock, refs: c.Referrers, onChange: c.OnChange}
 }
 
 type authData struct {
@@ -251,6 +254,7 @@ func (s *Store) Create(ctx context.Context, in model.ProxyInput) (model.Proxy, e
 	if err != nil {
 		return model.Proxy{}, err
 	}
+	s.changed()
 	return s.Get(ctx, id)
 }
 
@@ -282,6 +286,7 @@ func (s *Store) Update(ctx context.Context, id string, in model.ProxyInput) (mod
 	if err != nil {
 		return model.Proxy{}, err
 	}
+	s.changed()
 	return s.Get(ctx, id)
 }
 
@@ -303,8 +308,17 @@ func (s *Store) Delete(ctx context.Context, id string, force bool) error {
 			return err
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `DELETE FROM proxies WHERE id = ?`, id)
-	return err
+	if _, err = s.db.ExecContext(ctx, `DELETE FROM proxies WHERE id = ?`, id); err != nil {
+		return err
+	}
+	s.changed()
+	return nil
+}
+
+func (s *Store) changed() {
+	if s.onChange != nil {
+		s.onChange()
+	}
 }
 
 // Resolve 按 id 取解析好的代理；id 为空或 "direct" 表示直连。

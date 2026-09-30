@@ -85,9 +85,10 @@ type Registry struct {
 
 	scanMu sync.Mutex // 串行化扫描与落库
 
-	mu   sync.RWMutex
-	snap Snapshot
-	byID map[string]Plugin
+	mu        sync.RWMutex
+	snap      Snapshot
+	byID      map[string]Plugin
+	listeners []func()
 }
 
 // New 创建注册表。Builtins 通常传 runtime.Builtins()；Debounce 缺省 1 秒，EUID 缺省 os.Geteuid。
@@ -123,9 +124,32 @@ func (r *Registry) Get(id string) (Plugin, bool) {
 	return p, ok
 }
 
-// Scan 重新扫描内置插件与插件目录，更新内存快照并把 manifest 同步入库。
+// OnChange 登记扫描完成后的回调（每次成功扫描都会调用，不论插件集合有没有变化）。
+// 回调在扫描所在的 goroutine 里、释放扫描锁之后同步调用，应尽快返回；
+// 回调里可以调用 Get 与 Snapshot，但不要在同一 goroutine 里调用 Scan 以外会阻塞很久的操作。
+func (r *Registry) OnChange(fn func()) {
+	r.mu.Lock()
+	r.listeners = append(r.listeners, fn)
+	r.mu.Unlock()
+}
+
+// Scan 重新扫描内置插件与插件目录，更新内存快照并把 manifest 同步入库，然后通知 OnChange 回调。
 // 某个目录加载失败只记为该条目的 Issue，不影响其他插件。
 func (r *Registry) Scan(ctx context.Context) (Snapshot, error) {
+	snap, err := r.scan(ctx)
+	if err != nil {
+		return snap, err
+	}
+	r.mu.RLock()
+	fns := slices.Clone(r.listeners)
+	r.mu.RUnlock()
+	for _, fn := range fns {
+		fn()
+	}
+	return snap, nil
+}
+
+func (r *Registry) scan(ctx context.Context) (Snapshot, error) {
 	r.scanMu.Lock()
 	defer r.scanMu.Unlock()
 
