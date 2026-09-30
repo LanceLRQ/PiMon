@@ -1,0 +1,10 @@
+version: "2"
+
+linters:
+  default: standard
+  exclusions:
+    rules:
+      # defer 中调用的 Close/Rollback 等清理函数不强制检查返回值
+      - linters:
+          - errcheck
+        text: "Error return value of `.*\\.(Close|Rollback)` is not checked"
