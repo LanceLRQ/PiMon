@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -130,5 +131,44 @@ func TestErrorDoesNotLeakQueryOrHeaders(t *testing.T) {
 func TestCollectMissingURL(t *testing.T) {
 	if _, err := src(t).Collect(context.Background(), runtime.Input{}); err == nil {
 		t.Fatal("缺少 url 应报错")
+	}
+}
+
+func TestCrossHostRedirectRefusedAndHeaderNotForwarded(t *testing.T) {
+	var leaked atomic.Bool
+	b := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Api-Key") != "" {
+			leaked.Store(true)
+		}
+		_, _ = w.Write([]byte(validBody))
+	}))
+	defer b.Close()
+	a := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, b.URL+"/x?token=query-secret", http.StatusFound)
+	}))
+	defer a.Close()
+	_, err := src(t).Collect(context.Background(), runtime.Input{
+		Config:  map[string]any{"url": a.URL, "headers": map[string]any{"X-Api-Key": nil}},
+		Secrets: map[string]string{"headers.X-Api-Key": "header-secret"},
+	})
+	if err == nil {
+		t.Fatal("跨主机重定向应返回错误")
+	}
+	if leaked.Load() {
+		t.Fatal("密钥头不得转发到其他主机")
+	}
+	if strings.Contains(err.Error(), "query-secret") || strings.Contains(err.Error(), "header-secret") {
+		t.Fatalf("错误不得含密钥: %v", err)
+	}
+}
+
+func TestSameHostRedirectFollowed(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/start", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/final", http.StatusFound) })
+	mux.HandleFunc("/final", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(validBody)) })
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	if _, err := src(t).Collect(context.Background(), runtime.Input{Config: map[string]any{"url": srv.URL + "/start"}}); err != nil {
+		t.Fatalf("同主机重定向应跟随: %v", err)
 	}
 }

@@ -99,6 +99,7 @@ func Bind(s Stats) { defaultPlugin.Bind(s) }
 func (p *Plugin) Bind(s Stats) {
 	p.mu.Lock()
 	p.stats = s
+	p.restarted = false // 重新绑定视为一次新的启动，首份报告再次带出重启事件
 	p.mu.Unlock()
 }
 
@@ -119,7 +120,7 @@ func (p *Plugin) Collect(ctx context.Context, in runtime.Input) (*report.Report,
 	p.mu.Unlock()
 
 	if st != nil {
-		p.fillItems(rep, st, now)
+		p.fillItems(rep, st, now, in.Last)
 	}
 	if hb := in.Secrets[secretHeartbeat]; hb != "" {
 		if err := heartbeat(ctx, hb, in.Proxy); err != nil {
@@ -133,7 +134,7 @@ func (p *Plugin) Collect(ctx context.Context, in runtime.Input) (*report.Report,
 	return rep, nil
 }
 
-func (p *Plugin) fillItems(rep *report.Report, st Stats, now time.Time) {
+func (p *Plugin) fillItems(rep *report.Report, st Stats, now time.Time, last *report.Report) {
 	writeErrs := float64(st.WriteErrors())
 	rep.Items = append(rep.Items,
 		report.Item{Key: keyWriteErrors, Type: report.TypeNumber, Value: &writeErrs},
@@ -143,7 +144,9 @@ func (p *Plugin) fillItems(rep *report.Report, st Stats, now time.Time) {
 		screenItem(st.ScreenOnline()),
 		report.Item{Key: keyUptime, Type: report.TypeNumber, Unit: "s", Value: ptr(max(0, now.Sub(st.StartedAt()).Seconds()))},
 	)
-	if writeErrs > 0 {
+	// 写库错误是累计计数：只在比上次报告增长时才告警，一次瞬时失败不会让状态永久停在 warning；
+	// 没有上次报告时无从比较，不升级。
+	if grew(last, writeErrs) {
 		rep.Status = worse(rep.Status, report.StatusWarning)
 	}
 	if d := rep.Find(keyDiskFree); d != nil && d.RemainingPct != nil {
@@ -223,6 +226,15 @@ func heartbeat(ctx context.Context, raw string, pr *proxy.Proxy) error {
 		return fmt.Errorf("%s 返回状态 %d", host, resp.StatusCode)
 	}
 	return nil
+}
+
+// grew 报告 writeErrs 是否比上次报告里的写库错误数大。
+func grew(last *report.Report, writeErrs float64) bool {
+	if last == nil {
+		return false
+	}
+	it := last.Find(keyWriteErrors)
+	return it != nil && it.Value != nil && writeErrs > *it.Value
 }
 
 func worse(a, b report.Status) report.Status {

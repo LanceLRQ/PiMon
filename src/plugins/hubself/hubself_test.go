@@ -126,13 +126,30 @@ func TestItemsFromStats(t *testing.T) {
 	}
 }
 
-func TestStatusEscalation(t *testing.T) {
-	st := &fakeStats{writeErrs: 3, started: t0, dir: "/d"}
+func withLast(clk clock.Clock, last *report.Report) runtime.Input {
+	return runtime.Input{Clock: clk, Last: last}
+}
+
+func TestWriteErrorsWarnOnlyWhenGrowing(t *testing.T) {
+	st := &fakeStats{writeErrs: 1, started: t0, dir: "/d"}
 	p, clk := newBound(t, st, okDisk(40, 100))
-	if rep := collect(t, p, clk, nil); rep.Status != report.StatusWarning {
-		t.Errorf("写库错误应升为 warning: %v", rep.Status)
+	first := collect(t, p, clk, nil)
+	if first.Status != report.StatusOK {
+		t.Fatalf("无上次报告时不升级: %v", first.Status)
 	}
-	st.writeErrs = 0
+	st.writeErrs = 3
+	rep, err := p.Collect(context.Background(), withLast(clk, first))
+	if err != nil || rep.Status != report.StatusWarning {
+		t.Fatalf("计数增长应 warning: %v %v", rep.Status, err)
+	}
+	rep2, err := p.Collect(context.Background(), withLast(clk, rep))
+	if err != nil || rep2.Status != report.StatusOK {
+		t.Fatalf("计数不变应回到 ok: %v %v", rep2.Status, err)
+	}
+}
+
+func TestDiskStatusEscalation(t *testing.T) {
+	st := &fakeStats{started: t0, dir: "/d"}
 	p2, clk2 := newBound(t, st, okDisk(4, 100))
 	if rep := collect(t, p2, clk2, nil); rep.Status != report.StatusCritical {
 		t.Errorf("剩余空间不足 5%% 应为 critical: %v", rep.Status)
@@ -140,6 +157,17 @@ func TestStatusEscalation(t *testing.T) {
 	p3, clk3 := newBound(t, st, okDisk(8, 100))
 	if rep := collect(t, p3, clk3, nil); rep.Status != report.StatusWarning {
 		t.Errorf("剩余空间不足 10%% 应为 warning: %v", rep.Status)
+	}
+}
+
+func TestRebindEmitsRestartEventAgain(t *testing.T) {
+	st := &fakeStats{started: t0, dir: "/d"}
+	p, clk := newBound(t, st, okDisk(50, 100))
+	collect(t, p, clk, nil)
+	p.Bind(&fakeStats{started: t0.Add(time.Hour), dir: "/d"})
+	rep := collect(t, p, clk, nil)
+	if len(rep.Events) != 1 || rep.Events[0].At != t0.Add(time.Hour).UnixMilli() {
+		t.Fatalf("重新 Bind 后首份报告应再次带重启事件: %+v", rep.Events)
 	}
 }
 
@@ -199,7 +227,7 @@ func TestHeartbeat(t *testing.T) {
 	if rep.Find("hub.uptime") == nil {
 		t.Fatal("心跳失败时数据项照常输出")
 	}
-	if containsSecret(rep.Summary, "secret-token") {
+	if strings.Contains(rep.Summary, "secret-token") {
 		t.Fatalf("summary 不得含心跳地址密钥: %s", rep.Summary)
 	}
 }
@@ -211,12 +239,10 @@ func TestHeartbeatUnreachable(t *testing.T) {
 	st := &fakeStats{started: t0, dir: "/d"}
 	p, clk := newBound(t, st, okDisk(50, 100))
 	rep := collect(t, p, clk, map[string]string{"heartbeat_url": url})
-	if rep.Status != report.StatusWarning || containsSecret(rep.Summary, "secret-token") {
+	if rep.Status != report.StatusWarning || strings.Contains(rep.Summary, "secret-token") {
 		t.Fatalf("连接失败应 warning 且不泄露地址: %+v", rep)
 	}
 }
-
-func containsSecret(s, sub string) bool { return strings.Contains(s, sub) }
 
 func TestStatDiskReal(t *testing.T) {
 	free, total, err := statDisk(t.TempDir())

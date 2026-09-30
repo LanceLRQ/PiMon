@@ -50,7 +50,19 @@ func (p *plugin) Collect(ctx context.Context, in runtime.Input) (*report.Report,
 		req.Header.Set(k, v)
 	}
 
-	cli := &http.Client{Transport: in.Proxy.Transport()}
+	cli := &http.Client{
+		Transport: in.Proxy.Transport(),
+		// 自定义密钥请求头不会被 Go 在跨主机重定向时剥除，所以跨主机一律拒绝，同主机才跟随。
+		CheckRedirect: func(next *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("重定向次数过多")
+			}
+			if next.URL.Scheme != req.URL.Scheme || next.URL.Host != req.URL.Host {
+				return errors.New("拒绝跨主机重定向")
+			}
+			return nil
+		},
+	}
 	resp, err := cli.Do(req)
 	if err != nil {
 		// url.Error 带完整地址（查询参数里常有令牌），只保留底层原因与主机名。

@@ -519,8 +519,8 @@ func TestBuiltinPluginsRegisteredAndHubSelfBound(t *testing.T) {
 			t.Errorf("绑定后应输出 %s", k)
 		}
 	}
-	if d := rep.Find("hub.disk_free"); d.Error != "" {
-		t.Errorf("数据目录磁盘查询应成功: %s", d.Error)
+	if d := rep.Find("hub.disk_free"); d == nil || d.Error != "" {
+		t.Fatalf("数据目录磁盘查询应成功: %+v", d)
 	}
 	if u := rep.Find("hub.uptime"); u == nil || *u.Value < 0 {
 		t.Errorf("运行时长异常: %+v", u)
