@@ -22,6 +22,11 @@ import (
 // DirectValue 是表示直连的特殊取值（空串同样表示直连）。
 const DirectValue = "direct"
 
+// ErrRawTCPUnsupported 表示所选代理不支持原始 TCP 拨号。
+// HTTP/HTTPS 代理只能转发 HTTP 请求（本项目不实现 CONNECT），
+// 原始 TCP 探测必须选 socks 代理，否则会绕过代理直连、暴露出口 IP。
+var ErrRawTCPUnsupported = errors.New("http 代理不支持原始 TCP，请选 socks 代理")
+
 const dialTimeout = 10 * time.Second
 
 // Proxy 是解析后的代理；nil 表示直连。
@@ -111,13 +116,18 @@ func (p *Proxy) Transport() *http.Transport {
 	return tr
 }
 
-// DialContext 返回拨号函数。直连为普通拨号；socks5 先本地解析域名再拨 IP，socks5h 把域名交给代理；
-// http/https 代理的 DialContext 只用于非 HTTP 场景（如 tcp 检查），这里退化为直接拨号，
-// 因为 HTTP 代理不提供通用 TCP 转发。
+// DialContext 返回原始 TCP 拨号函数。直连为普通拨号；socks5 先本地解析域名再拨 IP，
+// socks5h 把域名交给代理；http/https 代理不支持原始 TCP，拨号直接返回
+// ErrRawTCPUnsupported 且不发起任何连接。HTTP 请求请用 Transport()。
 func (p *Proxy) DialContext() func(ctx context.Context, network, addr string) (net.Conn, error) {
 	base := &net.Dialer{Timeout: dialTimeout}
-	if p.IsDirect() || p.u.Scheme == "http" || p.u.Scheme == "https" {
+	if p.IsDirect() {
 		return base.DialContext
+	}
+	if p.u.Scheme == "http" || p.u.Scheme == "https" {
+		return func(context.Context, string, string) (net.Conn, error) {
+			return nil, ErrRawTCPUnsupported
+		}
 	}
 	var auth *xproxy.Auth
 	if p.u.User != nil {

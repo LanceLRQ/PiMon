@@ -2,6 +2,7 @@ package proxy_test
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/url"
@@ -162,5 +163,38 @@ func TestEnvAndRedaction(t *testing.T) {
 	}
 	if strings.Contains(env, "NO_PROXY=*") {
 		t.Error("走代理时不应置 NO_PROXY=*")
+	}
+}
+
+func TestDialContextRejectsHTTPProxies(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	accepted := make(chan struct{}, 1)
+	go func() {
+		if c, err := ln.Accept(); err == nil {
+			accepted <- struct{}{}
+			_ = c.Close()
+		}
+	}()
+	for _, scheme := range []string{"http", "https"} {
+		p, err := proxy.Parse(scheme + "://" + ln.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		conn, err := p.DialContext()(context.Background(), "tcp", ln.Addr().String())
+		if conn != nil {
+			_ = conn.Close()
+		}
+		if !errors.Is(err, proxy.ErrRawTCPUnsupported) {
+			t.Errorf("%s 代理拨号应返回 ErrRawTCPUnsupported，得到 %v", scheme, err)
+		}
+	}
+	select {
+	case <-accepted:
+		t.Error("拒绝时不应发起任何连接")
+	case <-time.After(200 * time.Millisecond):
 	}
 }
