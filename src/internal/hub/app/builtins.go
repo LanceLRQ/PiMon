@@ -8,5 +8,7 @@ import (
 	_ "github.com/LanceLRQ/PiMon/src/plugins/httpcheck"
 	_ "github.com/LanceLRQ/PiMon/src/plugins/httpjson"
 	_ "github.com/LanceLRQ/PiMon/src/plugins/hubself"
+	_ "github.com/LanceLRQ/PiMon/src/plugins/netreach"
+	_ "github.com/LanceLRQ/PiMon/src/plugins/ping"
 	_ "github.com/LanceLRQ/PiMon/src/plugins/tcpcheck"
 )

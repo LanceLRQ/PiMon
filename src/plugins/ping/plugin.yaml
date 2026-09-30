@@ -1,0 +1,38 @@
+id: ping
+version: 1.0.0
+api_version: 1
+name: {zh: Ping 检测, en: Ping}
+kind: source
+runtime: builtin
+runs_on: [hub]
+interval: 60s
+timeout: 60s
+config_schema:
+  - key: host
+    type: string
+    title: {zh: 主机, en: Host}
+    help: {zh: "域名或 IPv4 地址。使用非特权 ICMP，Linux 需要 net.ipv4.ping_group_range 包含运行用户的组；没有权限时请改用 tcp-check。", en: "Hostname or IPv4 address. Uses unprivileged ICMP; on Linux net.ipv4.ping_group_range must include the service user's group. Use tcp-check if that is not possible."}
+    required: true
+  - key: count
+    type: number
+    title: {zh: 发送次数, en: Packets}
+    help: {zh: "每次运行发送的 ICMP 请求数，最多 10。", en: "ICMP requests sent per run, at most 10."}
+    default: 4
+    min: 1
+    max: 10
+  - key: timeout
+    type: duration
+    title: {zh: 单包超时, en: Per-packet timeout}
+    help: {zh: "最长 5 秒；发送次数乘以单包超时必须小于插件运行超时（60 秒）。", en: "At most 5 seconds; packets times timeout must stay below the plugin run timeout (60 s)."}
+    default: 2s
+    min: 1
+    max: 5
+outputs:
+  - {key: latency, type: number, title: {zh: 平均延迟, en: Average latency}}
+  - {key: loss,    type: gauge,  title: {zh: 丢包率, en: Packet loss}}
+widgets:
+  - id: ping
+    name: {zh: Ping, en: Ping}
+    sizes:
+      1x1: {template: value, bind: {value: {item: latency}}}
+      2x1: {template: gauge, bind: {value: {item: loss}}}
