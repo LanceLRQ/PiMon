@@ -10,7 +10,7 @@ import (
 
 func runArgs(args ...string) (code int, stdout, stderr string) {
 	var o, e bytes.Buffer
-	code = run(args, strings.NewReader(""), &o, &e, func(string) string { return "" })
+	code = run(args, strings.NewReader(""), &o, &e, func(string) string { return "" }, nil)
 	return code, o.String(), e.String()
 }
 

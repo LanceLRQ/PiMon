@@ -40,12 +40,15 @@ const usage = `用法: pimon-hub <命令> [参数]
 
 func main() {
 	// 日志必须最早创建，mono 才从进程启动时刻算起。
-	slog.SetDefault(logging.New(os.Stderr, slog.LevelInfo))
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, os.Getenv))
+	// 级别在解析配置后通过 LevelVar 调整，logger 本身不再重建。
+	var lv slog.LevelVar
+	slog.SetDefault(logging.New(os.Stderr, &lv))
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, os.Getenv, &lv))
 }
 
 // run 分派子命令并返回退出码：0 成功，1 命令失败，2 用法错误。
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string) int {
+// lv 为日志级别变量，解析配置后设置；可为 nil（测试中不触碰全局日志）。
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string, lv *slog.LevelVar) int {
 	if len(args) == 0 {
 		_, _ = fmt.Fprint(stderr, usage)
 		return 2
@@ -69,11 +72,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		_, _ = fmt.Fprintln(stderr, "错误:", err)
 		return 2
 	}
-	slog.SetDefault(logging.New(stderr, cfg.SlogLevel()))
+	if lv != nil {
+		lv.Set(cfg.SlogLevel())
+	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	if err := dispatch(ctx, cmd, cfg, pos, stdin, stdout, stderr, getenv); err != nil {
+	if err := dispatch(context.Background(), cmd, cfg, pos, stdin, stdout, stderr, getenv); err != nil {
 		_, _ = fmt.Fprintln(stderr, "错误:", err)
 		var ue usageError
 		if errors.As(err, &ue) {
@@ -104,7 +107,15 @@ func dispatch(ctx context.Context, cmd string, cfg config.Config, pos []string,
 
 	switch cmd {
 	case "serve":
-		return a.Serve(ctx)
+		// 只有 serve 接管信号；第一次信号后立即恢复默认处理，
+		// 使优雅关闭期间再按一次 Ctrl-C 能强制退出。
+		sigCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		go func() {
+			<-sigCtx.Done()
+			stop()
+		}()
+		return a.Serve(sigCtx)
 	case "setup-code":
 		code, exp, err := a.SetupCode(ctx)
 		if err != nil {

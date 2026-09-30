@@ -18,6 +18,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
+	"github.com/LanceLRQ/PiMon/src/pkg/model"
 )
 
 // 低成本 argon2 参数，仅用于测试。
@@ -94,10 +95,44 @@ func TestOpenEndToEnd(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("setup = %d %s", resp.StatusCode, data)
 	}
+	// 登出后换新 cookiejar，走真实登录。
+	if resp, _ := call(t, c, srv.URL, "POST", "/api/logout", nil); resp.StatusCode != 204 {
+		t.Fatalf("logout = %d", resp.StatusCode)
+	}
+	c = newClient()
+	if resp, _ := call(t, c, srv.URL, "GET", "/api/settings", nil); resp.StatusCode != 401 {
+		t.Fatalf("未登录读设置应为 401，得到 %d", resp.StatusCode)
+	}
+	resp, data = call(t, c, srv.URL, "POST", "/api/login", map[string]any{"password": testPassword})
+	if resp.StatusCode != 200 {
+		t.Fatalf("login = %d %s", resp.StatusCode, data)
+	}
+
 	resp, data = call(t, c, srv.URL, "GET", "/api/settings", nil)
 	if resp.StatusCode != 200 {
 		t.Fatalf("settings = %d %s", resp.StatusCode, data)
 	}
+	var st model.Settings
+	if err := json.Unmarshal(data, &st); err != nil {
+		t.Fatal(err)
+	}
+	st.Language = "en"
+	resp, data = call(t, c, srv.URL, "PUT", "/api/settings", st)
+	if resp.StatusCode != 200 {
+		t.Fatalf("put settings = %d %s", resp.StatusCode, data)
+	}
+	_, data = call(t, c, srv.URL, "GET", "/api/settings", nil)
+	var got model.Settings
+	if err := json.Unmarshal(data, &got); err != nil || got.Language != "en" {
+		t.Fatalf("设置未持久化: %s (%v)", data, err)
+	}
+	bad := st
+	bad.Timezone = "Not/AZone"
+	resp, data = call(t, c, srv.URL, "PUT", "/api/settings", bad)
+	if resp.StatusCode != 400 || !strings.Contains(string(data), "validation.failed") {
+		t.Fatalf("非法设置应 400 validation.failed，得到 %d %s", resp.StatusCode, data)
+	}
+
 	resp, data = call(t, c, srv.URL, "POST", "/api/backups", nil)
 	if resp.StatusCode >= 300 {
 		t.Fatalf("create backup = %d %s", resp.StatusCode, data)
