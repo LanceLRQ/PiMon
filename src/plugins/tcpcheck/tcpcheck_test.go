@@ -167,3 +167,17 @@ func TestInvalidConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigTimeoutMaxBelowRunTimeout(t *testing.T) {
+	m := src(t).Manifest()
+	for _, f := range m.ConfigSchema {
+		if f.Key != "timeout" {
+			continue
+		}
+		if f.Max == nil || *f.Max >= m.Timeout.Seconds() {
+			t.Fatalf("配置超时上限 %v 必须小于运行超时 %v，否则会变成 run.timeout", f.Max, m.Timeout)
+		}
+		return
+	}
+	t.Fatal("缺少 timeout 字段")
+}

@@ -35,9 +35,10 @@ config_schema:
   - key: timeout
     type: duration
     title: {zh: 超时, en: Timeout}
+    help: {zh: "最长 25 秒，必须小于插件运行超时（30 秒），否则会变成运行超时而不是检测失败。", en: "At most 25 seconds; must stay below the plugin run timeout (30 s), otherwise it surfaces as a run timeout instead of a failed check."}
     default: 10s
     min: 1
-    max: 120
+    max: 25
   - key: follow_redirects
     type: boolean
     title: {zh: 跟随重定向, en: Follow redirects}
@@ -45,7 +46,7 @@ config_schema:
   - key: skip_tls_verify
     type: boolean
     title: {zh: 跳过证书校验, en: Skip TLS verification}
-    help: {zh: "用于自签名证书的内网服务；仍会统计证书剩余天数。", en: "For internal services with self-signed certificates. Days until expiry are still reported."}
+    help: {zh: "用于自签名证书的内网服务；仍会统计证书剩余天数。风险：开启后不再校验主机名与证书信任链，无法防范中间人。", en: "For internal services with self-signed certificates. Days until expiry are still reported. Risk: when enabled, the hostname and certificate chain are no longer verified, so man-in-the-middle attacks go undetected."}
     default: false
   - key: cert_warn_days
     type: number

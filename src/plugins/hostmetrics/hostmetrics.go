@@ -162,23 +162,37 @@ func (p *Plugin) temperature(ctx context.Context, rep *report.Report, th thresho
 	}
 }
 
-// disks 输出 disk[<挂载点>]；同一设备只取第一个挂载点，单个挂载点取不到容量时只标该项错误。
+// disks 输出 disk[<挂载点>]；同一设备只取路径最短的挂载点，单个挂载点取不到容量时只标该项错误。
 func (p *Plugin) disks(ctx context.Context, rep *report.Report, th thresholds) {
 	parts, err := p.s.Partitions(ctx)
 	if err != nil {
 		return
 	}
-	seen := map[string]bool{}
-	var real []Partition
+	var cands []Partition
 	for _, part := range parts {
-		if !realMount(part) || (part.Device != "" && seen[part.Device]) {
+		if realMount(part) {
+			cands = append(cands, part)
+		}
+	}
+	// 先按「最短路径优先、其次字典序」排序再去重，保留的挂载点不随 gopsutil 返回顺序漂移，
+	// 否则历史会按键断成两条。同挂载点（叠加挂载）与同设备（子卷、bind 挂载）都只留一个。
+	sort.Slice(cands, func(i, j int) bool {
+		if len(cands[i].Mount) != len(cands[j].Mount) {
+			return len(cands[i].Mount) < len(cands[j].Mount)
+		}
+		return cands[i].Mount < cands[j].Mount
+	})
+	seenMount, seenDev := map[string]bool{}, map[string]bool{}
+	var kept []Partition
+	for _, part := range cands {
+		if seenMount[part.Mount] || (part.Device != "" && seenDev[part.Device]) {
 			continue
 		}
-		seen[part.Device] = true
-		real = append(real, part)
+		seenMount[part.Mount], seenDev[part.Device] = true, true
+		kept = append(kept, part)
 	}
-	sort.Slice(real, func(i, j int) bool { return real[i].Mount < real[j].Mount })
-	for _, part := range real {
+	sort.Slice(kept, func(i, j int) bool { return kept[i].Mount < kept[j].Mount })
+	for _, part := range kept {
 		key := diskPrefix + part.Mount + "]"
 		u, err := p.s.Usage(ctx, part.Mount)
 		if err != nil || u.Total == 0 {

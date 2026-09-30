@@ -245,3 +245,30 @@ func TestInvalidConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigTimeoutMaxBelowRunTimeout(t *testing.T) {
+	m := src(t).Manifest()
+	for _, f := range m.ConfigSchema {
+		if f.Key != "timeout" {
+			continue
+		}
+		if f.Max == nil || *f.Max >= m.Timeout.Seconds() {
+			t.Fatalf("配置超时上限 %v 必须小于运行超时 %v，否则会变成 run.timeout", f.Max, m.Timeout)
+		}
+		return
+	}
+	t.Fatal("缺少 timeout 字段")
+}
+
+func TestSkipTLSVerifyHelpWarnsRisk(t *testing.T) {
+	for _, f := range src(t).Manifest().ConfigSchema {
+		if f.Key == "skip_tls_verify" {
+			zh, en := f.Help.Get("zh"), f.Help.Get("en")
+			if !strings.Contains(zh, "风险") || !strings.Contains(en, "Risk") {
+				t.Fatalf("help 应含风险提示: %q / %q", zh, en)
+			}
+			return
+		}
+	}
+	t.Fatal("缺少 skip_tls_verify 字段")
+}

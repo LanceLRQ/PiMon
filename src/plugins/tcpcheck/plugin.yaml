@@ -22,9 +22,10 @@ config_schema:
   - key: timeout
     type: duration
     title: {zh: 超时, en: Timeout}
+    help: {zh: "最长 25 秒，必须小于插件运行超时（30 秒）。", en: "At most 25 seconds; must stay below the plugin run timeout (30 s)."}
     default: 5s
     min: 1
-    max: 120
+    max: 25
   - key: proxy
     type: proxy
     title: {zh: 代理, en: Proxy}

@@ -97,8 +97,13 @@ func (s *systemSampler) Usage(ctx context.Context, mount string) (DiskUsage, err
 	return DiskUsage{Used: u.Used, Total: u.Total}, nil
 }
 
-// virtualNICPrefixes 是不计入网速的回环与虚拟网卡名前缀，避免容器流量被重复统计。
-var virtualNICPrefixes = []string{"lo", "docker", "veth", "br-", "virbr", "cni", "flannel", "utun", "awdl", "llw", "bridge", "gif", "stf", "ap"}
+// virtualNICPrefixes 是不计入网速的回环、容器、网桥、聚合与隧道网卡名前缀：
+// 这些接口的流量已经在底层物理网卡上计过一次，再累加会重复计数。
+// 不含 "ap"：前缀过宽，会误排名字以 ap 开头的真实网卡；macOS 热点接口 ap1 流量很小，不排除无碍。
+var virtualNICPrefixes = []string{
+	"lo", "docker", "veth", "br", "bridge", "virbr", "cni", "flannel", "cali",
+	"bond", "tailscale", "wg", "zt", "tun", "tap", "utun", "awdl", "llw", "gif", "stf",
+}
 
 func (s *systemSampler) NetCounters(ctx context.Context) (rx, tx uint64, err error) {
 	stats, err := gnet.IOCountersWithContext(ctx, true)

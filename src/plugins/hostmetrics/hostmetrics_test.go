@@ -370,3 +370,99 @@ func TestSystemSamplerSmoke(t *testing.T) {
 		t.Fatal("替身全部失败时应报错")
 	}
 }
+
+// 断言报告通过 Validate，且每个键都落在 manifest outputs 声明内（动态集合按前缀匹配）。
+func assertValidAgainstManifest(t *testing.T, p *Plugin, rep *report.Report) {
+	t.Helper()
+	if err := rep.Validate(nil); err != nil {
+		t.Fatalf("报告应通过 Validate: %v", err)
+	}
+	for _, it := range rep.Items {
+		ok := false
+		for _, o := range p.Manifest().Outputs {
+			k, err := report.ParseKey(o.Key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if k.Matches(it.Key) || (!k.Dynamic && o.Key == it.Key) {
+				ok = o.Type == it.Type
+				break
+			}
+		}
+		if !ok {
+			t.Errorf("键 %s（%s）不在 manifest outputs 内或类型不符", it.Key, it.Type)
+		}
+	}
+}
+
+func diskSampler(parts ...Partition) *fakeSampler {
+	s := baseSampler()
+	s.parts = parts
+	s.usage = map[string]DiskUsage{}
+	for _, p := range parts {
+		s.usage[p.Mount] = DiskUsage{Used: 1 << 30, Total: 4 << 30}
+	}
+	s.temp, s.tempErr = 50, nil
+	s.throttled, s.throttleErr = 0, nil
+	return s
+}
+
+func diskKeys(rep *report.Report) []string {
+	var out []string
+	for _, it := range rep.Select("disk[*]") {
+		out = append(out, it.Key)
+	}
+	return out
+}
+
+func TestSameDeviceKeepsShortestMountRegardlessOfOrder(t *testing.T) {
+	a := Partition{Mount: "/mnt/data", FSType: "btrfs", Device: "/dev/sdb1"}
+	b := Partition{Mount: "/mnt/data/sub", FSType: "btrfs", Device: "/dev/sdb1"}
+	for name, parts := range map[string][]Partition{"正序": {a, b}, "反序": {b, a}} {
+		p := New(diskSampler(parts...))
+		rep := run(t, p, clock.NewFake(time.Unix(1_800_000_000, 0)), "", nil)
+		if got := diskKeys(rep); len(got) != 1 || got[0] != "disk[/mnt/data]" {
+			t.Errorf("%s：应稳定保留最短路径，得 %v", name, got)
+		}
+		assertValidAgainstManifest(t, p, rep)
+	}
+}
+
+func TestDuplicateMountPointDeduped(t *testing.T) {
+	// 叠加挂载：同一挂载点、不同设备，不能产生重复键，否则整份报告会被 Validate 拒绝。
+	p := New(diskSampler(
+		Partition{Mount: "/mnt/x", FSType: "ext4", Device: "/dev/sdb1"},
+		Partition{Mount: "/mnt/x", FSType: "ext4", Device: "/dev/sdc1"},
+		Partition{Mount: "/", FSType: "ext4", Device: "/dev/sda1"},
+	))
+	rep := run(t, p, clock.NewFake(time.Unix(1_800_000_000, 0)), "", nil)
+	if got := diskKeys(rep); len(got) != 2 || got[0] != "disk[/]" || got[1] != "disk[/mnt/x]" {
+		t.Fatalf("同挂载点应去重: %v", got)
+	}
+	assertValidAgainstManifest(t, p, rep)
+}
+
+func TestFullReportValidAgainstManifest(t *testing.T) {
+	clk := clock.NewFake(time.Unix(1_800_000_000, 0))
+	s := diskSampler(Partition{Mount: "/", FSType: "ext4", Device: "/dev/sda1"})
+	p := New(s)
+	first := run(t, p, clk, "", nil)
+	clk.Advance(10 * time.Second)
+	s.busy, s.total, s.rx, s.tx = 60, 200, 6000, 2500
+	assertValidAgainstManifest(t, p, run(t, p, clk, first.State, nil))
+}
+
+func TestSumNICExcludesOverlayInterfaces(t *testing.T) {
+	var stats []gnet.IOCountersStat
+	for _, n := range []string{"br0", "br-abc", "bond0", "tailscale0", "wg0", "zt12345", "docker0", "tun0"} {
+		stats = append(stats, gnet.IOCountersStat{Name: n, BytesRecv: 1000, BytesSent: 1000})
+	}
+	stats = append(stats,
+		gnet.IOCountersStat{Name: "eth0", BytesRecv: 7, BytesSent: 3},
+		gnet.IOCountersStat{Name: "apcli0", BytesRecv: 5, BytesSent: 2}, // 以 ap 开头的真实网卡不应被误排
+	)
+	rx, tx, ok := sumNIC(stats)
+	if !ok || rx != 12 || tx != 5 {
+		t.Fatalf("应只统计 eth0 与 apcli0: %d %d %v", rx, tx, ok)
+	}
+}
