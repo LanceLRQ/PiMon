@@ -147,22 +147,36 @@ func TestCreateRejectsUnknownReason(t *testing.T) {
 	}
 }
 
-func TestCreateConcurrent(t *testing.T) {
+func TestCreateConcurrentSameReason(t *testing.T) {
 	f := newFixture(t, start0)
+	const n = 8
 	var wg sync.WaitGroup
-	for _, r := range []string{ReasonManual, ReasonDaily, ReasonPreUpgrade} {
+	errs := make([]error, n)
+	for i := 0; i < n; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := f.svc.Create(context.Background(), r); err != nil {
-				t.Errorf("Create(%s): %v", r, err)
-			}
+			_, errs[i] = f.svc.Create(context.Background(), ReasonManual)
 		}()
 	}
 	wg.Wait()
-	list, err := f.svc.List()
-	if err != nil || len(list) != 3 {
-		t.Fatalf("list = %v, err = %v", list, err)
+	ok := 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			ok++
+		case !errors.Is(err, ErrExists):
+			t.Errorf("意外错误: %v", err)
+		}
+	}
+	if ok != 1 {
+		t.Fatalf("应恰好 1 次成功，实际 %d", ok)
+	}
+	if list, _ := f.svc.List(); len(list) != 1 {
+		t.Fatalf("list = %v", list)
+	}
+	if des, _ := os.ReadDir(f.backupDir); len(des) != 1 {
+		t.Fatalf("目录残留: %v", des)
 	}
 }
 
@@ -404,5 +418,65 @@ func TestRestoreRejectsBadArchives(t *testing.T) {
 				t.Fatalf("失败时不得残留临时文件: %v", des)
 			}
 		})
+	}
+}
+
+func TestRestoreReplaceStageFailureConverges(t *testing.T) {
+	f := newFixture(t, start0)
+	info, err := f.svc.Create(context.Background(), ReasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(f.backupDir, info.Name)
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "pimon.db")
+	secretPath := filepath.Join(dir, "secret.key")
+	if err := os.WriteFile(dbPath, []byte("old-db"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// 密钥目标是非空目录，rename 文件覆盖它会失败，模拟替换阶段中途失败。
+	if err := os.MkdirAll(secretPath, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(secretPath, "keep")
+	if err := os.WriteFile(marker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Restore(archive, dbPath, secretPath); err == nil {
+		t.Fatal("替换阶段应失败")
+	}
+	// 固定顺序：先替换数据库，再替换密钥；失败时原密钥目标未被改动。
+	if b, _ := os.ReadFile(dbPath); string(b) == "old-db" {
+		t.Fatal("数据库应已先被替换")
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("原密钥目标不应被改动: %v", err)
+	}
+	if _, err := os.Stat(secretPath + ".restore"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("失败后不应残留 .restore 临时文件")
+	}
+
+	// 排除故障后重跑恢复，应收敛到备份状态。
+	if err := os.RemoveAll(secretPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := Restore(archive, dbPath, secretPath); err != nil {
+		t.Fatal(err)
+	}
+	orig, _ := os.ReadFile(f.secretPath)
+	got, _ := os.ReadFile(secretPath)
+	if string(orig) != string(got) {
+		t.Fatal("重跑后密钥应一致")
+	}
+	rdb, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rdb.Close() }()
+	var v string
+	if err := rdb.QueryRow(`SELECT v FROM t`).Scan(&v); err != nil || v != "before" {
+		t.Fatalf("v = %q, err = %v", v, err)
 	}
 }

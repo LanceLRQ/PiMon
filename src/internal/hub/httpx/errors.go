@@ -17,6 +17,7 @@ package httpx
 //	setup.invalid_code       设置码错误，details.remaining         401
 //	origin.mismatch          Origin 校验失败                       403
 //	not_found                资源不存在                            404
+//	backup.exists            同一秒内已有同原因的备份              409
 //	internal                 内部错误                              500
 const (
 	CodeInvalidJSON     = "request.invalid_json"
@@ -30,5 +31,6 @@ const (
 	CodeInvalidSetup    = "setup.invalid_code"
 	CodeOriginMismatch  = "origin.mismatch"
 	CodeNotFound        = "not_found"
+	CodeBackupExists    = "backup.exists"
 	CodeInternal        = "internal"
 )

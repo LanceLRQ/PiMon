@@ -84,3 +84,14 @@ func TestBackupDownloadNotFound(t *testing.T) {
 		e.expectError(resp, data, http.StatusNotFound, httpx.CodeNotFound)
 	}
 }
+
+func TestBackupCreateSameSecondConflict(t *testing.T) {
+	e := newEnv(t)
+	admin := e.setup()
+	resp, data := e.do(admin, "POST", "/api/backups", nil)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("第一次 POST = %d %s", resp.StatusCode, data)
+	}
+	resp, data = e.do(admin, "POST", "/api/backups", nil)
+	e.expectError(resp, data, http.StatusConflict, httpx.CodeBackupExists)
+}

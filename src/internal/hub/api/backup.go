@@ -25,6 +25,10 @@ func (s *server) listBackups(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) createBackup(w http.ResponseWriter, r *http.Request) {
 	info, err := s.Backups.Create(r.Context(), backup.ReasonManual)
+	if errors.Is(err, backup.ErrExists) {
+		httpx.WriteError(w, http.StatusConflict, httpx.CodeBackupExists, nil)
+		return
+	}
 	if err != nil {
 		internalError(w, r, err)
 		return

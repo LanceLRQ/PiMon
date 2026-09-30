@@ -12,8 +12,9 @@ import (
 
 // Restore 把备份包还原到 dbPath 与 secretPath。必须在中枢停止后调用。
 // 包内只允许出现 pimon.db 与 secret.key 两个普通文件，缺一不可。
-// 先解压到同目录的 .restore 临时文件，全部成功后删除旧的 -wal/-shm 并 rename 替换；
-// 任何一步失败都不会改动现有文件。
+// 先把两个条目都解压并校验到同目录的 .restore 临时文件；该阶段失败不会改动现有文件。
+// 随后按固定顺序替换：删除旧的 -wal/-shm → rename 数据库 → rename 密钥。
+// 替换阶段中途失败时数据库可能已是新的而密钥仍是旧的，排除故障后重新执行恢复即可收敛。
 func Restore(archivePath, dbPath, secretPath string) (err error) {
 	targets := map[string]string{entryDB: dbPath, entrySecret: secretPath}
 	temps := map[string]string{entryDB: dbPath + ".restore", entrySecret: secretPath + ".restore"}
@@ -73,10 +74,14 @@ func Restore(archivePath, dbPath, secretPath string) (err error) {
 			return fmt.Errorf("删除旧的 %s: %w", suffix, err)
 		}
 	}
-	for name, target := range targets {
-		if err = os.Rename(temps[name], target); err != nil {
+	for _, name := range []string{entryDB, entrySecret} {
+		if err = os.Rename(temps[name], targets[name]); err != nil {
 			return fmt.Errorf("替换 %s: %w", name, err)
 		}
+	}
+	syncDir(filepath.Dir(dbPath))
+	if d := filepath.Dir(secretPath); d != filepath.Dir(dbPath) {
+		syncDir(d)
 	}
 	return nil
 }
@@ -95,4 +100,14 @@ func extract(dst string, r io.Reader) error {
 		return err
 	}
 	return out.Close()
+}
+
+// syncDir 尽力对目录 fsync，让 rename 落盘；失败不影响恢复结果。
+func syncDir(dir string) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	_ = d.Sync()
+	_ = d.Close()
 }
