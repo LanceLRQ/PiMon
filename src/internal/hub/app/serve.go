@@ -47,6 +47,15 @@ func (a *App) Serve(ctx context.Context) error {
 		defer wg.Done()
 		a.backups.RunDaily(bg)
 	}()
+	watchDone, err := a.plugins.Watch(bg)
+	if err != nil {
+		return fmt.Errorf("监视插件目录: %w", err)
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-watchDone
+	}()
 	if iv, ok := a.notifier.WatchdogInterval(); ok {
 		wg.Add(1)
 		go func() {

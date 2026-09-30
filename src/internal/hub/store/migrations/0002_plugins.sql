@@ -13,3 +13,18 @@ CREATE TABLE proxies (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+-- 插件 manifest：按（机器, 插件, 版本）存库，本期机器固定为 hub。
+-- available 为 0 表示该版本当前不可用（exec 插件被删除、或已换成别的版本），
+-- 记录保留，供实例仓库判定"插件消失 → 引用失效"。
+CREATE TABLE manifests (
+    machine       TEXT NOT NULL,
+    plugin_id     TEXT NOT NULL,
+    version       TEXT NOT NULL,
+    origin        TEXT NOT NULL CHECK (origin IN ('builtin', 'exec')),
+    manifest_json TEXT NOT NULL,
+    available     INTEGER NOT NULL DEFAULT 1 CHECK (available IN (0, 1)),
+    first_seen_at TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    PRIMARY KEY (machine, plugin_id, version)
+);

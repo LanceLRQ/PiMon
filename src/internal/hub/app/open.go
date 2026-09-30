@@ -14,12 +14,14 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/sdnotify"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
+	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
 )
 
 const (
@@ -41,6 +43,7 @@ type App struct {
 	sessions   *auth.Sessions
 	screen     *auth.ScreenTokens
 	backups    *backup.Service
+	plugins    *plugins.Registry
 	notifier   *sdnotify.Notifier
 	handler    http.Handler
 	closed     bool
@@ -117,7 +120,14 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	a.screen = auth.NewScreenTokens(a.db, o.clk, a.cfg.ScreenTokenPath())
 	a.backups = backups(st.Get)
 	a.notifier = sdnotify.New(o.getenv)
+	a.plugins = plugins.New(plugins.Config{
+		Dir: a.cfg.PluginDir(), DB: a.db, Clock: o.clk, Builtins: runtime.Builtins(),
+	})
+	if _, err := a.plugins.Scan(ctx); err != nil {
+		return fmt.Errorf("扫描插件: %w", err)
+	}
 	a.handler = api.New(api.Deps{
+		Plugins:      a.plugins,
 		Settings:     st,
 		Hasher:       auth.Hasher{Params: o.params},
 		Limiter:      auth.NewLimiter(o.clk, loginMaxFailures, loginLockTime),

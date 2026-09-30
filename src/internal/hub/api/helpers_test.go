@@ -16,6 +16,7 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
@@ -53,15 +54,17 @@ func (h *countingHasher) Verify(encoded, password string) (bool, error) {
 }
 
 type env struct {
-	t       *testing.T
-	clk     *clock.Fake
-	deps    Deps
-	db      *store.DB
-	refs    *fakeReferrers
-	hasher  *countingHasher
-	srv     *httptest.Server
-	client  *http.Client
-	tokenFn string
+	t         *testing.T
+	clk       *clock.Fake
+	deps      Deps
+	db        *store.DB
+	refs      *fakeReferrers
+	plugins   *plugins.Registry
+	pluginDir string
+	hasher    *countingHasher
+	srv       *httptest.Server
+	client    *http.Client
+	tokenFn   string
 }
 
 func newEnv(t *testing.T) *env {
@@ -91,7 +94,15 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	refs := &fakeReferrers{refs: map[string][]model.ProxyReferrer{}}
+	pluginDir := filepath.Join(dir, "plugins")
+	reg := plugins.New(plugins.Config{
+		Dir: pluginDir, DB: db, Clock: clk, Builtins: testBuiltins(t),
+	})
+	if _, err := reg.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
 	deps := Deps{
+		Plugins:      reg,
 		Settings:     st,
 		Hasher:       hasher,
 		Limiter:      auth.NewLimiter(clk, 10, 15*time.Minute),
@@ -110,7 +121,7 @@ func newEnv(t *testing.T) *env {
 	}
 	srv := httptest.NewServer(New(deps))
 	t.Cleanup(srv.Close)
-	e := &env{t: t, clk: clk, deps: deps, db: db, refs: refs, hasher: hasher, srv: srv, tokenFn: tokenPath}
+	e := &env{t: t, clk: clk, deps: deps, db: db, refs: refs, plugins: reg, pluginDir: pluginDir, hasher: hasher, srv: srv, tokenFn: tokenPath}
 	e.client = e.newClient()
 	return e
 }

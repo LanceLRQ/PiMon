@@ -334,3 +334,72 @@ func TestEnsureSetupCode已有有效设置码时提示而不重新生成(t *test
 		t.Fatalf("原设置码应仍有效: ok=%v err=%v", ok, err)
 	}
 }
+
+func writeExecPlugin(t *testing.T, root, id string) {
+	t.Helper()
+	d := filepath.Join(root, id)
+	if err := os.MkdirAll(d, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	y := "id: " + id + "\nversion: 1.0.0\napi_version: 1\nname: " + id +
+		"\nkind: source\nruntime: exec\nruns_on: [hub]\noutputs:\n  - {key: v, type: number, title: V}\n"
+	if err := os.WriteFile(filepath.Join(d, "plugin.yaml"), []byte(y), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(d, "run"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{d, filepath.Join(d, "run"), filepath.Join(d, "plugin.yaml")} {
+		mode := os.FileMode(0o755)
+		if strings.HasSuffix(p, "plugin.yaml") {
+			mode = 0o644
+		}
+		if err := os.Chmod(p, mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestPluginRegistryScansOnOpenAndWatchesWhileServing(t *testing.T) {
+	cfg := testConfig(t)
+	if err := os.MkdirAll(cfg.PluginDir(), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	writeExecPlugin(t, cfg.PluginDir(), "before")
+	addrCh := make(chan string, 1)
+	a := openApp(t, cfg, WithClock(clock.Real{}), WithOnListen(func(addr string) { addrCh <- addr }))
+	if _, ok := a.plugins.Get("before"); !ok {
+		t.Fatal("Open 时应已扫描插件目录")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- a.Serve(ctx) }()
+	select {
+	case <-addrCh:
+	case err := <-done:
+		t.Fatalf("Serve 提前结束: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("等待监听超时")
+	}
+	writeExecPlugin(t, cfg.PluginDir(), "after")
+	deadline := time.Now().Add(8 * time.Second)
+	for {
+		if _, ok := a.plugins.Get("after"); ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("serve 期间新增的插件未被发现")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("退出超时（监视应随 ctx 停止）")
+	}
+}

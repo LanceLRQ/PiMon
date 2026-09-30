@@ -89,6 +89,9 @@ func (c Config) ScreenTokenPath() string { return filepath.Join(c.DataDir, "scre
 // BackupDir 是备份目录。
 func (c Config) BackupDir() string { return filepath.Join(c.DataDir, "backups") }
 
+// PluginDir 是 exec 插件目录，每个插件一个子目录。
+func (c Config) PluginDir() string { return filepath.Join(c.DataDir, "plugins") }
+
 // CertPath 是自签名证书文件。
 func (c Config) CertPath() string { return filepath.Join(c.DataDir, "hub.crt") }
 

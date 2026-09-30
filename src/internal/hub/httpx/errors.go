@@ -18,23 +18,27 @@ package httpx
 //	origin.mismatch          Origin 校验失败                       403
 //	not_found                资源不存在                            404
 //	backup.exists            同一秒内已有同原因的备份              409
+//	plugin.not_found         插件不存在                            404
+//	plugin.invalid_manifest  manifest 不合法，details.problems 带行号  400
 //	proxy.not_found          代理不存在                            404
 //	proxy.in_use             代理被实例引用，details.instances     409
 //	internal                 内部错误                              500
 const (
-	CodeInvalidJSON     = "request.invalid_json"
-	CodeValidationFail  = "validation.failed"
-	CodeAuthRequired    = "auth.required"
-	CodeAuthForbidden   = "auth.forbidden"
-	CodeInvalidPassword = "auth.invalid_password"
-	CodeAuthLocked      = "auth.locked"
-	CodeSetupRequired   = "setup.required"
-	CodeSetupDone       = "setup.already_done"
-	CodeInvalidSetup    = "setup.invalid_code"
-	CodeOriginMismatch  = "origin.mismatch"
-	CodeNotFound        = "not_found"
-	CodeBackupExists    = "backup.exists"
-	CodeProxyNotFound   = "proxy.not_found"
-	CodeProxyInUse      = "proxy.in_use"
-	CodeInternal        = "internal"
+	CodeInvalidJSON           = "request.invalid_json"
+	CodeValidationFail        = "validation.failed"
+	CodeAuthRequired          = "auth.required"
+	CodeAuthForbidden         = "auth.forbidden"
+	CodeInvalidPassword       = "auth.invalid_password"
+	CodeAuthLocked            = "auth.locked"
+	CodeSetupRequired         = "setup.required"
+	CodeSetupDone             = "setup.already_done"
+	CodeInvalidSetup          = "setup.invalid_code"
+	CodeOriginMismatch        = "origin.mismatch"
+	CodeNotFound              = "not_found"
+	CodeBackupExists          = "backup.exists"
+	CodePluginNotFound        = "plugin.not_found"
+	CodePluginInvalidManifest = "plugin.invalid_manifest"
+	CodeProxyNotFound         = "proxy.not_found"
+	CodeProxyInUse            = "proxy.in_use"
+	CodeInternal              = "internal"
 )

@@ -107,6 +107,7 @@ func TestDerivedPaths(t *testing.T) {
 		cfg.SecretKeyPath():   filepath.Join("/data", "secret.key"),
 		cfg.ScreenTokenPath(): filepath.Join("/data", "screen.token"),
 		cfg.BackupDir():       filepath.Join("/data", "backups"),
+		cfg.PluginDir():       filepath.Join("/data", "plugins"),
 		cfg.CertPath():        filepath.Join("/data", "hub.crt"),
 		cfg.KeyPath():         filepath.Join("/data", "hub.key"),
 	}
