@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"time"
@@ -21,8 +22,11 @@ func ParseRange(s string) (time.Duration, error) {
 	if m == nil {
 		return 0, fmt.Errorf("范围 %q 不合法，应形如 1h、24h、7d", s)
 	}
-	n, _ := strconv.Atoi(m[1])
+	n, _ := strconv.ParseInt(m[1], 10, 64)
 	unit := map[string]time.Duration{"m": time.Minute, "h": time.Hour, "d": 24 * time.Hour}[m[2]]
+	if n > math.MaxInt64/int64(unit) {
+		return 0, ErrRangeTooLarge
+	}
 	return time.Duration(n) * unit, nil
 }
 
@@ -50,6 +54,8 @@ func (s *Service) Query(ctx context.Context, q Query) (model.HistoryResult, erro
 	switch {
 	case q.Range == "":
 		fe["range"] = model.FieldRequired
+	case errors.Is(err, ErrRangeTooLarge):
+		fe["range"] = model.FieldOutOfRange
 	case err != nil:
 		fe["range"] = model.FieldInvalid
 	case d > time.Duration(rs.HourDays)*24*time.Hour:
@@ -136,3 +142,6 @@ OR EXISTS (SELECT 1 FROM history_1h WHERE instance_id = ?1 AND item = ?2 AND fie
 	}
 	return "", nil
 }
+
+// ErrRangeTooLarge 表示范围换算成时长后超出 time.Duration 的表示范围。
+var ErrRangeTooLarge = errors.New("范围过大")

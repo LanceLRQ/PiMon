@@ -101,3 +101,8 @@ CREATE TABLE history_1h (
     n           INTEGER NOT NULL,
     PRIMARY KEY (instance_id, item, field, bucket)
 ) WITHOUT ROWID;
+
+-- 聚合表按 bucket 清理过期行：主键前缀是序列，按时间删除需要 bucket 索引，
+-- 否则每次清理都整表扫描并长时间占住唯一的数据库连接。
+CREATE INDEX history_5m_bucket ON history_5m (bucket);
+CREATE INDEX history_1h_bucket ON history_1h (bucket);

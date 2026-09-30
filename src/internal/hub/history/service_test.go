@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -600,5 +601,68 @@ func TestQueryFieldResolution(t *testing.T) {
 	res, err = f.query("nothing", "", "1h")
 	if err != nil || len(res.Points) != 0 || res.Points == nil {
 		t.Fatalf("空结果应为非 nil 空数组: %+v %v", res, err)
+	}
+}
+
+func TestAggregateCleanupUsesBucketIndex(t *testing.T) {
+	f := newFx(t)
+	for _, q := range []string{delete5mSQL, delete1hSQL} {
+		rows, err := f.db.Query(`EXPLAIN QUERY PLAN `+q, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var plan string
+		for rows.Next() {
+			var id, parent, unused int
+			var detail string
+			if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+				t.Fatal(err)
+			}
+			plan += detail + "\n"
+		}
+		_ = rows.Close()
+		if !strings.Contains(plan, "USING INDEX") && !strings.Contains(plan, "USING COVERING INDEX") {
+			t.Fatalf("清理语句应走 bucket 索引: %s => %s", q, plan)
+		}
+	}
+}
+
+func TestParseRangeOverflow(t *testing.T) {
+	for _, s := range []string{"106752d", "999999d"} {
+		if _, err := ParseRange(s); !errors.Is(err, ErrRangeTooLarge) {
+			t.Fatalf("ParseRange(%q) err=%v，应为 ErrRangeTooLarge", s, err)
+		}
+		f := newFx(t)
+		var fe model.FieldErrors
+		if _, err := f.query("temp", "", s); !errors.As(err, &fe) || fe["range"] != model.FieldOutOfRange {
+			t.Fatalf("Query range=%s err=%v，应为 out_of_range", s, err)
+		}
+	}
+}
+
+func TestFirstRoundAggregatesBeforeCleanupAfterLongDowntime(t *testing.T) {
+	f := newFx(t)
+	ctx := context.Background()
+	f.rec("i1", "temp", t0.Add(11*time.Minute), 7)
+	f.flush()
+	f.clk.Advance(12 * time.Minute)
+	if err := f.svc.Aggregate5m(ctx); err != nil { // 写入水位线
+		t.Fatal(err)
+	}
+	// 停机 30 小时（超过 raw 保留期 24 小时），停机前最后一段 raw 尚未聚合
+	f.rec("i1", "temp", f.clk.Now().Add(-30*time.Second), 9)
+	f.flush()
+	f.clk.Advance(30 * time.Hour)
+
+	restarted := New(f.conf)
+	loopCtx, cancel := context.WithCancel(ctx)
+	done := restarted.Start(loopCtx)
+	defer func() { cancel(); <-done }()
+	waitFor(t, "循环就绪", func() bool { return f.clk.Waiters() >= 1 })
+	f.clk.Advance(60 * time.Second)
+	waitFor(t, "首轮清理完成", func() bool { return f.count("history_raw") == 0 })
+	rows := f.aggRows("history_5m", "temp")
+	if len(rows) != 1 || rows[0].n != 2 || rows[0].avg != 8 {
+		t.Fatalf("停机前最后一段应已聚合进 5m: %+v", rows)
 	}
 }

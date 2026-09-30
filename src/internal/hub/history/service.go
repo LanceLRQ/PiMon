@@ -328,8 +328,7 @@ func ceilTo(v, step int64) int64 { return (v + step - 1) / step * step }
 
 // Aggregate5m 把已结束的 5 分钟桶从原始表聚合到 5 分钟表（avg/min/max/样本数）。
 // 用 meta 里的水位线记录已聚合到哪里，下次从上一个桶起重算（覆盖写入），
-// 所以重复执行、重启后重跑都是幂等的；只从仍在原始保留期内的完整桶起算，
-// 避免原始数据被部分清理后把已聚合的桶用残缺数据覆盖。
+// 所以重复执行、重启后重跑都是幂等的。
 func (s *Service) Aggregate5m(ctx context.Context) error {
 	now := s.clk.Now().UnixMilli()
 	rawFloor := now - int64(s.retention().RawHours)*step1h
@@ -367,7 +366,13 @@ func (s *Service) aggregate(ctx context.Context, sp aggSpec) error {
 	if err != nil {
 		return err
 	}
-	from := max(sp.lo, wm-sp.step)
+	// 有水位线时从上一个桶起算：即便停机超过保留期，尚未清理的数据也要先聚合；
+	// 每轮都是先聚合后清理，所以水位线之后的数据不会先于聚合被清掉。
+	// 没有水位线（全新或丢失）时只从仍在保留期内的完整桶起算，避免用残缺数据覆盖。
+	from := sp.lo
+	if wm > 0 {
+		from = wm - sp.step
+	}
 	if from >= cut {
 		return nil
 	}
@@ -427,23 +432,30 @@ func (s *Service) cleanupRaw(ctx context.Context) error {
 	return nil
 }
 
+// 聚合表的过期删除语句；bucket 有索引，删除只触及过期的行。
+const (
+	delete5mSQL = `DELETE FROM history_5m WHERE bucket < ?`
+	delete1hSQL = `DELETE FROM history_1h WHERE bucket < ?`
+)
+
 func (s *Service) cleanupAggregates(ctx context.Context) error {
 	now := s.clk.Now().UnixMilli()
 	rs := s.retention()
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM history_5m WHERE bucket < ?`, now-int64(rs.FiveMinDays)*24*step1h); err != nil {
+	if _, err := s.db.ExecContext(ctx, delete5mSQL, now-int64(rs.FiveMinDays)*24*step1h); err != nil {
 		return s.fail(err)
 	}
-	_, err := s.db.ExecContext(ctx, `DELETE FROM history_1h WHERE bucket < ?`, now-int64(rs.HourDays)*24*step1h)
+	_, err := s.db.ExecContext(ctx, delete1hSQL, now-int64(rs.HourDays)*24*step1h)
 	return s.fail(err)
 }
 
 // Start 启动后台循环：每个写盘间隔（默认 60 秒）写一次原始表，每 5 分钟聚合到 5 分钟表，
-// 每小时再聚合到 1 小时表并清理原始表，每天清理两张聚合表（首轮会全部清理一次）。
+// 每小时再聚合到 1 小时表并清理三张表（聚合表的 bucket 有索引，每次只删约一小时的过期量）。
+// 每一轮都先聚合后清理，首轮（启动后第一拍）也是：停机超过保留期后，停机前最后一段数据仍能先进入聚合表。
 // ctx 结束后做最后一次写盘；返回的 channel 在循环退出后关闭。
 func (s *Service) Start(ctx context.Context) <-chan struct{} {
 	done := make(chan struct{})
 	every := func(d time.Duration) int { return max(1, int((d+s.every/2)/s.every)) }
-	n5m, n1h, n1d := every(5*time.Minute), every(time.Hour), every(24*time.Hour)
+	n5m, n1h := every(5*time.Minute), every(time.Hour)
 	go func() {
 		defer close(done)
 		bg := context.WithoutCancel(ctx)
@@ -455,16 +467,12 @@ func (s *Service) Start(ctx context.Context) <-chan struct{} {
 				return
 			}
 			s.warn("历史写盘失败", s.Flush(bg))
-			if tick%n5m == 0 {
+			if tick == 1 || tick%n5m == 0 {
 				s.warn("5 分钟聚合失败", s.Aggregate5m(bg))
 			}
-			if tick%n1h == 0 {
-				s.warn("1 小时聚合失败", s.Aggregate1h(bg))
-			}
 			if tick == 1 || tick%n1h == 0 {
+				s.warn("1 小时聚合失败", s.Aggregate1h(bg))
 				s.warn("原始历史清理失败", s.cleanupRaw(bg))
-			}
-			if tick == 1 || tick%n1d == 0 {
 				s.warn("聚合历史清理失败", s.cleanupAggregates(bg))
 			}
 		}
