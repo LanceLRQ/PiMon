@@ -280,6 +280,9 @@ func TestScreenAuth_WrongTokenAndLock(t *testing.T) {
 	if resp.StatusCode != 429 {
 		t.Fatalf("第 10 次 = %d，期望 429", resp.StatusCode)
 	}
+	if ra := resp.Header.Get("Retry-After"); ra == "" || ra == "0" {
+		t.Fatalf("第 10 次的 429 应带 Retry-After，得 %q", ra)
+	}
 	resp, _ = e.do(e.client, "GET", "/screen/auth?token="+e.screenToken(), nil)
 	if resp.StatusCode != 429 || resp.Header.Get("Retry-After") == "" {
 		t.Fatalf("锁定期内应 429: %d", resp.StatusCode)

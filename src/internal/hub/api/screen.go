@@ -1,11 +1,10 @@
 package api
 
 import (
-	"math"
 	"net/http"
-	"strconv"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/httpx"
 )
 
 func (s *server) registerScreen(mux *http.ServeMux) {
@@ -19,7 +18,7 @@ func (s *server) screenAuth(w http.ResponseWriter, r *http.Request) {
 	defer s.keyLocks.lock(key)()
 
 	if d := s.Limiter.Locked(key); d > 0 {
-		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(d.Seconds()))))
+		httpx.SetRetryAfter(w, d)
 		http.Error(w, "too many attempts", http.StatusTooManyRequests)
 		return
 	}
@@ -30,6 +29,7 @@ func (s *server) screenAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	if !ok {
 		if s.Limiter.Fail(key) == 0 {
+			httpx.SetRetryAfter(w, s.Limiter.Locked(key))
 			http.Error(w, "too many attempts", http.StatusTooManyRequests)
 			return
 		}

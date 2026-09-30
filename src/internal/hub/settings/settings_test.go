@@ -65,6 +65,7 @@ func TestValidate_非法用例(t *testing.T) {
 	}{
 		{"语言", func(s *model.Settings) { s.Language = "fr" }, "language", "invalid"},
 		{"时区空", func(s *model.Settings) { s.Timezone = "" }, "timezone", "invalid"},
+		{"时区Local", func(s *model.Settings) { s.Timezone = "Local" }, "timezone", "invalid"},
 		{"时区不存在", func(s *model.Settings) { s.Timezone = "Mars/Base" }, "timezone", "invalid"},
 		{"访问地址无协议", func(s *model.Settings) { s.AccessURL = "pimon.local" }, "access_url", "invalid"},
 		{"访问地址ftp", func(s *model.Settings) { s.AccessURL = "ftp://pimon.local" }, "access_url", "invalid"},

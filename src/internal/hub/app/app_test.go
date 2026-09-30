@@ -311,3 +311,26 @@ func TestRestoreSubcommand(t *testing.T) {
 		t.Fatal("不存在的备份应报错")
 	}
 }
+
+func TestEnsureSetupCode已有有效设置码时提示而不重新生成(t *testing.T) {
+	var stderr bytes.Buffer
+	a := openApp(t, testConfig(t), WithStderr(&stderr))
+	ctx := context.Background()
+	code, _, err := a.setupCodes.Generate(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.ensureSetupCode(ctx); err != nil {
+		t.Fatal(err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "已有未过期的设置码") || !strings.Contains(out, "setup-code") {
+		t.Fatalf("stderr 应提示已有设置码: %q", out)
+	}
+	if strings.Contains(out, code) {
+		t.Fatalf("提示不应泄露已有设置码明文: %q", out)
+	}
+	if ok, err := a.setupCodes.Verify(ctx, code); err != nil || !ok {
+		t.Fatalf("原设置码应仍有效: ok=%v err=%v", ok, err)
+	}
+}

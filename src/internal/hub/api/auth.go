@@ -136,12 +136,8 @@ func (s *server) changePassword(w http.ResponseWriter, r *http.Request) {
 		internalError(w, r, err)
 		return
 	}
-	if err := s.Admins.SetPasswordHash(ctx, hash); err != nil {
-		internalError(w, r, err)
-		return
-	}
-	// 改密码后所有管理员会话失效，再给当前请求签发新会话。
-	if err := s.Sessions.DeleteKind(ctx, auth.KindAdmin); err != nil {
+	// 改密码与吊销所有管理员会话在同一事务内完成，再给当前请求签发新会话。
+	if err := s.Admins.ReplacePassword(ctx, hash); err != nil {
 		internalError(w, r, err)
 		return
 	}

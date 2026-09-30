@@ -56,13 +56,19 @@ func WriteValidationFailed(w http.ResponseWriter, fields model.FieldErrors) {
 	WriteError(w, http.StatusBadRequest, CodeValidationFail, map[string]any{"fields": fields})
 }
 
-// WriteLocked 回 429 auth.locked，并设置 Retry-After；秒数向上取整且至少为 1。
-func WriteLocked(w http.ResponseWriter, retryAfter time.Duration) {
-	secs := int(math.Ceil(retryAfter.Seconds()))
+// SetRetryAfter 设置 Retry-After 头（秒数向上取整且至少为 1），返回所设秒数。
+func SetRetryAfter(w http.ResponseWriter, d time.Duration) int {
+	secs := int(math.Ceil(d.Seconds()))
 	if secs < 1 {
 		secs = 1
 	}
 	w.Header().Set("Retry-After", strconv.Itoa(secs))
+	return secs
+}
+
+// WriteLocked 回 429 auth.locked，并设置 Retry-After；秒数向上取整且至少为 1。
+func WriteLocked(w http.ResponseWriter, retryAfter time.Duration) {
+	secs := SetRetryAfter(w, retryAfter)
 	WriteError(w, http.StatusTooManyRequests, CodeAuthLocked, map[string]any{"retry_after_seconds": secs})
 }
 

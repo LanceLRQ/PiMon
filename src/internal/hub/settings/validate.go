@@ -28,7 +28,7 @@ func Validate(s model.Settings) error {
 	}
 	if s.Timezone == "" {
 		fe["timezone"] = model.FieldInvalid
-	} else if _, err := time.LoadLocation(s.Timezone); err != nil {
+	} else if !validZone(s.Timezone) {
 		fe["timezone"] = model.FieldInvalid
 	}
 	if s.AccessURL != "" && !validAccessURL(s.AccessURL) {

@@ -59,11 +59,8 @@ func (a *App) ResetPassword(ctx context.Context, in io.Reader, out io.Writer, is
 	if err != nil {
 		return err
 	}
-	if err := a.admins.SetPasswordHash(ctx, hash); err != nil {
+	if err := a.admins.ReplacePassword(ctx, hash); err != nil {
 		return err
-	}
-	if err := a.sessions.DeleteKind(ctx, auth.KindAdmin); err != nil {
-		return fmt.Errorf("删除旧会话: %w", err)
 	}
 	_, _ = fmt.Fprintln(out, "管理员密码已更新，所有已登录的管理会话已失效")
 	return nil

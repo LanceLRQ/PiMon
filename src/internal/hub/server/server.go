@@ -13,6 +13,9 @@ import (
 
 const readHeaderTimeout = 10 * time.Second
 
+// idleTimeout 是保持连接的最长空闲时间；不设 ReadTimeout，以免影响 WebSocket 与下载。
+const idleTimeout = 120 * time.Second
+
 // shutdownTimeout 是优雅关闭的最长等待时间，测试中可改小。
 var shutdownTimeout = 10 * time.Second
 
@@ -29,7 +32,7 @@ func Listen(addr string) (net.Listener, error) {
 // 开始 Serve 后调用 onReady（可为 nil）；ctx 结束后最多等 10 秒优雅关闭。
 // 正常关闭返回 nil。
 func Run(ctx context.Context, ln net.Listener, h http.Handler, tlsCert *tls.Certificate, onReady func()) error {
-	srv := &http.Server{Handler: h, ReadHeaderTimeout: readHeaderTimeout}
+	srv := &http.Server{Handler: h, ReadHeaderTimeout: readHeaderTimeout, IdleTimeout: idleTimeout}
 	if tlsCert != nil {
 		ln = tls.NewListener(ln, &tls.Config{
 			MinVersion:   tls.VersionTLS12,

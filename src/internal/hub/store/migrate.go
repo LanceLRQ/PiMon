@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"regexp"
@@ -12,6 +14,9 @@ import (
 
 //go:embed migrations/*.sql
 var embeddedMigrations embed.FS
+
+// ErrDatabaseNewer 表示数据库已应用的迁移版本高于当前程序所含的最大版本。
+var ErrDatabaseNewer = errors.New("数据库来自更新的版本，不支持降级，请用升级前备份恢复")
 
 var migrationName = regexp.MustCompile(`^(\d{4})_[a-z0-9_]+\.sql$`)
 
@@ -42,6 +47,13 @@ func (d *DB) MigrateFS(ctx context.Context, fsys fs.FS) error {
 		name    TEXT NOT NULL
 	)`); err != nil {
 		return fmt.Errorf("创建 schema_migrations: %w", err)
+	}
+	var applied sql.NullInt64
+	if err := d.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`).Scan(&applied); err != nil {
+		return fmt.Errorf("读取已应用迁移版本: %w", err)
+	}
+	if applied.Valid && (len(migrations) == 0 || int(applied.Int64) > migrations[len(migrations)-1].version) {
+		return fmt.Errorf("%w（数据库版本 %d）", ErrDatabaseNewer, applied.Int64)
 	}
 	for _, m := range migrations {
 		if err := d.applyMigration(ctx, fsys, m); err != nil {

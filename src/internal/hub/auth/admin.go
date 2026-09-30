@@ -78,3 +78,28 @@ func (a *Admins) SetPasswordHash(ctx context.Context, passwordHash string) error
 	}
 	return nil
 }
+
+// ReplacePassword 在同一事务内更新管理员密码哈希并删除全部管理员会话；
+// 任一步失败都整体回滚。无管理员时返回 ErrNoAdmin。
+func (a *Admins) ReplacePassword(ctx context.Context, passwordHash string) error {
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx,
+		`UPDATE admin SET password_hash = ?, updated_at = ? WHERE id = 1`,
+		passwordHash, store.FormatTime(a.clk.Now()))
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNoAdmin
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE kind = ?`, string(KindAdmin)); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
@@ -19,6 +20,7 @@ type ScreenTokens struct {
 	db   *store.DB
 	clk  clock.Clock
 	path string
+	mu   sync.Mutex // 串行化 Rotate 与 EnsureExists，保证文件与库一致
 }
 
 // NewScreenTokens 创建屏幕令牌服务，path 为令牌文件路径。
@@ -40,6 +42,8 @@ func (s *ScreenTokens) storedHash(ctx context.Context) (string, bool, error) {
 // 两者都在且哈希相符时不做任何事；库无记录、文件缺失、或二者不一致时都重新生成，
 // 因为库里只有哈希，无法从哈希恢复明文，重新生成是唯一能让两边重新对齐的办法。
 func (s *ScreenTokens) EnsureExists(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	hash, ok, err := s.storedHash(ctx)
 	if err != nil {
 		return err
@@ -49,12 +53,19 @@ func (s *ScreenTokens) EnsureExists(ctx context.Context) error {
 			return nil
 		}
 	}
-	return s.Rotate(ctx)
+	return s.rotate(ctx)
 }
 
 // Rotate 生成新令牌。顺序为：原子写文件 → 更新库 → 删除所有屏幕会话，
 // 这样写文件失败时旧令牌与旧会话都保持有效。
 func (s *ScreenTokens) Rotate(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.rotate(ctx)
+}
+
+// rotate 是持锁状态下的轮换实现。
+func (s *ScreenTokens) rotate(ctx context.Context) error {
 	token, err := randomToken()
 	if err != nil {
 		return err

@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"testing/fstest"
@@ -200,5 +202,37 @@ func TestMigrateFSRollbackOnFailure(t *testing.T) {
 	}
 	if n != 0 {
 		t.Error("失败的迁移不应记录版本")
+	}
+}
+
+func TestMigrateFSRejectsNewerDatabase(t *testing.T) {
+	db := openTemp(t)
+	ctx := context.Background()
+	newer := fstest.MapFS{
+		"0001_a.sql": {Data: []byte(`CREATE TABLE t(v TEXT);`)},
+		"0002_b.sql": {Data: []byte(`INSERT INTO t(v) VALUES ('b');`)},
+	}
+	if err := db.MigrateFS(ctx, newer); err != nil {
+		t.Fatal(err)
+	}
+	older := fstest.MapFS{"0001_a.sql": {Data: []byte(`CREATE TABLE t(v TEXT);`)}}
+	if err := db.MigrateFS(ctx, older); !errors.Is(err, ErrDatabaseNewer) {
+		t.Fatalf("err = %v，期望 ErrDatabaseNewer", err)
+	}
+}
+
+func TestOpenSetsFileMode0600(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "pimon.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("权限 = %o，期望 600", got)
 	}
 }

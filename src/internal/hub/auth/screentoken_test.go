@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -180,5 +181,26 @@ func TestScreenTokens_写文件失败时旧令牌仍有效(t *testing.T) {
 	}
 	if _, ok, _ := sessions.Lookup(ctx, sess); !ok {
 		t.Fatal("写文件失败时屏幕会话应保留")
+	}
+}
+
+func TestScreenTokens_并发Rotate后文件与库一致(t *testing.T) {
+	ctx := context.Background()
+	e := newScreenEnv(t)
+	if err := e.tokens.EnsureExists(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = e.tokens.Rotate(ctx)
+		}()
+	}
+	wg.Wait()
+	ok, err := e.tokens.Verify(ctx, readToken(t, e.path))
+	if err != nil || !ok {
+		t.Fatalf("文件中的令牌应与库一致: ok=%v err=%v", ok, err)
 	}
 }

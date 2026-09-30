@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"os"
 
 	_ "modernc.org/sqlite" // 纯 Go 的 SQLite 驱动
 )
@@ -40,6 +41,11 @@ func Open(path string) (*DB, error) {
 	if err := sqlDB.Ping(); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("连接数据库: %w", err)
+	}
+	// 库中含管理员与会话哈希，限制为仅属主可读写；-wal/-shm 由 SQLite 按主库权限创建。
+	if err := os.Chmod(path, 0o600); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("设置数据库文件权限: %w", err)
 	}
 	return &DB{DB: sqlDB}, nil
 }

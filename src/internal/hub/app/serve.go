@@ -79,9 +79,14 @@ func (a *App) ensureSetupCode(ctx context.Context) error {
 	if err != nil || exists {
 		return err
 	}
-	active, _, err := a.setupCodes.Active(ctx)
-	if err != nil || active {
+	active, until, err := a.setupCodes.Active(ctx)
+	if err != nil {
 		return err
+	}
+	if active {
+		_, _ = fmt.Fprintf(a.opts.stderr, "尚未设置管理员；已有未过期的设置码（有效期至 %s），如遗失可运行 pimon-hub setup-code 重新生成\n", until.Local().Format("2006-01-02 15:04:05"))
+		slog.Info("尚未设置管理员；已有未过期的设置码，如遗失可运行 pimon-hub setup-code 重新生成", "expires_at", until)
+		return nil
 	}
 	code, exp, err := a.setupCodes.Generate(ctx)
 	if err != nil {
