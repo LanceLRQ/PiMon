@@ -1,0 +1,34 @@
+id: hub-self
+version: 1.0.0
+api_version: 1
+name: {zh: 中枢自身, en: Hub self-monitoring}
+kind: source
+runtime: builtin
+runs_on: [hub]
+interval: 60s
+timeout: 15s
+config_schema:
+  - key: heartbeat_url
+    type: secret_url
+    title: {zh: 外部心跳地址, en: External heartbeat URL}
+    help: {zh: 可选。每次运行向该地址发一次 GET，供外部服务（如 healthchecks.io）发现中枢停摆。, en: Optional. Sent a GET on every run so an external service (e.g. healthchecks.io) can notice when the hub stops.}
+outputs:
+  - {key: hub.write_errors,   type: number, title: {zh: 写库错误次数, en: Database write errors}}
+  - {key: hub.disk_free,      type: quota,  title: {zh: 数据目录剩余空间, en: Data directory free space}}
+  - {key: hub.push_failures,  type: number, title: {zh: 推送失败次数, en: Push failures}}
+  - {key: hub.agents_online,  type: number, title: {zh: 在线 agent 数, en: Agents online}}
+  - {key: hub.screens_online, type: state,  title: {zh: 屏幕在线, en: Screen online}}
+  - {key: hub.uptime,         type: number, title: {zh: 运行时长, en: Uptime}}
+widgets:
+  - id: health
+    name: {zh: 中枢状态, en: Hub health}
+    sizes:
+      1x1: {template: value, bind: {value: {item: hub.write_errors}}}
+      2x2:
+        template: list
+        bind:
+          items:
+            - {item: hub.write_errors}
+            - {item: hub.disk_free}
+            - {item: hub.agents_online}
+            - {item: hub.screens_online}

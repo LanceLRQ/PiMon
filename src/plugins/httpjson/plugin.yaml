@@ -1,0 +1,25 @@
+id: http-json
+version: 1.0.0
+api_version: 1
+name: {zh: HTTP JSON, en: HTTP JSON}
+kind: source
+runtime: builtin
+runs_on: [hub]
+interval: 60s
+timeout: 15s
+config_schema:
+  - key: url
+    type: url
+    title: {zh: 地址, en: URL}
+    help: {zh: 返回报告格式 JSON 的地址。数据项由响应自动识别，只能用通用小组件显示。, en: "Endpoint returning a report-format JSON. Items are detected from the response and shown with generic widgets only."}
+    required: true
+    allow_query: true
+    allow_public_http: true
+  - key: headers
+    type: kv
+    title: {zh: 请求头, en: Request headers}
+    help: {zh: 值按密钥保存，可放 Authorization 等凭据。, en: "Values are stored as secrets, so credentials such as Authorization are fine."}
+    secret_values: true
+  - key: proxy
+    type: proxy
+    title: {zh: 代理, en: Proxy}

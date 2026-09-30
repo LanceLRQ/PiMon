@@ -19,6 +19,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
+	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
 )
 
 // 低成本 argon2 参数，仅用于测试。
@@ -498,5 +499,30 @@ func TestHistoryWired(t *testing.T) {
 	}
 	if a.HistoryWriteErrors() != 0 {
 		t.Fatalf("HistoryWriteErrors = %d", a.HistoryWriteErrors())
+	}
+}
+
+func TestBuiltinPluginsRegisteredAndHubSelfBound(t *testing.T) {
+	a := openApp(t, testConfig(t))
+	for _, id := range []string{"core", "hub-self", "http-json", "demo"} {
+		if p, ok := a.plugins.Get(id); !ok || p.Source == nil {
+			t.Errorf("内置插件 %s 应已注册", id)
+		}
+	}
+	src, _ := runtime.Builtin("hub-self")
+	rep, err := src.Collect(context.Background(), runtime.Input{Clock: clock.NewFake(time.Date(2026, 1, 1, 0, 1, 0, 0, time.UTC))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"hub.write_errors", "hub.disk_free", "hub.push_failures", "hub.agents_online", "hub.screens_online", "hub.uptime"} {
+		if rep.Find(k) == nil {
+			t.Errorf("绑定后应输出 %s", k)
+		}
+	}
+	if d := rep.Find("hub.disk_free"); d.Error != "" {
+		t.Errorf("数据目录磁盘查询应成功: %s", d.Error)
+	}
+	if u := rep.Find("hub.uptime"); u == nil || *u.Value < 0 {
+		t.Errorf("运行时长异常: %+v", u)
 	}
 }

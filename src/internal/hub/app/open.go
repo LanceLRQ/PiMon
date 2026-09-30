@@ -24,6 +24,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
+	"github.com/LanceLRQ/PiMon/src/plugins/hubself"
 )
 
 const (
@@ -145,6 +146,8 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		OnChange: a.instances.Refresh,
 	})
 	a.instances.UseProxies(proxyStore)
+	// hub-self 的统计来源在 instances 与 history 就绪后才能绑定，先于 Load 以便首次采集就有数据。
+	hubself.Bind(hubStats{inst: a.instances, hist: a.history, started: o.clk.Now(), dataDir: a.cfg.DataDir})
 	if err := a.instances.Load(ctx); err != nil {
 		return fmt.Errorf("恢复实例状态: %w", err)
 	}

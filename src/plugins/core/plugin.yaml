@@ -1,0 +1,9 @@
+id: core
+version: 1.0.0
+api_version: 1
+name: {zh: 核心占位, en: Core placeholder}
+kind: source
+runtime: builtin
+runs_on: [hub]
+interval: 300s
+timeout: 10s
