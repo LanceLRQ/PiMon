@@ -1,0 +1,82 @@
+id: host-metrics
+version: 1.0.0
+api_version: 1
+name: {zh: 主机指标, en: Host metrics}
+kind: source
+runtime: builtin
+runs_on: [hub, agent]
+interval: 30s
+timeout: 20s
+config_schema:
+  - key: temp_warn
+    type: number
+    title: {zh: 温度警告阈值（℃）, en: Temperature warning (°C)}
+    default: 70
+    min: 0
+    max: 150
+  - key: temp_critical
+    type: number
+    title: {zh: 温度严重阈值（℃）, en: Temperature critical (°C)}
+    default: 80
+    min: 0
+    max: 150
+  - key: disk_warn_pct
+    type: number
+    title: {zh: 磁盘使用率警告阈值（%）, en: Disk usage warning (%)}
+    default: 85
+    min: 1
+    max: 100
+  - key: disk_critical_pct
+    type: number
+    title: {zh: 磁盘使用率严重阈值（%）, en: Disk usage critical (%)}
+    default: 95
+    min: 1
+    max: 100
+outputs:
+  - {key: cpu,       type: gauge,  title: {zh: CPU 使用率, en: CPU usage}}
+  - {key: load,      type: number, title: {zh: 1 分钟负载, en: 1-minute load}}
+  - {key: mem,       type: gauge,  title: {zh: 内存使用率, en: Memory usage}}
+  - {key: temp,      type: gauge,  title: {zh: 温度, en: Temperature}}
+  - {key: "disk[*]", type: quota,  title: {zh: 磁盘, en: Disks}}
+  - {key: net_rx,    type: number, title: {zh: 下载速度, en: Download speed}}
+  - {key: net_tx,    type: number, title: {zh: 上传速度, en: Upload speed}}
+  - {key: uptime,    type: number, title: {zh: 运行时长, en: Uptime}}
+  - {key: throttled, type: state,  title: {zh: 欠压与降频, en: Under-voltage and throttling}}
+widgets:
+  - id: cpu
+    name: {zh: CPU, en: CPU}
+    sizes:
+      1x1: {template: gauge, bind: {value: {item: cpu}}}
+  - id: memory
+    name: {zh: 内存, en: Memory}
+    sizes:
+      1x1: {template: gauge, bind: {value: {item: mem}}}
+  - id: temperature
+    name: {zh: 温度, en: Temperature}
+    sizes:
+      1x1: {template: gauge, bind: {value: {item: temp}}}
+  - id: disks
+    name: {zh: 磁盘, en: Disks}
+    sizes:
+      2x2: {template: list, bind: {items: {item: "disk[*]"}}}
+  - id: network
+    name: {zh: 网速, en: Network}
+    sizes:
+      2x1:
+        template: list
+        bind:
+          items:
+            - {item: net_rx}
+            - {item: net_tx}
+  - id: overview
+    name: {zh: 主机概览, en: Host overview}
+    sizes:
+      2x2:
+        template: list
+        bind:
+          items:
+            - {item: cpu}
+            - {item: mem}
+            - {item: temp}
+            - {item: load}
+            - {item: uptime}

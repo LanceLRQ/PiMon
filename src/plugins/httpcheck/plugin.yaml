@@ -1,0 +1,78 @@
+id: http-check
+version: 1.0.0
+api_version: 1
+name: {zh: HTTP 检测, en: HTTP check}
+kind: source
+runtime: builtin
+runs_on: [hub]
+interval: 60s
+timeout: 30s
+config_schema:
+  - key: url
+    type: url
+    title: {zh: 地址, en: URL}
+    help: {zh: "要检测的 http 或 https 地址，允许查询参数。", en: "Target http or https address. Query parameters are allowed."}
+    required: true
+    allow_query: true
+    allow_public_http: true
+    follow_redirects: true
+  - key: method
+    type: enum
+    title: {zh: 请求方法, en: Method}
+    default: GET
+    options:
+      - {value: GET, title: {zh: GET, en: GET}}
+      - {value: HEAD, title: {zh: HEAD（不能检查关键字）, en: HEAD (no keyword check)}}
+  - key: expect_status
+    type: string
+    title: {zh: 期望状态码, en: Expected status}
+    help: {zh: "逗号分隔的状态码或范围，如「200,204,300-399」。", en: "Comma-separated codes or ranges, e.g. 200,204,300-399."}
+    default: "200-299"
+  - key: keyword
+    type: string
+    title: {zh: 响应关键字, en: Response keyword}
+    help: {zh: "可选。响应体必须包含该文字（只检查前 1 MiB）。", en: "Optional. The response body must contain this text (first 1 MiB only)."}
+  - key: timeout
+    type: duration
+    title: {zh: 超时, en: Timeout}
+    default: 10s
+    min: 1
+    max: 120
+  - key: follow_redirects
+    type: boolean
+    title: {zh: 跟随重定向, en: Follow redirects}
+    default: true
+  - key: skip_tls_verify
+    type: boolean
+    title: {zh: 跳过证书校验, en: Skip TLS verification}
+    help: {zh: "用于自签名证书的内网服务；仍会统计证书剩余天数。", en: "For internal services with self-signed certificates. Days until expiry are still reported."}
+    default: false
+  - key: cert_warn_days
+    type: number
+    title: {zh: 证书剩余天数预警, en: Certificate warning days}
+    help: {zh: "仅 https。剩余天数低于该值时为警告。", en: "https only. Warn when fewer days remain."}
+    default: 14
+    min: 0
+    max: 365
+  - key: proxy
+    type: proxy
+    title: {zh: 代理, en: Proxy}
+outputs:
+  - {key: status,    type: state,  title: {zh: 检测结果, en: Check result}}
+  - {key: code,      type: number, title: {zh: 状态码, en: Status code}}
+  - {key: latency,   type: number, title: {zh: 响应延迟, en: Latency}}
+  - {key: cert_days, type: number, title: {zh: 证书剩余天数, en: Certificate days left}}
+widgets:
+  - id: check
+    name: {zh: HTTP 检测, en: HTTP check}
+    sizes:
+      1x1: {template: state, bind: {state: {item: status}}}
+      2x1: {template: value, bind: {value: {item: latency}}}
+      2x2:
+        template: list
+        bind:
+          items:
+            - {item: status}
+            - {item: code}
+            - {item: latency}
+            - {item: cert_days}

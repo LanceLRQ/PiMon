@@ -4,6 +4,9 @@ package app
 import (
 	_ "github.com/LanceLRQ/PiMon/src/plugins/core"
 	_ "github.com/LanceLRQ/PiMon/src/plugins/demo"
+	_ "github.com/LanceLRQ/PiMon/src/plugins/hostmetrics"
+	_ "github.com/LanceLRQ/PiMon/src/plugins/httpcheck"
 	_ "github.com/LanceLRQ/PiMon/src/plugins/httpjson"
 	_ "github.com/LanceLRQ/PiMon/src/plugins/hubself"
+	_ "github.com/LanceLRQ/PiMon/src/plugins/tcpcheck"
 )
