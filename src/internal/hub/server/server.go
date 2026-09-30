@@ -11,10 +11,10 @@ import (
 	"time"
 )
 
-const (
-	readHeaderTimeout = 10 * time.Second
-	shutdownTimeout   = 10 * time.Second
-)
+const readHeaderTimeout = 10 * time.Second
+
+// shutdownTimeout 是优雅关闭的最长等待时间，测试中可改小。
+var shutdownTimeout = 10 * time.Second
 
 // Listen 监听 TCP 地址，失败时给出端口占用的提示。
 func Listen(addr string) (net.Listener, error) {
@@ -53,6 +53,10 @@ func Run(ctx context.Context, ln net.Listener, h http.Handler, tlsCert *tls.Cert
 	shutCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	err := srv.Shutdown(shutCtx)
+	if err != nil {
+		// 优雅关闭超时，强制断开残留连接（如长连接）。
+		_ = srv.Close()
+	}
 	<-serveErr
 	return err
 }

@@ -87,3 +87,73 @@ func TestListenInUseHint(t *testing.T) {
 		t.Fatalf("错误应提示端口占用: %v", err)
 	}
 }
+
+func TestServeTLSNegotiatesHTTP2(t *testing.T) {
+	dir := t.TempDir()
+	cert, err := tlscert.LoadOrCreate(dir+"/c.crt", dir+"/c.key", time.Now(), tlscert.Env{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr, cancel, done := start(t, &cert)
+	client := &http.Client{Transport: &http.Transport{
+		ForceAttemptHTTP2: true,
+		TLSClientConfig:   &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // 测试自签名证书
+	}}
+	resp, err := client.Get("https://" + addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.ProtoMajor != 2 {
+		t.Fatalf("期望协商到 HTTP/2，实际 %s", resp.Proto)
+	}
+	stop(t, cancel, done)
+}
+
+func TestShutdownTimeoutForcesClose(t *testing.T) {
+	old := shutdownTimeout
+	shutdownTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { shutdownTimeout = old })
+
+	release := make(chan struct{})
+	defer close(release)
+	entered := make(chan struct{})
+	blocking := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(entered)
+		<-release
+	})
+	ln, err := Listen("127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, ln, blocking, nil, nil) }()
+
+	reqErr := make(chan error, 1)
+	go func() {
+		resp, err := http.Get("http://" + ln.Addr().String())
+		if err == nil {
+			_ = resp.Body.Close()
+		}
+		reqErr <- err
+	}()
+	<-entered
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("关闭超时应返回错误")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("关闭超时后 Run 未返回")
+	}
+	select {
+	case err := <-reqErr:
+		if err == nil {
+			t.Fatal("残留连接应被强制断开")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("残留连接未被断开")
+	}
+}
