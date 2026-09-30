@@ -211,3 +211,42 @@ func TestVisibleWhenInObjectList(t *testing.T) {
 	wantErrs(t, fs, cfg{"items": []any{map[string]any{"kind": "tcp"}}}, nil)
 	wantErrs(t, fs, cfg{"items": []any{map[string]any{"kind": "http"}}}, model.FieldErrors{"items[0].path": model.FieldRequired})
 }
+
+// 手工构造的字段（绕过解析期检查）在求值时也不能 panic。
+func TestVisibleWhenNeverPanics(t *testing.T) {
+	fs := []Field{
+		{Key: "l", Type: TypeLookup},
+		{Key: "x", Type: TypeString, VisibleWhen: []Condition{{Key: "l", Values: []any{map[string]any{"a": 1}, []any{1}}}}},
+	}
+	wantErrs(t, fs, cfg{"l": map[string]any{"a": 1}, "x": "v"}, nil)
+	fs2 := []Field{
+		{Key: "k", Type: TypeList},
+		{Key: "x", Type: TypeString, VisibleWhen: []Condition{{Key: "k", Values: []any{[]any{"a"}}}}},
+	}
+	wantErrs(t, fs2, cfg{"k": []any{"a"}}, nil)
+}
+
+func TestSecretURLRules(t *testing.T) {
+	fs := decode(t, `- {key: w, type: secret_url}`)
+	cases := []struct {
+		value string
+		ok    bool
+	}{
+		{"https://hooks.example.com/abc?token=1", true},
+		{"http://hooks.example.com/abc", false},
+		{"https://user:pw@hooks.example.com/abc", false},
+		{"http://192.168.1.5:8080/hook?k=v", true},
+		{"http://gotify.local/message", true},
+		{"ftp://hooks.example.com/", false},
+		{"not a url", false},
+	}
+	for _, c := range cases {
+		errs := Validate(fs, cfg{"w": c.value})
+		if c.ok && errs != nil {
+			t.Errorf("%s 应通过: %v", c.value, errs)
+		}
+		if !c.ok && errs["w"] != model.FieldInvalid {
+			t.Errorf("%s 应为 invalid: %v", c.value, errs)
+		}
+	}
+}

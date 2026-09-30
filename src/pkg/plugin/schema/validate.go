@@ -2,7 +2,6 @@ package schema
 
 import (
 	"fmt"
-	"net/url"
 	"regexp"
 	"time"
 	"unicode/utf8"
@@ -88,12 +87,21 @@ func visible(f *Field, effective map[string]any) bool {
 	return true
 }
 
+// looseEqual 只比较标量（字符串、布尔、数字），其余类型一律不相等，避免对 map/切片做 == 而 panic。
 func looseEqual(a, b any) bool {
 	if fa, ok := toFloat(a); ok {
 		fb, ok := toFloat(b)
 		return ok && fa == fb
 	}
-	return a == b
+	switch x := a.(type) {
+	case string:
+		y, ok := b.(string)
+		return ok && x == y
+	case bool:
+		y, ok := b.(bool)
+		return ok && x == y
+	}
+	return false
 }
 
 func isEmpty(v any) bool {
@@ -208,8 +216,8 @@ func checkValue(f *Field, v any, path string, errs model.FieldErrors) (any, bool
 		if !ok {
 			return fail(model.FieldInvalid)
 		}
-		u, err := url.Parse(s)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		// 整条地址即凭据：允许查询参数；公网只允许 https，禁止内嵌凭据，内网允许 http。
+		if CheckURL(s, true, false) != nil {
 			return fail(model.FieldInvalid)
 		}
 		return s, true

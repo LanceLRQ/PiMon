@@ -263,3 +263,25 @@ func TestEmptyAndNonMapping(t *testing.T) {
 		}
 	}
 }
+
+func TestVisibleWhenRejectedAtParse(t *testing.T) {
+	src := `id: a
+version: 1.0.0
+api_version: 1
+name: A
+kind: source
+runtime: exec
+runs_on: [hub]
+config_schema:
+  - {key: city, type: lookup}
+  - {key: extra, type: string, visible_when: {city: x}}
+`
+	_, err := Parse([]byte(src))
+	want := lineOf(t, src, "key: extra")
+	for _, p := range problems(t, err) {
+		if p.Line == want && strings.Contains(p.Message, "visible_when") {
+			return
+		}
+	}
+	t.Errorf("应在第 %d 行报 visible_when 问题: %v", want, err)
+}

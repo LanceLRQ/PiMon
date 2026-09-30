@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+
+	"github.com/LanceLRQ/PiMon/src/pkg/model"
 )
 
 const secretSrc = `
@@ -96,8 +98,8 @@ func TestRedact(t *testing.T) {
 	if !reflect.DeepEqual(out["headers"].(map[string]any)["X-Token"], set) {
 		t.Errorf("kv 密钥值应回显 {set:true}: %v", out["headers"])
 	}
-	if !reflect.DeepEqual(out["accounts"].([]any)[0].(map[string]any)["token"], set) {
-		t.Errorf("对象列表密钥应回显: %v", out["accounts"])
+	if !reflect.DeepEqual(out["accounts"].([]any)[1].(map[string]any)["token"], map[string]any{"set": true, "ref": 1}) {
+		t.Errorf("对象列表密钥应回显 {set:true, ref:原下标}: %v", out["accounts"])
 	}
 	if out["account"] != "me" {
 		t.Errorf("普通字段不变: %v", out)
@@ -122,11 +124,14 @@ func TestKeepSecrets(t *testing.T) {
 			"X-Extra": "E",   // 新增
 		},
 		"accounts": []any{
-			map[string]any{"name": "a"}, // 缺省 -> 保留 accounts[0].token
+			map[string]any{"name": "a", "token": map[string]any{"set": true, "ref": 0}},
 			map[string]any{"name": "b", "token": "NEWB"},
 		},
 	}
-	out := KeepSecrets(fs, incoming, existing)
+	out, errs := KeepSecrets(fs, incoming, existing)
+	if errs != nil {
+		t.Fatalf("不应有错误: %v", errs)
+	}
 	if out["api_key"] != "K1" || out["hook"] != "https://h.example.com/x" {
 		t.Errorf("标量密钥应保留原值: %v", out)
 	}
@@ -144,9 +149,60 @@ func TestKeepSecrets(t *testing.T) {
 	if incoming["api_key"] != "" {
 		t.Error("KeepSecrets 不应修改入参")
 	}
-	// 原值不存在时，留空即无值
-	out = KeepSecrets(fs, map[string]any{"api_key": ""}, map[string]any{})
-	if _, ok := out["api_key"]; ok {
-		t.Errorf("无原值时留空应视为未设置: %v", out)
+	out, errs = KeepSecrets(fs, map[string]any{"api_key": ""}, map[string]any{})
+	if _, ok := out["api_key"]; ok || errs != nil {
+		t.Errorf("无原值时留空应视为未设置: %v %v", out, errs)
+	}
+}
+
+func refItem(name string, ref int) map[string]any {
+	return map[string]any{"name": name, "token": map[string]any{"set": true, "ref": ref}}
+}
+
+func tokens(out map[string]any) []any {
+	var r []any
+	for _, it := range out["accounts"].([]any) {
+		r = append(r, it.(map[string]any)["token"])
+	}
+	return r
+}
+
+func TestKeepSecretsObjectListRef(t *testing.T) {
+	fs := decode(t, secretSrc)
+	// 删除第一个元素：剩下的元素带着原下标 1
+	out, errs := KeepSecrets(fs, map[string]any{"accounts": []any{refItem("b", 1)}}, fullConfig())
+	if errs != nil || !reflect.DeepEqual(tokens(out), []any{"TB"}) {
+		t.Errorf("删除第一个元素后应仍取到 TB: %v %v", tokens(out), errs)
+	}
+	// 交换顺序
+	out, errs = KeepSecrets(fs, map[string]any{"accounts": []any{refItem("b", 1), refItem("a", 0)}}, fullConfig())
+	if errs != nil || !reflect.DeepEqual(tokens(out), []any{"TB", "TA"}) {
+		t.Errorf("交换顺序后应按 ref 取值: %v %v", tokens(out), errs)
+	}
+	// ref 越界
+	_, errs = KeepSecrets(fs, map[string]any{"accounts": []any{refItem("a", 5)}}, fullConfig())
+	if errs["accounts[0].token"] != model.FieldRequired {
+		t.Errorf("ref 越界应报 required: %v", errs)
+	}
+	// 留空且无 ref：该字段非必填时保持未设置，不报错
+	_, errs = KeepSecrets(fs, map[string]any{"accounts": []any{map[string]any{"name": "x"}}}, fullConfig())
+	if errs != nil {
+		t.Errorf("非必填密钥留空且无 ref 不应报错: %v", errs)
+	}
+	// 必填密钥留空且无 ref、ref 指向的旧元素缺该密钥：报 required
+	req := decode(t, `
+- key: accounts
+  type: object_list
+  fields:
+    - {key: token, type: secret, required: true}
+`)
+	_, errs = KeepSecrets(req, map[string]any{"accounts": []any{map[string]any{}}}, map[string]any{})
+	if errs["accounts[0].token"] != model.FieldRequired {
+		t.Errorf("必填密钥无 ref 应报 required: %v", errs)
+	}
+	old := map[string]any{"accounts": []any{map[string]any{}}}
+	_, errs = KeepSecrets(req, map[string]any{"accounts": []any{map[string]any{"token": map[string]any{"set": true, "ref": 0}}}}, old)
+	if errs["accounts[0].token"] != model.FieldRequired {
+		t.Errorf("旧元素无该密钥应报 required: %v", errs)
 	}
 }

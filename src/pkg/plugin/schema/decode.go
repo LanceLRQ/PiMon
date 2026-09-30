@@ -18,6 +18,9 @@ var (
 	rangeTypes   = typeSet(TypeString, TypeText, TypeSecret, TypeNumber, TypeDuration, TypeList, TypeKV, TypeObjectList)
 )
 
+// visible_when 可引用的字段类型：取值为标量。
+var scalarTypes = typeSet(TypeEnum, TypeBoolean, TypeString, TypeNumber)
+
 func typeSet(ts ...Type) map[Type]bool {
 	m := make(map[Type]bool, len(ts))
 	for _, t := range ts {
@@ -223,17 +226,23 @@ func (d *decoder) checkDefault(n *yaml.Node, path string, f *Field, defaultNode 
 func (d *decoder) checkVisibleWhen(fields []Field, basePath string) {
 	for i, f := range fields {
 		for _, c := range f.VisibleWhen {
-			found := false
-			for _, prev := range fields[:i] {
-				if prev.Key == c.Key {
-					found = true
+			var ref *Field
+			for j := range fields[:i] {
+				if fields[j].Key == c.Key {
+					ref = &fields[j]
 					break
 				}
 			}
-			if !found {
+			switch {
+			case ref == nil:
 				d.issues = append(d.issues, Issue{
 					Line: f.Line, Path: fmt.Sprintf("%s.%s.visible_when", basePath, f.Key),
 					Message: fmt.Sprintf("visible_when 引用了未知或排在后面的字段 %q", c.Key),
+				})
+			case !scalarTypes[ref.Type]:
+				d.issues = append(d.issues, Issue{
+					Line: f.Line, Path: fmt.Sprintf("%s.%s.visible_when", basePath, f.Key),
+					Message: fmt.Sprintf("visible_when 只能引用 enum、boolean、string、number 字段，%q 是 %s", c.Key, ref.Type),
 				})
 			}
 		}
@@ -249,17 +258,22 @@ func (d *decoder) decodeWhen(n *yaml.Node, path string) []Condition {
 	var out []Condition
 	for _, p := range pairs {
 		c := Condition{Key: p.Key}
-		var v any
-		if err := p.Value.Decode(&v); err != nil {
-			d.add(p.Value, path+"."+p.Key, "条件值无法解析")
-			continue
+		vals := []*yaml.Node{p.Value}
+		if items, isList := yamlnode.Items(p.Value); isList {
+			vals = items
 		}
-		if list, ok := v.([]any); ok {
-			for _, x := range list {
-				c.Values = append(c.Values, normalize(x))
+		bad := false
+		for _, vn := range vals {
+			var v any
+			if vn.Kind != yaml.ScalarNode || vn.Decode(&v) != nil {
+				d.add(vn, path+"."+p.Key, "条件值必须是标量或标量列表")
+				bad = true
+				break
 			}
-		} else {
-			c.Values = []any{normalize(v)}
+			c.Values = append(c.Values, normalize(v))
+		}
+		if bad {
+			continue
 		}
 		if len(c.Values) == 0 {
 			d.add(p.Value, path+"."+p.Key, "条件值不能为空列表")

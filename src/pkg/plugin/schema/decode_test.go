@@ -101,3 +101,25 @@ func TestDecodeNotSequence(t *testing.T) {
 		t.Fatal("非序列应报错")
 	}
 }
+
+func TestDecodeVisibleWhenMustBeScalar(t *testing.T) {
+	cases := []struct{ name, src, needle string }{
+		{"条件值为映射", "- {key: a, type: enum, options: [x]}\n- {key: b, type: string, visible_when: {a: {k: 1}}}\n", "visible_when"},
+		{"条件值列表含列表", "- {key: a, type: enum, options: [x]}\n- {key: b, type: string, visible_when: {a: [[1]]}}\n", "visible_when"},
+		{"引用 lookup 字段", "- {key: a, type: lookup}\n- {key: b, type: string, visible_when: {a: x}}\n", "visible_when"},
+		{"引用 kv 字段", "- {key: a, type: kv}\n- {key: b, type: string, visible_when: {a: x}}\n", "visible_when"},
+		{"引用 list 字段", "- {key: a, type: list}\n- {key: b, type: string, visible_when: {a: x}}\n", "visible_when"},
+	}
+	for _, c := range cases {
+		_, issues := decodeSrc(t, c.src)
+		if len(issues) == 0 {
+			t.Errorf("%s: 应报告问题", c.name)
+			continue
+		}
+		if issues[0].Line != lineOf(t, c.src, c.needle) {
+			t.Errorf("%s: 行号 %d 不对: %+v", c.name, issues[0].Line, issues)
+		}
+	}
+	// 引用 enum、boolean、string、number 合法
+	decode(t, "- {key: a, type: enum, options: [x]}\n- {key: n, type: number}\n- {key: s, type: string}\n- {key: b, type: boolean}\n- {key: z, type: string, visible_when: {a: x, n: 1, s: q, b: true}}\n")
+}
