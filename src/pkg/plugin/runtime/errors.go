@@ -38,6 +38,8 @@ func classify(parent, runCtx context.Context, err error) error {
 // CollectWithTimeout 按 manifest.Timeout 给一次采集加超时，并把错误归类为
 // ErrTimeout / ErrFailed（调用方取消时原样返回 context.Canceled）。
 // 内置与 exec 两种形态共用，内置插件同样受 ctx 超时控制。
+// 返回的错误已脱敏：Input 里的密钥值与代理凭据不会出现在错误文字里（内置插件的
+// *url.Error 等常带完整 URL）。
 func CollectWithTimeout(ctx context.Context, src Source, in Input) (*report.Report, error) {
 	runCtx := ctx
 	if d := src.Manifest().Timeout; d > 0 {
@@ -47,7 +49,7 @@ func CollectWithTimeout(ctx context.Context, src Source, in Input) (*report.Repo
 	}
 	rep, err := src.Collect(runCtx, in)
 	if err != nil {
-		return nil, classify(ctx, runCtx, err)
+		return nil, redactError(classify(ctx, runCtx, err), in)
 	}
 	return rep, nil
 }

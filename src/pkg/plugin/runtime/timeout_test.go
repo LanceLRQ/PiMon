@@ -1,8 +1,14 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
+	"net/url"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -70,4 +76,81 @@ func TestCollectWithTimeoutKeepsCancelAndSuccess(t *testing.T) {
 	if err != nil || rep.Status != report.StatusOK {
 		t.Fatalf("成功路径: %v %v", rep, err)
 	}
+}
+
+const leakURL = "https://api.example.com/v1?key=zzz-secret-key-zzz"
+
+func leakySource() funcSource {
+	return funcSource{
+		m: &manifest.Manifest{ID: "b", Timeout: time.Second},
+		collect: func(context.Context, Input) (*report.Report, error) {
+			return nil, &url.Error{Op: "Get", URL: leakURL, Err: errors.New("connection refused")}
+		},
+	}
+}
+
+func TestCollectWithTimeoutRedactsSecretsInBuiltinErrors(t *testing.T) {
+	in := Input{Secrets: map[string]string{"endpoint": leakURL, "key": "zzz-secret-key-zzz"}}
+	_, err := CollectWithTimeout(context.Background(), leakySource(), in)
+	if err == nil || !errors.Is(err, ErrFailed) || errors.Is(err, ErrTimeout) {
+		t.Fatalf("应仍为 ErrFailed: %v", err)
+	}
+	if strings.Contains(err.Error(), "zzz-secret-key-zzz") {
+		t.Fatalf("builtin 错误泄露密钥: %v", err)
+	}
+	if !strings.Contains(err.Error(), "connection refused") {
+		t.Fatalf("应保留非敏感的原因: %v", err)
+	}
+}
+
+func TestCollectWithTimeoutRedactsTimeoutErrors(t *testing.T) {
+	src := funcSource{
+		m: &manifest.Manifest{ID: "b", Timeout: 20 * time.Millisecond},
+		collect: func(ctx context.Context, _ Input) (*report.Report, error) {
+			<-ctx.Done()
+			return nil, fmt.Errorf("请求 %s 超时: %w", leakURL, ctx.Err())
+		},
+	}
+	_, err := CollectWithTimeout(context.Background(), src, Input{Secrets: map[string]string{"key": "zzz-secret-key-zzz"}})
+	if !errors.Is(err, ErrTimeout) || strings.Contains(err.Error(), "zzz-secret-key-zzz") {
+		t.Fatalf("超时应分类正确且脱敏: %v", err)
+	}
+}
+
+func TestSchedulerLogsDoNotLeakBuiltinSecrets(t *testing.T) {
+	var buf syncBuffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	in := Input{Secrets: map[string]string{"key": "zzz-secret-key-zzz"}}
+	h := newSchedHarness(t, SchedulerOptions{Logger: log})
+	h.s.Upsert(Task{ID: "a", Interval: time.Hour, ConfigHash: "h", Run: func(ctx context.Context) (*report.Report, error) {
+		return CollectWithTimeout(ctx, leakySource(), in)
+	}})
+	r := h.next(t)
+	if !errors.Is(r.Err, ErrFailed) {
+		t.Fatalf("应为 ErrFailed: %v", r.Err)
+	}
+	if out := buf.String(); out == "" || strings.Contains(out, "zzz-secret-key-zzz") {
+		t.Fatalf("日志应有记录且不含密钥:\n%s", out)
+	}
+	if strings.Contains(r.Err.Error(), "zzz-secret-key-zzz") {
+		t.Fatalf("结果错误泄露密钥: %v", r.Err)
+	}
+}
+
+// syncBuffer 是并发安全的日志缓冲。
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
