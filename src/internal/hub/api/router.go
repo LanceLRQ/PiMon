@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/httpx"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/pkg/version"
@@ -26,6 +27,7 @@ type Deps struct {
 	Admins       *auth.Admins
 	Sessions     *auth.Sessions
 	ScreenTokens *auth.ScreenTokens
+	Backups      *backup.Service
 }
 
 // argonConcurrency 是同时进行的 argon2 运算上限，避免 64MiB×N 耗尽树莓派内存。
@@ -47,7 +49,8 @@ func New(d Deps) http.Handler {
 	s.registerAuth(mux)
 	s.registerSettings(mux)
 	s.registerScreen(mux)
-	// 后续路由在此追加，例如 s.registerBackup(mux)；需要管理员权限的用 s.admin(...) 包装。
+	s.registerBackup(mux)
+	// 后续路由在此追加；需要管理员权限的用 s.admin(...) 包装。
 
 	h := httpx.RequireSameOrigin(mux)
 	return httpx.WithRequestInfo(d.Settings.TrustedNets)(h)

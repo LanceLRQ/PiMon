@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
@@ -79,6 +81,10 @@ func newEnv(t *testing.T) *env {
 	}
 	hasher := &countingHasher{Hasher: auth.Hasher{Params: testParams}}
 	tokenPath := filepath.Join(dir, "screen.token")
+	keyPath := filepath.Join(dir, "secret.key")
+	if _, err := secret.LoadOrCreate(keyPath); err != nil {
+		t.Fatal(err)
+	}
 	deps := Deps{
 		Settings:     st,
 		Hasher:       hasher,
@@ -87,6 +93,10 @@ func newEnv(t *testing.T) *env {
 		Admins:       auth.NewAdmins(db, clk),
 		Sessions:     auth.NewSessions(db, clk),
 		ScreenTokens: auth.NewScreenTokens(db, clk, tokenPath),
+		Backups: backup.New(backup.Config{
+			DB: db, Clock: clk, SecretPath: keyPath,
+			Dir: filepath.Join(dir, "backups"), Settings: st.Get,
+		}),
 	}
 	if err := deps.ScreenTokens.EnsureExists(ctx); err != nil {
 		t.Fatal(err)
