@@ -34,6 +34,8 @@ func writeInstanceError(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, http.StatusNotFound, httpx.CodePluginNotFound, nil)
 	case errors.As(err, &fe):
 		httpx.WriteValidationFailed(w, fe)
+	case errors.Is(err, instances.ErrRunBusy):
+		httpx.WriteError(w, http.StatusConflict, httpx.CodeRunBusy, nil)
 	case errors.Is(err, runtime.ErrTimeout):
 		httpx.WriteError(w, http.StatusGatewayTimeout, httpx.CodeRunTimeout, map[string]any{"message": err.Error()})
 	case errors.Is(err, runtime.ErrFailed):

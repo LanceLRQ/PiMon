@@ -73,6 +73,16 @@ outputs:
   - {key: temp, type: number, title: Temp}
 `
 
+// notifierManifest 是通知渠道插件，不能建数据源实例。
+const notifierManifest = `id: notif
+version: 1.0.0
+api_version: 1
+name: Notif
+kind: notifier
+runtime: builtin
+runs_on: [hub]
+`
+
 func parseManifest(t *testing.T, tpl, id, ver, rt string) *manifest.Manifest {
 	t.Helper()
 	y := strings.NewReplacer("%ID%", id, "%VER%", ver, "%RT%", rt).Replace(tpl)
@@ -227,13 +237,14 @@ func newFx(t *testing.T) *fx {
 	f.plain = &probeSource{m: parseManifest(t, plainManifest, "plain", "", "builtin")}
 	f.stream = &streamSource{probeSource: &probeSource{m: parseManifest(t, plainManifest, "streamer", "", "builtin")}}
 	f.floor = &probeSource{m: parseManifest(t, floorManifest, "floor", "", "builtin")}
+	notif := &probeSource{m: parseManifest(t, notifierManifest, "notif", "", "builtin")}
 	f.plugDir = filepath.Join(dir, "plugins")
 	if err := os.MkdirAll(f.plugDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	f.reg = plugins.New(plugins.Config{
 		Dir: f.plugDir, DB: db, Clock: f.clk,
-		Builtins: []runtime.Source{f.probe, f.plain, f.stream, f.floor},
+		Builtins: []runtime.Source{f.probe, f.plain, f.stream, f.floor, notif},
 	})
 	if _, err := f.reg.Scan(context.Background()); err != nil {
 		t.Fatal(err)
@@ -824,17 +835,7 @@ func TestReferrersAndMissingProxy(t *testing.T) {
 	if !f.probe.last().Proxy.IsDirect() {
 		t.Fatal("改直连后应直连运行")
 	}
-
-	// 指向已不存在代理的实例：按直连运行（库里直接造出该状态）
-	if _, err := f.db.Exec(`UPDATE plugin_instances SET config_json=?, proxy_id='gone' WHERE id=?`, `{"host":"a","proxy":"gone"}`, a.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.svc.Run(bg, a.ID); err != nil {
-		t.Fatalf("代理已删除应按直连运行: %v", err)
-	}
-	if !f.probe.last().Proxy.IsDirect() {
-		t.Fatal("代理不存在应直连")
-	}
+	// 指向已不存在代理的实例不再按直连运行，见 TestRemovedProxyFailsRun（Ruling 49）。
 }
 
 func TestStreamerUsesStreamManager(t *testing.T) {

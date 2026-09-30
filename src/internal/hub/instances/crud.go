@@ -12,6 +12,7 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
+	"github.com/LanceLRQ/PiMon/src/pkg/plugin/manifest"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/schema"
 )
 
@@ -87,6 +88,10 @@ func (s *Service) Create(ctx context.Context, in model.InstanceInput) (model.Ins
 	if !ok {
 		return model.InstanceDetail{}, ErrPluginNotFound
 	}
+	if p.Manifest.Kind != manifest.KindSource {
+		// 通知渠道插件不是数据源，不能建监控实例。
+		return model.InstanceDetail{}, model.FieldErrors{"plugin_id": model.FieldInvalid}
+	}
 	errs := model.FieldErrors{}
 	name := validateName(in.Name, errs)
 	validateInterval(in.IntervalSeconds, p.Manifest.MinInterval, errs)
@@ -115,7 +120,7 @@ func (s *Service) Create(ctx context.Context, in model.InstanceInput) (model.Ins
 	if err := s.insertRow(ctx, r); err != nil {
 		return model.InstanceDetail{}, err
 	}
-	s.ensureState(id)
+	s.ensureState(id, r.ConfigHash)
 	s.syncRow(ctx, r)
 	return s.toDetail(r), nil
 }
@@ -169,7 +174,7 @@ func (s *Service) Update(ctx context.Context, id string, in model.InstanceInput)
 		return model.InstanceDetail{}, err
 	}
 	if changed {
-		s.resetState(id)
+		s.resetState(id, hash)
 	}
 	s.syncRow(ctx, r)
 	return s.toDetail(r), nil
@@ -182,6 +187,9 @@ func (s *Service) Copy(ctx context.Context, id, name string) (model.InstanceDeta
 	src, err := s.getRow(ctx, id)
 	if err != nil {
 		return model.InstanceDetail{}, err
+	}
+	if p, ok := s.reg.Get(src.PluginID); ok && p.Manifest.Kind != manifest.KindSource {
+		return model.InstanceDetail{}, model.FieldErrors{"plugin_id": model.FieldInvalid}
 	}
 	errs := model.FieldErrors{}
 	name = validateName(name, errs)
@@ -209,7 +217,7 @@ func (s *Service) Copy(ctx context.Context, id, name string) (model.InstanceDeta
 	if err := s.insertRow(ctx, r); err != nil {
 		return model.InstanceDetail{}, err
 	}
-	s.ensureState(r.ID)
+	s.ensureState(r.ID, r.ConfigHash)
 	s.syncRow(ctx, r)
 	return s.toDetail(r), nil
 }

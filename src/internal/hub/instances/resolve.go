@@ -52,6 +52,9 @@ func (s *Service) loadFull(r row) (plugins.Plugin, map[string]any, *issue) {
 	if !ok {
 		return plugins.Plugin{}, nil, &issue{kind: issueBroken, msg: fmt.Sprintf("插件 %s 不可用", r.PluginID)}
 	}
+	if r.Corrupt != "" {
+		return p, nil, &issue{kind: issueBroken, msg: r.Corrupt}
+	}
 	secrets, err := s.decodeSecrets(r.SecretsEnc)
 	if err != nil {
 		return p, nil, &issue{kind: issueBroken, msg: err.Error()}
@@ -123,19 +126,32 @@ func sourceFor(p plugins.Plugin) runtime.Source {
 	return p.Source
 }
 
-// effectiveInterval 是实际生效的刷新间隔：覆盖值优先，否则取 manifest。
+// effectiveInterval 是实际生效的刷新间隔：覆盖值优先，否则取 manifest；
+// 结果不低于全局下限与插件的 min_interval（存量实例、复制实例在插件升级抬高下限后同样被钳住）。
+// 取不到任何值时为 0。
 func effectiveInterval(r row, m *manifest.Manifest) time.Duration {
-	if r.IntervalSeconds > 0 {
-		return time.Duration(r.IntervalSeconds) * time.Second
+	var d time.Duration
+	switch {
+	case r.IntervalSeconds > 0:
+		d = time.Duration(r.IntervalSeconds) * time.Second
+	case m != nil:
+		d = m.Interval
 	}
-	if m != nil {
-		return m.Interval
+	if d <= 0 {
+		return 0
 	}
-	return 0
+	floor := manifest.MinAllowedInterval
+	if m != nil && m.MinInterval > floor {
+		floor = m.MinInterval
+	}
+	return max(d, floor)
 }
 
-// resolveProxy 解析实例使用的代理；代理已被删除时按直连运行并记日志（Ruling 28）。
-// 其它失败（如认证无法解密）返回错误，调用方不得退回直连，以免暴露出口 IP。
+// errProxyRemoved 是实例引用的代理已被删除时的运行错误（中英文，直接展示给用户）。
+var errProxyRemoved = errors.New("代理已删除，请重新选择 / proxy removed, please reselect")
+
+// resolveProxy 解析实例使用的代理；代理已被删除时返回 errProxyRemoved（Ruling 49）。
+// 任何失败调用方都不得退回直连，以免暴露出口 IP。
 func (s *Service) resolveProxy(ctx context.Context, instanceID, proxyID string) (*proxy.Proxy, error) {
 	if proxyID == "" || strings.EqualFold(proxyID, proxy.DirectValue) {
 		return nil, nil
@@ -145,13 +161,23 @@ func (s *Service) resolveProxy(ctx context.Context, instanceID, proxyID string) 
 	}
 	p, err := s.proxies.Resolve(ctx, proxyID)
 	if errors.Is(err, proxies.ErrNotFound) {
-		s.log.Warn("实例引用的代理已不存在，按直连运行", "instance", instanceID, "proxy", proxyID)
-		return nil, nil
+		s.log.Warn("实例引用的代理已不存在，运行将失败", "instance", instanceID, "proxy", proxyID)
+		return nil, errProxyRemoved
 	}
 	if err != nil {
 		return nil, fmt.Errorf("代理 %s 不可用: %w", proxyID, err)
 	}
 	return p, nil
+}
+
+// proxyForRun 给一次运行取代理：代理已被删除时 fail 为本次运行应记下的失败（runtime.ErrFailed），
+// 调用方不运行插件；其它代理错误由 err 返回（实例视为 broken）。
+func (s *Service) proxyForRun(ctx context.Context, r row) (pr *proxy.Proxy, fail, err error) {
+	pr, err = s.resolveProxy(ctx, r.ID, r.ProxyID)
+	if errors.Is(err, errProxyRemoved) {
+		return nil, fmt.Errorf("%w: %w", runtime.ErrFailed, err), nil
+	}
+	return pr, nil, err
 }
 
 // baseInput 构造采集输入的固定部分；Last 与 State 在每次运行时再填。
@@ -165,14 +191,15 @@ func (s *Service) baseInput(res *resolved, pr *proxy.Proxy) runtime.Input {
 	return runtime.Input{Config: res.plain, Secrets: sec, Proxy: pr, Clock: s.clk}
 }
 
-// runtimeHash 是调度器的 ConfigHash：把影响运行的一切折进去——完整配置（含密钥）、
-// 插件版本与来源、间隔、超时、代理。只在内存里使用，不落库、不写日志。
-func runtimeHash(res *resolved, interval time.Duration, pr *proxy.Proxy) string {
+// runtimeHash 是调度器的 ConfigHash：把影响运行的一切折进去——实例行的 config_hash
+// （任务按它丢弃过期结果，行内容一变就必须换任务）、完整配置（含密钥）、插件版本与来源、
+// 间隔、超时、代理（proxyTag 为代理 URL，或代理已删除的标记）。只在内存里使用，不落库、不写日志。
+func runtimeHash(content string, res *resolved, interval time.Duration, proxyTag string) string {
 	cfg, _ := json.Marshal(res.cfg)
 	h := sha256.New()
 	for _, part := range []string{
-		string(cfg), res.plugin.Manifest.Version, string(res.plugin.Origin), res.plugin.RunPath,
-		interval.String(), res.plugin.Manifest.Timeout.String(), pr.URL(),
+		content, string(cfg), res.plugin.Manifest.Version, string(res.plugin.Origin), res.plugin.RunPath,
+		interval.String(), res.plugin.Manifest.Timeout.String(), proxyTag,
 	} {
 		h.Write([]byte(part))
 		h.Write([]byte{0})

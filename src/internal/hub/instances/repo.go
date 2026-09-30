@@ -34,6 +34,9 @@ type row struct {
 	ConfigHash      string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+	// Corrupt 非空表示库里的 config_json 已损坏（Config 为空表），内容是给用户看的原因；
+	// 这样的实例以 broken 呈现、不调度，但不影响其他实例的读取与调度。
+	Corrupt string
 }
 
 const rowCols = `id, plugin_id, name, config_json, secrets_enc, interval_seconds, paused, proxy_id, config_hash, created_at, updated_at`
@@ -54,7 +57,8 @@ func scanRow(sc rowScanner) (row, error) {
 	r.Paused = paused == 1
 	r.Config = map[string]any{}
 	if err := json.Unmarshal([]byte(cfgJSON), &r.Config); err != nil {
-		return row{}, fmt.Errorf("实例 %s 的配置不是合法 JSON: %w", r.ID, err)
+		r.Config = map[string]any{}
+		r.Corrupt = fmt.Sprintf("实例配置已损坏（不是合法 JSON：%v），请删除后重建", err)
 	}
 	var err error
 	if r.CreatedAt, err = store.ParseTime(created); err != nil {
@@ -87,9 +91,23 @@ func (s *Service) listRows(ctx context.Context) ([]row, error) {
 		if err != nil {
 			return nil, err
 		}
+		if r.Corrupt != "" && s.firstCorruptReport(r.ID) {
+			s.log.Warn("实例配置已损坏，跳过调度", "instance", r.ID, "reason", r.Corrupt)
+		}
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// firstCorruptReport 同一实例的配置损坏只记一次日志（列表、重排都会走到这里）。
+func (s *Service) firstCorruptReport(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.badWarned[id] {
+		return false
+	}
+	s.badWarned[id] = true
+	return true
 }
 
 func (s *Service) insertRow(ctx context.Context, r row) error {

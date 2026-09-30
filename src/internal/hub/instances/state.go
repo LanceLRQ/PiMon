@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
@@ -12,7 +13,9 @@ import (
 
 // instState 是一个实例的当前状态，内存为准。私有 state 在 report.State 里。
 // rev 每次变化加一，flushedRev 是已落盘的版本，两者不等即脏。
+// hash 是当前实例行的 config_hash：采集结果带着运行时的 hash 回来，不符即对应旧配置，丢弃。
 type instState struct {
+	hash          string
 	report        *report.Report
 	lastSuccessAt int64 // Unix 毫秒，0 表示从未成功
 	lastErr       string
@@ -35,7 +38,7 @@ type stateSnap struct {
 
 // Load 从库里恢复每个实例的当前状态（重启后调用）。没有状态行的实例得到空状态。
 func (s *Service) Load(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT i.id, st.report_json, st.last_success_at, st.last_error, st.failures
+	rows, err := s.db.QueryContext(ctx, `SELECT i.id, i.config_hash, st.report_json, st.last_success_at, st.last_error, st.failures
 FROM plugin_instances i LEFT JOIN instance_state st ON st.instance_id = i.id`)
 	if err != nil {
 		return fmt.Errorf("读取实例状态: %w", err)
@@ -45,15 +48,16 @@ FROM plugin_instances i LEFT JOIN instance_state st ON st.instance_id = i.id`)
 	for rows.Next() {
 		var (
 			id      string
+			hash    string
 			repJSON sql.NullString
 			lastOK  sql.NullInt64
 			lastErr sql.NullString
 			fails   sql.NullInt64
 		)
-		if err := rows.Scan(&id, &repJSON, &lastOK, &lastErr, &fails); err != nil {
+		if err := rows.Scan(&id, &hash, &repJSON, &lastOK, &lastErr, &fails); err != nil {
 			return err
 		}
-		st := &instState{lastSuccessAt: lastOK.Int64, lastErr: lastErr.String, failures: int(fails.Int64)}
+		st := &instState{hash: hash, lastSuccessAt: lastOK.Int64, lastErr: lastErr.String, failures: int(fails.Int64)}
 		if repJSON.String != "" {
 			var rep report.Report
 			if err := json.Unmarshal([]byte(repJSON.String), &rep); err != nil {
@@ -73,26 +77,39 @@ FROM plugin_instances i LEFT JOIN instance_state st ON st.instance_id = i.id`)
 	return nil
 }
 
-// ensureState 保证实例有状态条目（创建实例、重排时调用）。
-func (s *Service) ensureState(id string) {
+// ensureState 保证实例有状态条目（创建实例、重排时调用），并记下当前行的 config_hash。
+func (s *Service) ensureState(id, hash string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.states[id] == nil {
 		s.states[id] = &instState{}
 	}
+	s.states[id].hash = hash
+}
+
+// trackHash 在实例行写入后更新状态记下的 config_hash（状态不存在时什么也不做）。
+func (s *Service) trackHash(id, hash string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if st := s.states[id]; st != nil {
+		st.hash = hash
+	}
 }
 
 // resetState 清空实例的当前状态（配置内容变化后旧值不再可信），并标脏以便覆盖库里的旧行。
-func (s *Service) resetState(id string) {
+// 同时换上新的 config_hash，运行中的旧配置采集随后回来会被丢弃。
+func (s *Service) resetState(id, hash string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.states[id] = &instState{rev: 1}
+	s.states[id] = &instState{hash: hash, rev: 1}
 }
 
 func (s *Service) dropState(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.states, id)
+	delete(s.runLocks, id)
+	delete(s.badWarned, id)
 }
 
 // lastFor 返回传给插件的上次成功报告与私有 state。
@@ -111,12 +128,18 @@ func (s *Service) lastFor(id string) (*report.Report, string) {
 
 // applyResult 把一次采集结果写入当前状态：成功整份替换，失败保留旧值并标记过期
 // （report.Merge），错误文字已由运行时脱敏。实例已被删除时忽略。成功时把报告交给历史记录器。
-func (s *Service) applyResult(id string, rep *report.Report, err error) {
+// hash 是运行时实例行的 config_hash，与当前不符说明结果对应旧配置，整份丢弃（不写状态、不写历史）。
+func (s *Service) applyResult(id, hash string, rep *report.Report, err error) {
 	now := s.clk.Now()
 	s.mu.Lock()
 	st := s.states[id]
 	if st == nil {
 		s.mu.Unlock()
+		return
+	}
+	if st.hash != hash {
+		s.mu.Unlock()
+		s.log.Debug("配置已变更，丢弃旧配置的采集结果", "instance", id)
 		return
 	}
 	cur, _ := report.Merge(st.report, rep, err)
@@ -135,6 +158,47 @@ func (s *Service) applyResult(id string, rep *report.Report, err error) {
 	if err == nil {
 		hist.Record(id, now, rep)
 	}
+}
+
+// acquireRun 取实例的运行锁，给定时采集用：一直等到拿到锁或 ctx 结束。
+func (s *Service) acquireRun(ctx context.Context, id string) (release func(), err error) {
+	lock := s.runLock(id)
+	select {
+	case lock <- struct{}{}:
+		return func() { <-lock }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// acquireRunWithin 取实例的运行锁，给保存并测试用：最多等 wait（用注入的时钟计时），
+// 超时返回 ErrRunBusy；ctx 结束返回 ctx 的错误。
+func (s *Service) acquireRunWithin(ctx context.Context, id string, wait time.Duration) (release func(), err error) {
+	lock := s.runLock(id)
+	select {
+	case lock <- struct{}{}:
+		return func() { <-lock }, nil
+	default:
+	}
+	select {
+	case lock <- struct{}{}:
+		return func() { <-lock }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-s.clk.After(wait):
+		return nil, ErrRunBusy
+	}
+}
+
+func (s *Service) runLock(id string) chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	l := s.runLocks[id]
+	if l == nil {
+		l = make(chan struct{}, 1)
+		s.runLocks[id] = l
+	}
+	return l
 }
 
 // WriteErrors 返回当前状态落盘失败的累计次数（hub-self 插件用）。

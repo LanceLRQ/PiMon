@@ -26,6 +26,8 @@ var (
 	ErrNotFound = errors.New("实例不存在")
 	// ErrPluginNotFound 表示实例所属插件不在注册表里。
 	ErrPluginNotFound = errors.New("插件不存在")
+	// ErrRunBusy 表示实例正在运行（定时采集或另一次保存并测试），等待至多插件超时仍未轮到。
+	ErrRunBusy = errors.New("实例正在运行")
 )
 
 // ProxyResolver 按代理 id 取解析好的代理（由 proxies.Store 实现）。
@@ -52,9 +54,11 @@ type Config struct {
 }
 
 // taskInfo 记录一个实例当前在调度器（或 Streamer 管理器）里的任务。
+// content 是排程时实例行的 config_hash，结果按它判断是否已过期。
 type taskInfo struct {
-	hash   string
-	stream bool
+	hash    string
+	content string
+	stream  bool
 }
 
 // Service 是实例服务。所有方法可并发使用。
@@ -82,9 +86,13 @@ type Service struct {
 	tasks      map[string]taskInfo
 	syncIssues map[string]*issue
 	dropWarned map[string]string
-	runCtx     context.Context
-	sched      *runtime.Scheduler
-	streams    *runtime.StreamManager
+	badWarned  map[string]bool
+	// runLocks 是每实例的运行锁（容量 1 的 channel）：定时采集与保存并测试都先取锁，
+	// 保证同一实例不重入（Ruling 48）。
+	runLocks map[string]chan struct{}
+	runCtx   context.Context
+	sched    *runtime.Scheduler
+	streams  *runtime.StreamManager
 }
 
 // New 创建实例服务。需要再调用 UseProxies 接入代理仓库，Load 恢复状态，Start 启动调度。
@@ -93,6 +101,7 @@ func New(c Config) *Service {
 		db: c.DB, box: c.Box, clk: c.Clock, reg: c.Plugins, hist: c.History, log: c.Logger,
 		jitter: c.Jitter, maxConc: c.MaxConcurrent, flushEvery: c.FlushInterval,
 		states: map[string]*instState{}, tasks: map[string]taskInfo{}, syncIssues: map[string]*issue{}, dropWarned: map[string]string{},
+		badWarned: map[string]bool{}, runLocks: map[string]chan struct{}{},
 	}
 	if s.clk == nil {
 		s.clk = clock.Real{}
@@ -117,9 +126,10 @@ func (s *Service) UseProxies(p ProxyResolver) { s.proxies = p }
 // 重新扫描通知。ctx 结束后依次停止调度、停止 Streamer、做最后一次落盘，
 // 返回的 channel 在这些全部完成后关闭。
 func (s *Service) Start(ctx context.Context) <-chan struct{} {
+	// 定时采集的结果在任务函数里持运行锁写入状态（见 syncRow），调度器的结果回调无需再处理。
 	sched := runtime.NewScheduler(ctx, runtime.SchedulerOptions{
 		Clock: s.clk, MaxConcurrent: s.maxConc, Jitter: s.jitter, Logger: s.log,
-	}, s.onScheduled)
+	}, func(runtime.TaskResult) {})
 	streams := runtime.NewStreamManager(ctx, runtime.StreamOptions{Clock: s.clk, Logger: s.log}, s.onStreamed)
 	s.mu.Lock()
 	s.sched, s.streams, s.runCtx = sched, streams, ctx
@@ -162,10 +172,10 @@ func (s *Service) Refresh() {
 	}
 }
 
-func (s *Service) onScheduled(res runtime.TaskResult) {
-	s.applyResult(res.ID, res.Report, res.Err)
-}
-
+// onStreamed 写入 Streamer 产出的报告；按当前排程记录的配置版本判断是否过期。
 func (s *Service) onStreamed(id string, rep *report.Report) {
-	s.applyResult(id, rep, nil)
+	s.mu.Lock()
+	content := s.tasks[id].content
+	s.mu.Unlock()
+	s.applyResult(id, content, rep, nil)
 }
