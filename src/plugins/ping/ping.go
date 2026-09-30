@@ -31,6 +31,8 @@ const (
 	defaultCount   = 4
 	maxCount       = 10
 	defaultTimeout = 2 * time.Second
+	// minTimeout 是可接受的最小单包超时，更小的值按默认值处理。
+	minTimeout = 100 * time.Millisecond
 )
 
 var (
@@ -38,6 +40,8 @@ var (
 	ErrPermission = errors.New("没有非特权 ICMP 权限 / No unprivileged ICMP permission")
 	// ErrResolve 表示主机名无法解析为 IPv4 地址。
 	ErrResolve = errors.New("无法解析主机 / Cannot resolve host")
+	// ErrIPv4Only 表示 host 是 IPv6 字面量，本插件只支持 IPv4。
+	ErrIPv4Only = errors.New("仅支持 IPv4 / IPv4 only")
 )
 
 // Result 是一轮探测的结果：发出的包数与收到应答的往返时间。
@@ -85,9 +89,16 @@ func (p *plugin) Collect(ctx context.Context, in runtime.Input) (*report.Report,
 		return nil, fmt.Errorf("count 必须在 1–%d 之间", maxCount)
 	}
 
+	timeout := cfg.Duration(in.Config, "timeout", defaultTimeout)
+	if timeout < minTimeout {
+		timeout = defaultTimeout
+	}
+
 	rep := &report.Report{Status: report.StatusOK, CollectedAt: clk.Now().UnixMilli()}
-	res, err := p.pinger.Ping(ctx, host, count, cfg.Duration(in.Config, "timeout", defaultTimeout))
+	res, err := p.pinger.Ping(ctx, host, count, timeout)
 	switch {
+	case errors.Is(err, ErrIPv4Only):
+		return nil, err
 	case ctx.Err() != nil:
 		return nil, ctx.Err()
 	case errors.Is(err, ErrPermission):

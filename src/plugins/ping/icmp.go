@@ -1,5 +1,8 @@
 package ping
 
+// 本文件的往返时间（RTT）用 time.Now 实测，不走 Clock：真实网络往返无法假时钟化，
+// 这是有意的例外；测试通过 Pinger 替身覆盖上层逻辑。
+
 import (
 	"context"
 	"errors"
@@ -14,15 +17,28 @@ import (
 
 // icmpPinger 用 "udp4" 网络的非特权 ICMP 套接字发包；内核会改写回显 ID，
 // 所以只按序号匹配应答。
-type icmpPinger struct{}
+type icmpPinger struct {
+	lookup         func(ctx context.Context, host string) ([]net.IP, error)
+	resolveTimeout time.Duration
+}
+
+// defaultResolveTimeout 是 DNS 解析的独立时限，避免慢 DNS 吃掉整个运行超时。
+const defaultResolveTimeout = 5 * time.Second
 
 // NewICMPPinger 返回真实的 ICMP 探测器。
-func NewICMPPinger() Pinger { return icmpPinger{} }
+func NewICMPPinger() Pinger {
+	return icmpPinger{
+		lookup: func(ctx context.Context, host string) ([]net.IP, error) {
+			return net.DefaultResolver.LookupIP(ctx, "ip4", host)
+		},
+		resolveTimeout: defaultResolveTimeout,
+	}
+}
 
-func (icmpPinger) Ping(ctx context.Context, host string, count int, timeout time.Duration) (Result, error) {
-	ip, err := resolveIPv4(ctx, host)
+func (p icmpPinger) Ping(ctx context.Context, host string, count int, timeout time.Duration) (Result, error) {
+	ip, err := p.resolveIPv4(ctx, host)
 	if err != nil {
-		return Result{}, ErrResolve
+		return Result{}, err
 	}
 	conn, err := icmp.ListenPacket("udp4", "0.0.0.0")
 	if err != nil {
@@ -89,16 +105,18 @@ func waitReply(conn *icmp.PacketConn, buf []byte, seq int, start time.Time, time
 	}
 }
 
-func resolveIPv4(ctx context.Context, host string) (net.IP, error) {
+func (p icmpPinger) resolveIPv4(ctx context.Context, host string) (net.IP, error) {
 	if ip := net.ParseIP(host); ip != nil {
 		if v4 := ip.To4(); v4 != nil {
 			return v4, nil
 		}
-		return nil, errors.New("仅支持 IPv4")
+		return nil, ErrIPv4Only
 	}
-	ips, err := net.DefaultResolver.LookupIP(ctx, "ip4", host)
+	rctx, cancel := context.WithTimeout(ctx, p.resolveTimeout)
+	defer cancel()
+	ips, err := p.lookup(rctx, host)
 	if err != nil || len(ips) == 0 {
-		return nil, errors.New("解析失败")
+		return nil, ErrResolve
 	}
 	return ips[0], nil
 }

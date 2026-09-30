@@ -3,6 +3,7 @@ package ping
 import (
 	"context"
 	"errors"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -13,15 +14,17 @@ import (
 )
 
 type fakePinger struct {
-	res   Result
-	err   error
-	calls []string
-	count int
+	res     Result
+	err     error
+	calls   []string
+	count   int
+	timeout time.Duration
 }
 
-func (f *fakePinger) Ping(_ context.Context, host string, count int, _ time.Duration) (Result, error) {
+func (f *fakePinger) Ping(_ context.Context, host string, count int, timeout time.Duration) (Result, error) {
 	f.calls = append(f.calls, host)
 	f.count = count
+	f.timeout = timeout
 	return f.res, f.err
 }
 
@@ -175,5 +178,46 @@ func TestRealLoopback(t *testing.T) {
 	}
 	if res.Sent != 2 || len(res.RTTs) == 0 {
 		t.Fatalf("回环应收到应答: %+v", res)
+	}
+}
+
+func TestTooSmallTimeoutFallsBackToDefault(t *testing.T) {
+	for _, in := range []any{"0s", "1ms", "-5s", "garbage"} {
+		f := &fakePinger{res: Result{Sent: 1, RTTs: []time.Duration{time.Millisecond}}}
+		if _, err := collect(t, f, map[string]any{"host": "h", "timeout": in}); err != nil {
+			t.Fatal(err)
+		}
+		if f.timeout != defaultTimeout {
+			t.Errorf("timeout=%v 应回落默认值，实际 %v", in, f.timeout)
+		}
+	}
+}
+
+func TestIPv6LiteralIsClearError(t *testing.T) {
+	_, err := NewICMPPinger().Ping(context.Background(), "::1", 1, time.Second)
+	if !errors.Is(err, ErrIPv4Only) {
+		t.Fatalf("IPv6 字面量应返回 ErrIPv4Only: %v", err)
+	}
+	if _, err := collect(t, &fakePinger{err: ErrIPv4Only}, map[string]any{"host": "::1"}); err == nil || !strings.Contains(err.Error(), "IPv4") {
+		t.Fatalf("Collect 应明确提示仅支持 IPv4: %v", err)
+	}
+}
+
+func TestSlowDNSTimesOutSeparately(t *testing.T) {
+	p := icmpPinger{
+		lookup: func(ctx context.Context, _ string) ([]net.IP, error) {
+			<-ctx.Done() // 模拟一直不返回的 DNS，只靠解析自己的时限结束
+			return nil, ctx.Err()
+		},
+		resolveTimeout: 20 * time.Millisecond,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err := p.Ping(ctx, "slow.test", 1, time.Second)
+	if !errors.Is(err, ErrResolve) {
+		t.Fatalf("慢 DNS 应按解析失败返回: %v", err)
+	}
+	if ctx.Err() != nil {
+		t.Fatal("解析超时不应耗尽上层 ctx")
 	}
 }

@@ -37,6 +37,8 @@ const (
 	defaultAttempts = 3
 	maxAttempts     = 5
 	defaultTimeout  = 5 * time.Second
+	// minTimeout 是可接受的最小单次超时，更小的值（含配置绕过校验的情形）按默认值处理。
+	minTimeout = 100 * time.Millisecond
 )
 
 // probeFunc 是一次 HTTP 探测，测试可替换。
@@ -83,6 +85,9 @@ func (p *plugin) Collect(ctx context.Context, in runtime.Input) (*report.Report,
 		return nil, fmt.Errorf("attempts 必须在 1–%d 之间", maxAttempts)
 	}
 	timeout := cfg.Duration(in.Config, "timeout", defaultTimeout)
+	if timeout < minTimeout {
+		timeout = defaultTimeout
+	}
 
 	// 目标之间并发，同一目标的多次探测串行；各自写自己的槽位，互不影响。
 	results := make([]outcome, len(targets))
@@ -171,7 +176,7 @@ func parseTargets(raw any) ([]target, error) {
 	if len(list) == 0 {
 		return nil, errors.New("未配置探测目标 targets")
 	}
-	seen := map[string]int{}
+	used := map[string]bool{}
 	out := make([]target, 0, len(list))
 	for i, it := range list {
 		m, ok := it.(map[string]any)
@@ -183,11 +188,28 @@ func parseTargets(raw any) ([]target, error) {
 		if name == "" || url == "" {
 			return nil, fmt.Errorf("targets[%d] 需要名称与地址", i)
 		}
-		seen[name]++
-		if n := seen[name]; n > 1 {
-			name = fmt.Sprintf("%s (%d)", name, n)
-		}
+		name = uniqueName(keySafe(name), used)
 		out = append(out, target{name: name, url: url})
 	}
 	return out, nil
+}
+
+// keySafe 把名称改写成可作为动态键成员的形式：方括号换成圆括号，单独的 * 会被当成通配，
+// 改写为「(*)」。
+func keySafe(name string) string {
+	name = strings.NewReplacer("[", "(", "]", ")").Replace(name)
+	if name == "*" {
+		return "(*)"
+	}
+	return name
+}
+
+// uniqueName 返回未被占用的名称：冲突时循环递增后缀「 (n)」，直到唯一，并登记。
+func uniqueName(name string, used map[string]bool) string {
+	cand := name
+	for n := 2; used[cand]; n++ {
+		cand = fmt.Sprintf("%s (%d)", name, n)
+	}
+	used[cand] = true
+	return cand
 }

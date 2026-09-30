@@ -172,8 +172,8 @@ func TestViaHTTPProxy(t *testing.T) {
 	if len(px.Seen()) != 2 {
 		t.Fatalf("探测应经过代理 2 次: %+v", px.Seen())
 	}
-	if rep.Find("target[a]") == nil {
-		t.Fatalf("应有数据项: %+v", rep)
+	if v := value(t, rep, "target[a]"); v != 100 {
+		t.Fatalf("经 HTTP 代理成功率应为 100: %v", v)
 	}
 }
 
@@ -276,6 +276,55 @@ func assertValid(t *testing.T, s runtime.Source, rep *report.Report) {
 		}
 		if !ok {
 			t.Errorf("键 %s（%s）不在 manifest outputs 内或类型不符", it.Key, it.Type)
+		}
+	}
+}
+
+func TestDuplicateSuffixCollision(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	t.Cleanup(ts.Close)
+	rep, err := collect(t, src(t), map[string]any{"targets": targets("x", ts.URL, "x", ts.URL, "x (2)", ts.URL), "attempts": 1.0}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"target[x]", "target[x (2)]", "target[x (2) (2)]"} {
+		if rep.Find(k) == nil {
+			t.Errorf("缺少 %s: %+v", k, rep.Items)
+		}
+	}
+	assertValid(t, src(t), rep)
+}
+
+func TestIllegalNamesAreRewritten(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	t.Cleanup(ts.Close)
+	rep, err := collect(t, src(t), map[string]any{
+		"targets":  targets("*", ts.URL, "a[1]", ts.URL, "]b[", ts.URL, "ok", ts.URL),
+		"attempts": 1.0,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"target[(*)]", "target[a(1)]", "target[)b(]", "target[ok]"} {
+		if rep.Find(k) == nil {
+			t.Errorf("缺少 %s: %+v", k, rep.Items)
+		}
+	}
+	assertValid(t, src(t), rep)
+}
+
+func TestTooSmallTimeoutFallsBackToDefault(t *testing.T) {
+	var got atomic.Int64
+	p := &plugin{m: mustManifest(), probe: func(_ context.Context, o probe.HTTPOptions) (probe.HTTPResult, error) {
+		got.Store(int64(o.Timeout))
+		return probe.HTTPResult{Code: 200}, nil
+	}}
+	for _, in := range []any{"0s", "1ms", "-5s", "garbage"} {
+		if _, err := collect(t, p, map[string]any{"targets": targets("a", "http://a"), "attempts": 1.0, "timeout": in}, nil); err != nil {
+			t.Fatal(err)
+		}
+		if time.Duration(got.Load()) != defaultTimeout {
+			t.Errorf("timeout=%v 应回落默认值，实际 %v", in, time.Duration(got.Load()))
 		}
 	}
 }
