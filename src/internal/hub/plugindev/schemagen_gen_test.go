@@ -19,6 +19,8 @@ const (
 	ReportSchemaFile   = "report.schema.json"
 )
 
+// 本文件只在测试中编译：Schema 生成逻辑不进入 hub 生产二进制。
+//
 // 以下 *Doc 结构只用于生成 plugin.yaml 的 JSON Schema：manifest 包为保留行号用 yaml.Node 解析，
 // 没有可直接反射的 Go 结构。字段集合与 manifest 解析器实际接受的集合由 schemagen_test.go 双向比对，
 // 取值范围（枚举、尺寸上限）直接取自 manifest、report、schema 包的常量。
@@ -182,14 +184,26 @@ type refDoc struct {
 	Field string `json:"field,omitempty" jsonschema:"description=缺省取该数据项类型的默认字段"`
 }
 
+// alertOps、alertSeverities 是 alert 的 op、severity 取值；manifest 包没有导出这两个集合，
+// 由 TestAlertEnumsMatchParser 用解析器的实际行为比对。
+var (
+	alertOps        = []string{"<", "<=", ">", ">=", "==", "!="}
+	alertSeverities = []string{"info", "warning", "critical"}
+)
+
 type alertDoc struct {
 	Name     i18nDoc `json:"name"`
 	Item     string  `json:"item"`
 	Field    string  `json:"field,omitempty"`
-	Op       string  `json:"op" jsonschema:"enum=<,enum=<=,enum=>,enum=>=,enum===,enum=!="`
+	Op       string  `json:"op"`
 	Value    any     `json:"value,omitempty"`
-	Severity string  `json:"severity,omitempty" jsonschema:"enum=info,enum=warning,enum=critical"`
+	Severity string  `json:"severity,omitempty"`
 	For      string  `json:"for,omitempty" jsonschema:"description=持续时长，如 5m"`
+}
+
+func (alertDoc) JSONSchemaExtend(s *jsonschema.Schema) {
+	setEnum(s, "op", alertOps)
+	setEnum(s, "severity", alertSeverities)
 }
 
 func setEnum(s *jsonschema.Schema, prop string, values []string) {

@@ -95,8 +95,8 @@ func TestValidateReportsBrokenLine(t *testing.T) {
 		if len(me.Problems) != 1 || me.Problems[0].Line != want {
 			t.Errorf("%s: 问题 = %+v，期望在第 %d 行", id, me.Problems, want)
 		}
-		if !strings.Contains(out.String(), fmt.Sprintf("第 %d 行", want)) {
-			t.Errorf("%s: 输出应带行号: %q", id, out.String())
+		if !strings.Contains(err.Error(), fmt.Sprintf("第 %d 行", want)) {
+			t.Errorf("%s: 错误应带行号: %q", id, err.Error())
 		}
 	}
 }
@@ -273,5 +273,23 @@ func TestRunRelativeDir(t *testing.T) {
 	var out bytes.Buffer
 	if err := Run(context.Background(), filepath.Join(examplesDir, "shell-disk-load"), RunOptions{ConfigPath: cfg}, &out); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
+	}
+}
+
+func TestValidateRejectsSymlinkRun(t *testing.T) {
+	dir := copyExample(t, "shell-disk-load")
+	real := filepath.Join(dir, "real-run")
+	if err := os.Rename(filepath.Join(dir, "run"), real); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("real-run", filepath.Join(dir, "run")); err != nil {
+		t.Skip("无法创建符号链接")
+	}
+	err := Validate(dir, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "符号链接") {
+		t.Errorf("符号链接的 run 应报错并说明原因: %v", err)
+	}
+	if err := Run(context.Background(), dir, RunOptions{}, &bytes.Buffer{}); err == nil {
+		t.Error("run 也应拒绝符号链接入口")
 	}
 }

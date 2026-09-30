@@ -388,3 +388,30 @@ func TestMinInterval(t *testing.T) {
 	_, err = Parse([]byte(src))
 	expectProblem(t, src, err, "min_interval", "min_interval")
 }
+
+func outputsManifest(key string) string {
+	return "id: k-test\nversion: 1.0.0\napi_version: 1\nname: k\nkind: source\nruntime: exec\nruns_on: [hub]\noutputs:\n  - {key: " + key + ", type: gauge}\n"
+}
+
+func TestOutputKeySyntax(t *testing.T) {
+	for _, key := range []string{"cpu", "quota.5h", "net_rx-1", `"disk[*]"`} {
+		if _, err := Parse([]byte(outputsManifest(key))); err != nil {
+			t.Errorf("key %s 应通过: %v", key, err)
+		}
+	}
+	bad := []struct{ key, msg string }{
+		{`"a[b"`, "不合法"},
+		{`"disk[]"`, "不合法"},
+		{`"x[*]y"`, "不合法"},
+		{`"m[foo]"`, "name[*]"},
+	}
+	for _, c := range bad {
+		src := outputsManifest(c.key)
+		_, err := Parse([]byte(src))
+		if err == nil {
+			t.Errorf("key %s 应报错", c.key)
+			continue
+		}
+		expectProblem(t, src, err, c.key[1:len(c.key)-1], c.msg)
+	}
+}

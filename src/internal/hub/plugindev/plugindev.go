@@ -53,13 +53,17 @@ func load(dir string) (*loaded, error) {
 	if m.Runtime != manifest.RuntimeExec {
 		l.problems = append(l.problems, fmt.Sprintf("插件目录里的 manifest 必须声明 runtime: exec，实际为 %q", m.Runtime))
 	}
-	info, err := os.Stat(l.runPath)
+	// 与 hub 加载一致：用 Lstat，不跟随符号链接。
+	info, err := os.Lstat(l.runPath)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		l.problems = append(l.problems, "缺少可执行入口 "+runFile)
 		l.entryProblem = true
 	case err != nil:
 		l.problems = append(l.problems, fmt.Sprintf("无法读取入口 %s: %v", runFile, err))
+		l.entryProblem = true
+	case info.Mode()&fs.ModeSymlink != 0:
+		l.problems = append(l.problems, "入口 "+runFile+" 是符号链接，hub 不允许（必须是插件目录内的普通文件）")
 		l.entryProblem = true
 	case !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0:
 		l.problems = append(l.problems, fmt.Sprintf("入口 %s 必须是带执行权限的普通文件（chmod +x %s）", runFile, runFile))
@@ -69,24 +73,13 @@ func load(dir string) (*loaded, error) {
 }
 
 // Validate 校验插件目录：manifest 语法与语义（报错带行号），以及 run 入口存在且可执行。
-// 详情写入 out；任何问题都以非 nil 错误返回（manifest 问题为 *manifest.Error）。
+// 任何问题都以非 nil 错误返回，错误文字含全部问题（manifest 问题为 *manifest.Error）；通过时把结果写入 out。
 func Validate(dir string, out io.Writer) error {
 	l, err := load(dir)
 	if err != nil {
-		var me *manifest.Error
-		if errors.As(err, &me) {
-			_, _ = fmt.Fprintf(out, "%s 不合法，共 %d 个问题:\n", manifestFile, len(me.Problems))
-			for _, p := range me.Problems {
-				_, _ = fmt.Fprintln(out, "  "+formatProblem(p))
-			}
-		}
 		return err
 	}
 	if len(l.problems) > 0 {
-		_, _ = fmt.Fprintf(out, "插件目录有 %d 个问题:\n", len(l.problems))
-		for _, p := range l.problems {
-			_, _ = fmt.Fprintln(out, "  "+p)
-		}
 		return errors.New(strings.Join(l.problems, "; "))
 	}
 	m := l.manifest
@@ -94,18 +87,6 @@ func Validate(dir string, out io.Writer) error {
 		m.ID, m.Version, len(m.ConfigSchema), len(m.Outputs), len(m.Widgets))
 	_, _ = fmt.Fprintln(out, "提示: 这里不检查文件属主与权限；hub 加载时还会检查目录、plugin.yaml 与 run 的属主（hub 运行用户或 root）以及是否可被组或其他用户写。")
 	return nil
-}
-
-func formatProblem(p manifest.Problem) string {
-	loc := ""
-	if p.Line > 0 {
-		loc = fmt.Sprintf("第 %d 行: ", p.Line)
-	}
-	path := ""
-	if p.Path != "" {
-		path = p.Path + ": "
-	}
-	return loc + path + p.Message
 }
 
 // RunOptions 是 Run 的参数。
@@ -121,12 +102,6 @@ type RunOptions struct {
 func Run(ctx context.Context, dir string, opts RunOptions, out io.Writer) error {
 	l, err := load(dir)
 	if err != nil {
-		var me *manifest.Error
-		if errors.As(err, &me) {
-			for _, p := range me.Problems {
-				_, _ = fmt.Fprintln(out, "  "+formatProblem(p))
-			}
-		}
 		return err
 	}
 	if l.entryProblem {

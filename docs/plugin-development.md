@@ -137,7 +137,8 @@ outputs:
   - {key: "disk[*]", type: quota, title: {zh: 磁盘, en: Disks}}
 ```
 
-- `key` 是数据项键名；以 `[*]` 结尾表示动态集合，报告里的具体成员写成 `disk[/vol1]`、`container[nginx]`（方括号内是成员名，不能为空）。固定键不能含 `[`。`outputs` 里的 key 不能重复。
+- `key` 是数据项键名，`plugin.yaml` 解析时会校验，只允许两种写法：不含 `[` 的固定键（如 `cpu`、`quota.5h`），或动态集合 `name[*]`（`name` 非空）。`a[b`、`disk[]`、`x[*]y`、`m[foo]` 这类写法都会报错并带行号；`outputs` 里的 key 不能重复。
+- 报告里动态集合的具体成员写成 `disk[/vol1]`、`container[nginx]`（方括号内是成员名，不能为空，且 `]` 必须是最后一个字符）；成员名不需要在 `outputs` 里逐个声明，由 `disk[*]` 覆盖。报告里的键必须是具体键名，不能写通配。
 - `type` 是数据项类型，见第 5 节。
 - 报告里出现的键必须是具体键名，不能是通配。
 
@@ -230,12 +231,20 @@ pimon-hub plugin validate <目录>
 pimon-hub plugin run <目录> [--config <文件>] [--proxy <URL>]
 ```
 
+### 退出码
+
+| 退出码 | 含义 |
+|---|---|
+| 0 | 成功 |
+| 1 | 校验或运行失败 |
+| 2 | 用法错误（缺少目录参数、未知子命令、未知参数等） |
+
 ### validate
 
 - 解析 `plugin.yaml`，报告全部问题并带行号，如 `第 7 行: kind: kind "sourcee" 不合法，应为 source 或 notifier`。
-- 检查 `run` 入口存在且可执行、目录名等于 `id`、`runtime` 为 `exec`。
+- 检查 `run` 入口存在、是带执行权限的普通文件（符号链接会被拒绝，与 hub 加载一致）、目录名等于 `id`、`runtime` 为 `exec`。
 - 通过时会提示：hub 加载时还会检查属主与权限。
-- 有任何问题退出码为 1。
+- 所有问题只在错误信息里输出一次；有任何问题退出码为 1。
 
 ### run
 
@@ -245,7 +254,7 @@ pimon-hub plugin run <目录> [--config <文件>] [--proxy <URL>]
 2. 按 `config_schema` 应用默认值并校验，不合格则列出出错的字段并退出。
 3. 拆出密钥，与 hub 运行时一样通过 stdin 的 `secrets` 传入；`--proxy` 可指定代理（`http`、`https`、`socks5`、`socks5h`）。
 4. 按 manifest 的 `timeout` 执行一次，校验报告，打印状态、摘要、耗时、各数据项的键、类型与主值，并对照 `outputs` 提示未声明或未产出的数据项。
-5. 失败（配置不合格、插件退出码非 0、超时、报告不合法）时打印原因并以退出码 1 结束。
+5. 失败（配置不合格、插件退出码非 0、超时、报告不合法）时打印原因并以退出码 1 结束。按 Ctrl-C（SIGINT）或收到 SIGTERM 会取消本次运行，并杀掉插件的整个进程组。
 
 密钥与代理凭据不会被打印。`run` 每次都是全新的一次运行，`state` 与 `last` 为空。
 
@@ -270,7 +279,7 @@ token: my-secret
 cd src && go test ./internal/hub/plugindev -run TestSchemaFiles -update-schema
 ```
 
-测试会检查产物是否与当前代码一致，Go 结构改了而产物没更新时测试失败并给出上面的命令。`plugin.yaml` 的 Schema 由一组仅用于生成的描述结构产生，测试保证它的字段集合与解析器实际接受的一致；语义层面的校验（例如引用了未声明的数据项、`min_interval` 大于 `interval`）只有 `plugin validate` 能做。
+生成逻辑只在测试代码里，不进入 hub 二进制。测试会检查产物是否与当前代码一致，Go 结构改了而产物没更新时测试失败并给出上面的命令。`plugin.yaml` 的 Schema 由一组仅用于生成的描述结构产生，测试保证它的字段集合与解析器实际接受的一致；语义层面的校验（例如引用了未声明的数据项、`min_interval` 大于 `interval`）只有 `plugin validate` 能做。
 
 ## 8. 编写建议
 

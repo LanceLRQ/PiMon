@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -73,5 +75,18 @@ func TestPluginValidateExitCodes(t *testing.T) {
 	code, _, errOut := runArgs("plugin", "validate", t.TempDir())
 	if code != 1 || errOut == "" {
 		t.Fatalf("空目录应退出 1: code=%d err=%q", code, errOut)
+	}
+}
+
+// manifest 错误只应在输出里出现一次（不再先打明细、再打"错误:"）。
+func TestPluginValidateErrorPrintedOnce(t *testing.T) {
+	dir := t.TempDir()
+	yml := "id: x\nversion: 1.0.0\napi_version: 1\nname: x\nkind: sourcee\nruntime: exec\nruns_on: [hub]\n"
+	if err := os.WriteFile(filepath.Join(dir, "plugin.yaml"), []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := runArgs("plugin", "validate", dir)
+	if code != 1 || strings.Count(out+errOut, "sourcee") != 1 || !strings.Contains(errOut, "第 5 行") {
+		t.Fatalf("code=%d out=%q err=%q", code, out, errOut)
 	}
 }

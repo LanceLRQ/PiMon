@@ -4,6 +4,10 @@
 # 为避免依赖 jq，这里只用 sed 提取几个简单字段；字段值含转义字符时请改用 jq 或 Python。
 set -eu
 
+# 固定 C locale：避免 uptime 等命令在逗号小数点的语言环境下输出 "1,23"。
+LC_ALL=C
+export LC_ALL
+
 input=$(cat)
 
 # 取字符串字段（path 已被 plugin.yaml 的 pattern 限制为不含引号与反斜杠的字符）。
@@ -19,14 +23,19 @@ warn=${warn:-80}
 crit=${crit:-90}
 
 # df -P 的输出格式在 Linux 与 macOS 上一致，第 5 列是 "45%"。
-used=$(df -Pk "$path" | awk 'NR==2 { gsub("%", "", $5); print $5 }')
+used=$(df -Pk -- "$path" | awk 'NR==2 { gsub("%", "", $5); print $5 }')
 if [ -z "$used" ]; then
   echo "无法读取 $path 的磁盘使用率" >&2
   exit 1
 fi
 
-# uptime 末尾是三个负载值，取 1 分钟的；兼容 "load average:" 与 "load averages:"。
-load=$(uptime | sed -E 's/.*load averages?: *([0-9.]+).*/\1/')
+# 优先读 /proc/loadavg（Linux），没有时回退到 uptime（macOS 等）；
+# uptime 末尾是三个负载值，取 1 分钟的，兼容 "load average:" 与 "load averages:"。
+if [ -r /proc/loadavg ]; then
+  load=$(cut -d' ' -f1 /proc/loadavg)
+else
+  load=$(uptime | sed -E 's/.*load averages?: *([0-9.]+).*/\1/')
+fi
 
 status=ok
 # awk 做浮点比较，避免 sh 不支持小数。

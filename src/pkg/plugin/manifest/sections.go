@@ -102,6 +102,13 @@ func (p *parser) parseOutputs(n *yaml.Node) []Output {
 			p.add(it, path+".key", "缺少 key")
 			continue
 		}
+		if k, err := report.ParseKey(o.Key); err != nil {
+			p.add(it, path+".key", "数据项 key %q 不合法: %v", o.Key, err)
+			continue
+		} else if k.Dynamic && !k.Wildcard {
+			p.add(it, path+".key", "数据项 key %q 不能声明具体成员，动态集合请写成 name[*]", o.Key)
+			continue
+		}
 		if !report.IsType(o.Type) {
 			p.add(it, path+".type", "数据项类型 %q 不合法，应为 %s", o.Type, strings.Join(OutputTypes, "、"))
 		}

@@ -284,3 +284,31 @@ func TestSchemaEnumsFollowCode(t *testing.T) {
 		t.Error("id 正则缺失")
 	}
 }
+
+// alert 的 op、severity 枚举与解析器实际接受的集合一致：候选值里只有枚举内的被接受。
+func TestAlertEnumsMatchParser(t *testing.T) {
+	parse := func(op, sev string) error {
+		src := "id: a-t\nversion: 1.0.0\napi_version: 1\nname: n\nkind: source\nruntime: exec\nruns_on: [hub]\n" +
+			"outputs:\n  - {key: v, type: gauge}\nalerts:\n  - {name: n, item: v, op: \"" + op + "\", severity: " + sev + "}\n"
+		_, err := manifest.Parse([]byte(src))
+		return err
+	}
+	in := func(list []string, v string) bool {
+		for _, x := range list {
+			if x == v {
+				return true
+			}
+		}
+		return false
+	}
+	for _, op := range []string{"<", "<=", ">", ">=", "==", "!=", "=", "<>", "=>", "~", "=<"} {
+		if ok := parse(op, "info") == nil; ok != in(alertOps, op) {
+			t.Errorf("op %q: 解析器接受=%v，Schema 枚举包含=%v", op, ok, in(alertOps, op))
+		}
+	}
+	for _, sev := range []string{"info", "warning", "critical", "error", "fatal", "debug"} {
+		if ok := parse(">", sev) == nil; ok != in(alertSeverities, sev) {
+			t.Errorf("severity %q: 解析器接受=%v，Schema 枚举包含=%v", sev, ok, in(alertSeverities, sev))
+		}
+	}
+}

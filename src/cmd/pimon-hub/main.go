@@ -68,7 +68,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 			_, _ = fmt.Fprint(stdout, plugindev.Usage)
 			return 0
 		}
-		if err := plugindev.Command(context.Background(), rest, stdout, stderr); err != nil {
+		// Ctrl-C 经 ctx 取消采集，执行器会杀掉插件进程组。
+		sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := plugindev.Command(sigCtx, rest, stdout, stderr); err != nil {
 			_, _ = fmt.Fprintln(stderr, "错误:", err)
 			var ue plugindev.UsageError
 			if errors.As(err, &ue) {

@@ -32,3 +32,5 @@ go run ./cmd/pimon-hub plugin run ../examples/plugins/shell-disk-load --config /
 ## 说明
 
 示例用 `sed` 解析 stdin 的 JSON，只适合简单字符串和数字字段；复杂配置请用 `jq` 或 Python。
+
+脚本开头设了 `LC_ALL=C`，避免在逗号作小数点的语言环境下把负载解析错；负载优先读 `/proc/loadavg`，没有时回退到 `uptime`。路径用 `df -Pk -- "$path"` 传入，以 `-` 开头的路径也不会被当成选项。
