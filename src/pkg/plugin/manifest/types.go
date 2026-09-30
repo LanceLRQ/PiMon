@@ -2,11 +2,13 @@ package manifest
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/i18n"
+	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/schema"
 )
 
@@ -53,8 +55,8 @@ var Templates = []string{
 	"quota", "quota-multi",
 }
 
-// OutputTypes 是数据项类型（设计 2.3）。
-var OutputTypes = []string{"gauge", "number", "quota", "money", "state", "text", "table"}
+// OutputTypes 是数据项类型，以 report 包的定义为唯一来源（设计 2.3）。
+var OutputTypes = slices.Clone(report.ItemTypes)
 
 // Manifest 是解析后的 plugin.yaml。
 type Manifest struct {

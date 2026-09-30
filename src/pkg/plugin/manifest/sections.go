@@ -10,37 +10,63 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/i18n"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/internal/yamlnode"
+	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
 )
 
 func decodeText(n *yaml.Node) (I18nText, string) { return i18n.Decode(n) }
 
-// refChecker 判断 bind/alert 引用的 item 是否已在 outputs 中声明。
+// refChecker 判断 bind/alert 引用的 item 是否已在 outputs 中声明，并给出其数据项类型。
 type refChecker struct {
-	exact    map[string]bool // 固定 key
-	prefixes map[string]bool // 动态集合前缀（"disk[*]" 或 "disk" 声明）
+	exact    map[string]string // 固定 key → 类型
+	prefixes map[string]string // 动态集合前缀（"disk[*]" 或 "disk" 声明）→ 类型
 }
 
 func newRefChecker(outputs []Output) *refChecker {
-	r := &refChecker{exact: map[string]bool{}, prefixes: map[string]bool{}}
+	r := &refChecker{exact: map[string]string{}, prefixes: map[string]string{}}
 	for _, o := range outputs {
 		if base, ok := strings.CutSuffix(o.Key, "[*]"); ok {
-			r.prefixes[base] = true
+			r.prefixes[base] = o.Type
 			continue
 		}
-		r.exact[o.Key] = true
-		r.prefixes[o.Key] = true
+		r.exact[o.Key] = o.Type
+		r.prefixes[o.Key] = o.Type
 	}
 	return r
 }
 
-func (r *refChecker) declared(item string) bool {
-	if r.exact[item] {
-		return true
+// typeOf 返回引用的数据项类型；未声明时 ok 为 false。
+func (r *refChecker) typeOf(item string) (typ string, ok bool) {
+	if t, found := r.exact[item]; found {
+		return t, true
 	}
 	if i := strings.Index(item, "["); i > 0 && strings.HasSuffix(item, "]") {
-		return r.prefixes[item[:i]]
+		t, found := r.prefixes[item[:i]]
+		return t, found
 	}
-	return false
+	return "", false
+}
+
+func (r *refChecker) declared(item string) bool {
+	_, ok := r.typeOf(item)
+	return ok
+}
+
+// checkField 校验引用的 field（非空时）属于数据项类型的字段集；类型本身不合法时由 outputs 校验报告，这里跳过。
+func (p *parser) checkField(refs *refChecker, item, field string, node *yaml.Node, path string) {
+	if field == "" {
+		return
+	}
+	typ, _ := refs.typeOf(item)
+	if !report.IsType(typ) {
+		return
+	}
+	if !report.ValidField(typ, field) {
+		if len(report.FieldsOf(typ)) == 0 {
+			p.add(node, path, "类型 %s 没有可引用的字段，不能指定 field %q", typ, field)
+			return
+		}
+		p.add(node, path, "字段 %q 不属于类型 %s，可用：%s", field, typ, strings.Join(report.FieldsOf(typ), "、"))
+	}
 }
 
 func (p *parser) parseOutputs(n *yaml.Node) []Output {
@@ -76,7 +102,7 @@ func (p *parser) parseOutputs(n *yaml.Node) []Output {
 			p.add(it, path+".key", "缺少 key")
 			continue
 		}
-		if !slices.Contains(OutputTypes, o.Type) {
+		if !report.IsType(o.Type) {
 			p.add(it, path+".type", "数据项类型 %q 不合法，应为 %s", o.Type, strings.Join(OutputTypes, "、"))
 		}
 		if seen[o.Key] {
@@ -221,7 +247,7 @@ func (p *parser) parseRef(n *yaml.Node, path string, refs *refChecker) (ItemRef,
 		return ItemRef{}, false
 	}
 	var r ItemRef
-	var itemNode *yaml.Node
+	var itemNode, fieldNode *yaml.Node
 	for _, pr := range pairs {
 		switch pr.Key {
 		case "item":
@@ -229,6 +255,7 @@ func (p *parser) parseRef(n *yaml.Node, path string, refs *refChecker) (ItemRef,
 			itemNode = pr.Value
 		case "field":
 			r.Field, _ = p.scalar(pr.Value, path+".field")
+			fieldNode = pr.Value
 		default:
 			p.add(pr.KeyNode, path+"."+pr.Key, "未知字段 %s", pr.Key)
 		}
@@ -241,6 +268,7 @@ func (p *parser) parseRef(n *yaml.Node, path string, refs *refChecker) (ItemRef,
 		p.add(itemNode, path+".item", "引用了未在 outputs 中声明的数据项 %q", r.Item)
 		return r, false
 	}
+	p.checkField(refs, r.Item, r.Field, fieldNode, path+".field")
 	return r, true
 }
 
@@ -259,7 +287,7 @@ func (p *parser) parseAlerts(n *yaml.Node, refs *refChecker) []Alert {
 			continue
 		}
 		a := Alert{Line: it.Line}
-		var itemNode, opNode, sevNode *yaml.Node
+		var itemNode, fieldNode, opNode, sevNode *yaml.Node
 		for _, pr := range pairs {
 			ppath := path + "." + pr.Key
 			switch pr.Key {
@@ -270,6 +298,7 @@ func (p *parser) parseAlerts(n *yaml.Node, refs *refChecker) []Alert {
 				itemNode = pr.Value
 			case "field":
 				a.Field, _ = p.scalar(pr.Value, ppath)
+				fieldNode = pr.Value
 			case "op":
 				a.Op, _ = p.scalar(pr.Value, ppath)
 				opNode = pr.Value
@@ -295,6 +324,8 @@ func (p *parser) parseAlerts(n *yaml.Node, refs *refChecker) []Alert {
 			p.add(it, path+".item", "缺少 item")
 		} else if !refs.declared(a.Item) {
 			p.add(itemNode, path+".item", "引用了未在 outputs 中声明的数据项 %q", a.Item)
+		} else {
+			p.checkField(refs, a.Item, a.Field, fieldNode, path+".field")
 		}
 		if !operators[a.Op] {
 			p.add(nodeOr(opNode, it), path+".op", "op %q 不合法，应为 <、<=、>、>=、==、!=", a.Op)

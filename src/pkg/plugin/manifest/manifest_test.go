@@ -2,10 +2,12 @@ package manifest
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/schema"
 )
 
@@ -284,4 +286,68 @@ config_schema:
 		}
 	}
 	t.Errorf("应在第 %d 行报 visible_when 问题: %v", want, err)
+}
+
+func TestOutputTypesFromReport(t *testing.T) {
+	if !reflect.DeepEqual(OutputTypes, report.ItemTypes) {
+		t.Errorf("OutputTypes 应与 report.ItemTypes 一致: %v", OutputTypes)
+	}
+}
+
+const fieldCheckBase = `id: fc
+version: 1.0.0
+api_version: 1
+name: FC
+kind: source
+runtime: builtin
+runs_on: [hub]
+outputs:
+  - {key: q, type: quota}
+  - {key: "disk[*]", type: gauge}
+  - {key: log, type: table}
+  - {key: st, type: state}
+widgets:
+  - id: w
+    name: W
+    sizes:
+      1x1: {template: value, bind: {value: {item: q, field: remaining_pct}}}
+alerts:
+  - {name: A, item: q, field: used, op: ">", value: 1}
+`
+
+func TestBindAndAlertFieldMustBelongToType(t *testing.T) {
+	if _, err := Parse([]byte(fieldCheckBase)); err != nil {
+		t.Fatalf("基线应通过: %v", err)
+	}
+	cases := []struct{ name, old, repl, needle string }{
+		{"bind 字段不属于 quota", "field: remaining_pct}}}", "field: value}}}", "field: value"},
+		{"alert 字段不属于 quota", "field: used,", "field: value,", "field: value"},
+		{"动态成员按前缀类型检查", "item: q, field: remaining_pct}}}", `item: "disk[/vol1]", field: remaining_pct}}}`, "remaining_pct"},
+		{"列表写法同样检查", "bind: {value: {item: q, field: remaining_pct}}}", "bind: {value: [{item: st, field: bogus}]}}", "bogus"},
+		{"table 不能指定字段之外的名字", "field: remaining_pct}}}", "field: x}}}", "field: x"},
+	}
+	for _, c := range cases {
+		src := strings.Replace(fieldCheckBase, c.old, c.repl, 1)
+		if c.name == "table 不能指定字段之外的名字" {
+			src = strings.Replace(src, "item: q, field: x", "item: log, field: x", 1)
+		}
+		_, err := Parse([]byte(src))
+		if err == nil {
+			t.Errorf("%s: 应报错", c.name)
+			continue
+		}
+		expectProblem(t, src, err, c.needle, "字段")
+	}
+}
+
+func TestFieldOmittedAndTableAllowed(t *testing.T) {
+	src := strings.Replace(fieldCheckBase, "{item: q, field: remaining_pct}", "{item: log}", 1)
+	src = strings.Replace(src, "field: used,", "", 1)
+	if _, err := Parse([]byte(src)); err != nil {
+		t.Fatalf("省略 field（含 table 引用）应合法: %v", err)
+	}
+	ok := strings.Replace(fieldCheckBase, "field: remaining_pct", "field: used", 1)
+	if _, err := Parse([]byte(ok)); err != nil {
+		t.Fatalf("类型内字段应合法: %v", err)
+	}
 }
