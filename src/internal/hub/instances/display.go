@@ -81,7 +81,7 @@ func (s *Service) toDetail(r row) model.InstanceDetail {
 	d := model.InstanceDetail{Instance: s.toInstance(r), Config: map[string]any{}}
 	s.mu.Lock()
 	if st := s.states[r.ID]; st != nil {
-		d.Report = st.report
+		d.Report = publicReport(st.report)
 	}
 	s.mu.Unlock()
 	if p, full, iss := s.loadFull(r); iss == nil {
@@ -93,4 +93,15 @@ func (s *Service) toDetail(r row) model.InstanceDetail {
 		d.Problems = iss.problems
 	}
 	return d
+}
+
+// publicReport 返回可经 API 输出的报告副本：去掉插件私有 state（可能缓存登录态），
+// 不修改内存中共享的报告（其 state 仍要在下次运行时传回插件）。
+func publicReport(rep *report.Report) *report.Report {
+	if rep == nil {
+		return nil
+	}
+	c := *rep
+	c.State = ""
+	return &c
 }

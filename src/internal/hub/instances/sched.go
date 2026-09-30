@@ -181,5 +181,5 @@ func (s *Service) Run(ctx context.Context, id string) (model.InstanceRunResult, 
 		return model.InstanceRunResult{}, runErr
 	}
 	inst := s.toInstance(r)
-	return model.InstanceRunResult{Instance: inst, Report: rep}, nil
+	return model.InstanceRunResult{Instance: inst, Report: publicReport(rep)}, nil
 }

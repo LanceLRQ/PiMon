@@ -421,11 +421,19 @@ func TestStateFlushAndRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	want, _ := f.svc.Get(bg, d.ID)
-	if got.Report == nil || got.Report.Summary != "host=a" || got.Report.State != want.Report.State || got.Report.State == "" {
+	if got.Report == nil || got.Report.Summary != "host=a" || got.Report.State != "" {
 		t.Fatalf("恢复的报告 = %+v", got.Report)
 	}
 	if got.LastSuccessAt == nil || !got.LastSuccessAt.Equal(*want.LastSuccessAt) || got.DisplayState != "ok" {
 		t.Fatalf("恢复的状态 = %+v want %+v", got.Instance, want.Instance)
+	}
+	// 私有 state 不经 API 返回，但恢复后下次运行仍会传回插件
+	saved := fmt.Sprintf("s%d", f.probe.calls())
+	if _, err := svc2.Run(bg, d.ID); err != nil {
+		t.Fatal(err)
+	}
+	if f.probe.last().State != saved {
+		t.Fatalf("恢复后的私有 state = %q，期望 %q", f.probe.last().State, saved)
 	}
 }
 
@@ -862,5 +870,47 @@ func TestListAndDeleteCascadesState(t *testing.T) {
 	must(t, f.svc.Flush(bg))
 	if f.svc.WriteErrors() != 0 {
 		t.Fatal("不应有写库错误")
+	}
+}
+
+// 插件私有 state 只在内存与库里流转，不得经 API 返回（可能缓存登录态）。
+func TestPrivateStateNotExposed(t *testing.T) {
+	f := newFx(t)
+	d := f.create("probe", "a", probeCfg("a"))
+	res, err := f.svc.Run(bg, d.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(res)
+	if strings.Contains(string(raw), `"state"`) || res.Report.State != "" {
+		t.Fatalf("run 响应含私有 state: %s", raw)
+	}
+	check := func(what string, v any) {
+		t.Helper()
+		b, _ := json.Marshal(v)
+		if strings.Contains(string(b), `"state"`) {
+			t.Fatalf("%s 含私有 state: %s", what, b)
+		}
+	}
+	got, _ := f.svc.Get(bg, d.ID)
+	check("Get", got)
+	upd, err := f.svc.Update(bg, d.ID, model.InstanceInput{Name: "改名", Config: map[string]any{"host": "a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("Update", upd)
+	cp, err := f.svc.Copy(bg, d.ID, "副本")
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("Copy", cp)
+
+	// 内存中的 state 不受影响：下一次运行仍收到上次的值
+	if _, err := f.svc.Run(bg, d.ID); err != nil {
+		t.Fatal(err)
+	}
+	in := f.probe.last()
+	if in.State != "s1" {
+		t.Fatalf("下次运行的 Input.State = %q，期望 s1", in.State)
 	}
 }
