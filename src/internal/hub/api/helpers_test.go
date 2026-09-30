@@ -16,6 +16,7 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/history"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
@@ -106,10 +107,12 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 	if _, err := reg.Scan(ctx); err != nil {
 		t.Fatal(err)
 	}
-	inst := instances.New(instances.Config{DB: db, Box: box, Clock: clk, Plugins: reg})
+	hist := history.New(history.Config{DB: db, Clock: clk, Retention: func() model.RetentionSettings { return st.Get().Retention }})
+	inst := instances.New(instances.Config{DB: db, Box: box, Clock: clk, Plugins: reg, History: hist})
 	deps := Deps{
 		Plugins:      reg,
 		Instances:    inst,
+		History:      hist,
 		Settings:     st,
 		Hasher:       hasher,
 		Limiter:      auth.NewLimiter(clk, 10, 15*time.Minute),

@@ -61,3 +61,43 @@ CREATE TABLE instance_state (
     failures        INTEGER NOT NULL DEFAULT 0,
     updated_at      TEXT NOT NULL
 );
+
+-- 数值历史（设计 3.2、3.4）：只记 gauge、number、quota、money 的数值字段。
+-- 三张表都以「实例 + 数据项键 + 字段」标识一条序列，主键前缀即序列，按序列按时间范围读取是纯索引范围扫描；
+-- 用 WITHOUT ROWID 省掉隐含 rowid，不另建时间索引（二级索引会整份复制主键，体积翻倍）。
+-- 实例删除时历史随外键级联删除；动态成员消失后其历史保留，直到过保留期。
+-- history_raw：原始采样，ts 为 Unix 毫秒，保留期见设置 retention.raw_hours。
+CREATE TABLE history_raw (
+    instance_id TEXT NOT NULL REFERENCES plugin_instances (id) ON DELETE CASCADE,
+    item        TEXT NOT NULL,
+    field       TEXT NOT NULL,
+    ts          INTEGER NOT NULL,
+    v           REAL NOT NULL,
+    PRIMARY KEY (instance_id, item, field, ts)
+) WITHOUT ROWID;
+
+-- history_5m：5 分钟聚合；bucket 为桶起点（Unix 毫秒，按 5 分钟对齐），n 为桶内样本数。
+CREATE TABLE history_5m (
+    instance_id TEXT NOT NULL REFERENCES plugin_instances (id) ON DELETE CASCADE,
+    item        TEXT NOT NULL,
+    field       TEXT NOT NULL,
+    bucket      INTEGER NOT NULL,
+    v_avg       REAL NOT NULL,
+    v_min       REAL NOT NULL,
+    v_max       REAL NOT NULL,
+    n           INTEGER NOT NULL,
+    PRIMARY KEY (instance_id, item, field, bucket)
+) WITHOUT ROWID;
+
+-- history_1h：1 小时聚合，由 history_5m 按样本数加权得到；bucket 按整点对齐。
+CREATE TABLE history_1h (
+    instance_id TEXT NOT NULL REFERENCES plugin_instances (id) ON DELETE CASCADE,
+    item        TEXT NOT NULL,
+    field       TEXT NOT NULL,
+    bucket      INTEGER NOT NULL,
+    v_avg       REAL NOT NULL,
+    v_min       REAL NOT NULL,
+    v_max       REAL NOT NULL,
+    n           INTEGER NOT NULL,
+    PRIMARY KEY (instance_id, item, field, bucket)
+) WITHOUT ROWID;

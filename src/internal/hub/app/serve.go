@@ -63,6 +63,17 @@ func (a *App) Serve(ctx context.Context) error {
 		defer wg.Done()
 		<-instDone
 	}()
+	// 历史循环用独立的上下文，等调度器停稳（不会再有采集结果进入缓冲）后才停止，
+	// 这样它在退出前的最后一次写盘能带上最后一批采集结果。
+	histCtx, histStop := context.WithCancel(context.WithoutCancel(bg))
+	histDone := a.history.Start(histCtx)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-instDone
+		histStop()
+		<-histDone
+	}()
 	if iv, ok := a.notifier.WatchdogInterval(); ok {
 		wg.Add(1)
 		go func() {

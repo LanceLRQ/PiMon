@@ -475,3 +475,28 @@ func TestProxyDeleteUsesInstanceReferrers(t *testing.T) {
 		t.Fatalf("实例应改为直连: %s (%v)", data, err)
 	}
 }
+
+// 历史服务已接入：路由可用，实例不存在回 404，历史的写盘失败数可读取。
+func TestHistoryWired(t *testing.T) {
+	cfg := testConfig(t)
+	a := openApp(t, cfg)
+	srv := httptest.NewServer(a.Handler())
+	t.Cleanup(srv.Close)
+	c := newClient()
+	code, _, err := a.SetupCode(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp, data := call(t, c, srv.URL, "POST", "/api/setup", map[string]any{
+		"setup_code": code, "password": testPassword, "language": "zh", "timezone": "UTC", "access_url": "",
+	}); resp.StatusCode != 200 {
+		t.Fatalf("setup = %d %s", resp.StatusCode, data)
+	}
+	resp, data := call(t, c, srv.URL, "GET", "/api/instances/nope/history?item=x&range=1h", nil)
+	if resp.StatusCode != http.StatusNotFound || !strings.Contains(string(data), "instance.not_found") {
+		t.Fatalf("history = %d %s", resp.StatusCode, data)
+	}
+	if a.HistoryWriteErrors() != 0 {
+		t.Fatalf("HistoryWriteErrors = %d", a.HistoryWriteErrors())
+	}
+}

@@ -14,6 +14,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/history"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
@@ -46,6 +47,7 @@ type App struct {
 	backups    *backup.Service
 	plugins    *plugins.Registry
 	instances  *instances.Service
+	history    *history.Service
 	notifier   *sdnotify.Notifier
 	handler    http.Handler
 	closed     bool
@@ -128,8 +130,13 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	if _, err := a.plugins.Scan(ctx); err != nil {
 		return fmt.Errorf("扫描插件: %w", err)
 	}
+	a.history = history.New(history.Config{
+		DB: a.db, Clock: o.clk,
+		// 保留期每次清理与查询时现取，设置在运行时修改后立即生效。
+		Retention: func() model.RetentionSettings { return st.Get().Retention },
+	})
 	a.instances = instances.New(instances.Config{
-		DB: a.db, Box: a.box, Clock: o.clk, Plugins: a.plugins,
+		DB: a.db, Box: a.box, Clock: o.clk, Plugins: a.plugins, History: a.history,
 	})
 	proxyStore := proxies.New(proxies.Config{
 		DB: a.db, Box: a.box, Clock: o.clk,
@@ -144,6 +151,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	a.handler = api.New(api.Deps{
 		Plugins:      a.plugins,
 		Instances:    a.instances,
+		History:      a.history,
 		Settings:     st,
 		Hasher:       auth.Hasher{Params: o.params},
 		Limiter:      auth.NewLimiter(o.clk, loginMaxFailures, loginLockTime),
@@ -159,6 +167,10 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 
 // Handler 返回完整的 HTTP 处理器，测试用 httptest 直接挂载。
 func (a *App) Handler() http.Handler { return a.handler }
+
+// HistoryWriteErrors 返回数值历史写盘失败的累计次数；
+// hub-self 把它与实例当前状态落盘失败数（instances.Service.WriteErrors）相加作为「写库错误」。
+func (a *App) HistoryWriteErrors() int64 { return a.history.WriteErrors() }
 
 // Close 关闭数据库；可重复调用。
 func (a *App) Close() error {
