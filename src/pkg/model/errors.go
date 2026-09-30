@@ -13,10 +13,12 @@ const (
 	FieldRequired = "required"
 	// FieldPattern 表示值不匹配字段声明的 pattern。
 	FieldPattern = "pattern_mismatch"
+	// FieldDuplicate 表示值与已有记录重复（如重名）。
+	FieldDuplicate = "duplicate"
 )
 
 // FieldErrors 是校验失败时按字段给出的错误：键为点号路径
-// （如 retention.raw_hours、trusted_proxies[1]），值为 FieldInvalid、FieldOutOfRange、FieldRequired 或 FieldPattern。
+// （如 retention.raw_hours、trusted_proxies[1]），值为 FieldInvalid、FieldOutOfRange、FieldRequired、FieldPattern 或 FieldDuplicate。
 type FieldErrors map[string]string
 
 // Error 实现 error 接口，键按字典序输出以保证稳定。

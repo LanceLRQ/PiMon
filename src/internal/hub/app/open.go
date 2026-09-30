@@ -14,6 +14,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/sdnotify"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
@@ -33,6 +34,7 @@ type App struct {
 	opts options
 
 	db         *store.DB
+	box        *secret.Box
 	settings   *settings.Service
 	admins     *auth.Admins
 	setupCodes *auth.SetupCodes
@@ -54,7 +56,8 @@ func Open(ctx context.Context, cfg config.Config, opt ...Option) (*App, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o750); err != nil {
 		return nil, fmt.Errorf("创建数据目录 %s: %w", cfg.DataDir, err)
 	}
-	if _, err := secret.LoadOrCreate(cfg.SecretKeyPath()); err != nil {
+	box, err := secret.LoadOrCreate(cfg.SecretKeyPath())
+	if err != nil {
 		return nil, fmt.Errorf("准备加密密钥: %w", err)
 	}
 	dbExisted := fileExists(cfg.DBPath())
@@ -62,7 +65,7 @@ func Open(ctx context.Context, cfg config.Config, opt ...Option) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &App{cfg: cfg, opts: o, db: db}
+	a := &App{cfg: cfg, opts: o, db: db, box: box}
 	if err := a.assemble(ctx, dbExisted); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -123,9 +126,23 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		Sessions:     a.sessions,
 		ScreenTokens: a.screen,
 		Backups:      a.backups,
+		Proxies: proxies.New(proxies.Config{
+			DB: a.db, Box: a.box, Clock: o.clk,
+			// B6 由实例仓库替换：此前没有实例，代理恒无引用。
+			Referrers: noReferrers{},
+		}),
 	})
 	return nil
 }
+
+// noReferrers 是"无引用"的空实现：实例仓库落地前没有任何实例会引用代理。
+type noReferrers struct{}
+
+func (noReferrers) ListByProxy(context.Context, string) ([]model.ProxyReferrer, error) {
+	return nil, nil
+}
+
+func (noReferrers) ResetToDirect(context.Context, string) error { return nil }
 
 // Handler 返回完整的 HTTP 处理器，测试用 httptest 直接挂载。
 func (a *App) Handler() http.Handler { return a.handler }

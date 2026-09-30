@@ -16,10 +16,12 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
+	"github.com/LanceLRQ/PiMon/src/pkg/model"
 )
 
 const testPassword = "correct horse"
@@ -54,6 +56,8 @@ type env struct {
 	t       *testing.T
 	clk     *clock.Fake
 	deps    Deps
+	db      *store.DB
+	refs    *fakeReferrers
 	hasher  *countingHasher
 	srv     *httptest.Server
 	client  *http.Client
@@ -82,9 +86,11 @@ func newEnv(t *testing.T) *env {
 	hasher := &countingHasher{Hasher: auth.Hasher{Params: testParams}}
 	tokenPath := filepath.Join(dir, "screen.token")
 	keyPath := filepath.Join(dir, "secret.key")
-	if _, err := secret.LoadOrCreate(keyPath); err != nil {
+	box, err := secret.LoadOrCreate(keyPath)
+	if err != nil {
 		t.Fatal(err)
 	}
+	refs := &fakeReferrers{refs: map[string][]model.ProxyReferrer{}}
 	deps := Deps{
 		Settings:     st,
 		Hasher:       hasher,
@@ -97,13 +103,14 @@ func newEnv(t *testing.T) *env {
 			DB: db, Clock: clk, SecretPath: keyPath,
 			Dir: filepath.Join(dir, "backups"), Settings: st.Get,
 		}),
+		Proxies: proxies.New(proxies.Config{DB: db, Box: box, Clock: clk, Referrers: refs}),
 	}
 	if err := deps.ScreenTokens.EnsureExists(ctx); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(New(deps))
 	t.Cleanup(srv.Close)
-	e := &env{t: t, clk: clk, deps: deps, hasher: hasher, srv: srv, tokenFn: tokenPath}
+	e := &env{t: t, clk: clk, deps: deps, db: db, refs: refs, hasher: hasher, srv: srv, tokenFn: tokenPath}
 	e.client = e.newClient()
 	return e
 }

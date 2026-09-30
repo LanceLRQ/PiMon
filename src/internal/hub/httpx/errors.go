@@ -18,6 +18,8 @@ package httpx
 //	origin.mismatch          Origin 校验失败                       403
 //	not_found                资源不存在                            404
 //	backup.exists            同一秒内已有同原因的备份              409
+//	proxy.not_found          代理不存在                            404
+//	proxy.in_use             代理被实例引用，details.instances     409
 //	internal                 内部错误                              500
 const (
 	CodeInvalidJSON     = "request.invalid_json"
@@ -32,5 +34,7 @@ const (
 	CodeOriginMismatch  = "origin.mismatch"
 	CodeNotFound        = "not_found"
 	CodeBackupExists    = "backup.exists"
+	CodeProxyNotFound   = "proxy.not_found"
+	CodeProxyInUse      = "proxy.in_use"
 	CodeInternal        = "internal"
 )
