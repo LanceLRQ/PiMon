@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Item": {
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "gauge",
+            "number",
+            "quota",
+            "money",
+            "state",
+            "text",
+            "table"
+          ]
+        },
+        "value": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "used": {
+          "type": "number"
+        },
+        "total": {
+          "type": "number"
+        },
+        "remaining": {
+          "type": "number"
+        },
+        "remaining_pct": {
+          "type": "number"
+        },
+        "resets_at": {
+          "type": "integer"
+        },
+        "expires_at": {
+          "type": "integer"
+        },
+        "label": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "number"
+        },
+        "currency": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "warning",
+            "critical",
+            "unknown"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rows": {
+          "items": {
+            "items": true,
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": [
+        "key",
+        "type"
+      ]
+    }
+  },
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "warning",
+        "critical",
+        "unknown"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "collected_at": {
+      "type": "integer"
+    },
+    "duration_ms": {
+      "type": "integer"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/Item"
+      },
+      "type": "array"
+    },
+    "events": {
+      "items": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "at": {
+            "type": "integer",
+            "description": "Unix 毫秒，必填且不为 0"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "at"
+        ]
+      },
+      "type": "array"
+    },
+    "state": {
+      "type": "string"
+    }
+  },
+  "type": "object",
+  "required": [
+    "status"
+  ],
+  "title": "PiMon 插件报告",
+  "description": "exec 插件写到 stdout 的 JSON 报告；顶层未知字段会被忽略。"
+}

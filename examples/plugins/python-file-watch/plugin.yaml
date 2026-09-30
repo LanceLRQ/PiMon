@@ -1,0 +1,42 @@
+id: python-file-watch
+version: 1.0.0
+api_version: 1
+name: {zh: 文件监视（Python 示例）, en: File watch (python example)}
+kind: source
+runtime: exec
+runs_on: [hub, agent]
+interval: 30s
+min_interval: 5s
+timeout: 10s
+config_schema:
+  - key: path
+    type: string
+    title: {zh: 文件路径, en: File path}
+    help: {zh: 要监视的本地文件，读取其大小与行数, en: Local file to watch; its size and line count are reported}
+    required: true
+  - key: max_bytes
+    type: number
+    title: {zh: 大小上限（字节）, en: Size limit (bytes)}
+    help: {zh: 超过则状态为 warning，留空不检查, en: Status becomes warning above this size}
+    min: 1
+  - key: token
+    type: secret
+    title: {zh: 示例密钥, en: Example secret}
+    help: {zh: 仅演示密钥如何通过 stdin 传入，本示例不使用它, en: Demonstrates how secrets arrive on stdin; unused here}
+outputs:
+  - {key: size, type: number, title: {zh: 文件大小, en: File size}}
+  - {key: lines, type: number, title: {zh: 行数, en: Line count}}
+  - {key: growth, type: number, title: {zh: 较上次增长, en: Growth since last run}}
+  - {key: readable, type: state, title: {zh: 可读, en: Readable}}
+widgets:
+  - id: size
+    name: {zh: 文件大小, en: File size}
+    sizes:
+      1x1: {template: value, bind: {value: {item: size}}}
+      2x1:
+        template: list
+        bind:
+          items:
+            - {item: size}
+            - {item: lines}
+            - {item: growth}

@@ -1,0 +1,42 @@
+#!/bin/sh
+# 示例 exec 插件（Shell）：读取本机根分区（或配置的路径）使用率与 1 分钟负载。
+# 协议：stdin 收到一行 JSON 输入，stdout 输出一份 JSON 报告，退出码 0 表示成功。
+# 为避免依赖 jq，这里只用 sed 提取几个简单字段；字段值含转义字符时请改用 jq 或 Python。
+set -eu
+
+input=$(cat)
+
+# 取字符串字段（path 已被 plugin.yaml 的 pattern 限制为不含引号与反斜杠的字符）。
+json_str() { printf '%s' "$input" | sed -n "s/.*\"$1\" *: *\"\([^\"]*\)\".*/\1/p"; }
+# 取数字字段。
+json_num() { printf '%s' "$input" | sed -n "s/.*\"$1\" *: *\([0-9.]*\).*/\1/p"; }
+
+path=$(json_str path)
+warn=$(json_num warn_pct)
+crit=$(json_num critical_pct)
+path=${path:-/}
+warn=${warn:-80}
+crit=${crit:-90}
+
+# df -P 的输出格式在 Linux 与 macOS 上一致，第 5 列是 "45%"。
+used=$(df -Pk "$path" | awk 'NR==2 { gsub("%", "", $5); print $5 }')
+if [ -z "$used" ]; then
+  echo "无法读取 $path 的磁盘使用率" >&2
+  exit 1
+fi
+
+# uptime 末尾是三个负载值，取 1 分钟的；兼容 "load average:" 与 "load averages:"。
+load=$(uptime | sed -E 's/.*load averages?: *([0-9.]+).*/\1/')
+
+status=ok
+# awk 做浮点比较，避免 sh 不支持小数。
+if awk "BEGIN { exit !($used >= $crit) }"; then
+  status=critical
+elif awk "BEGIN { exit !($used >= $warn) }"; then
+  status=warning
+fi
+
+printf '{"status":"%s","summary":"%s 已用 %s%%，负载 %s","items":[' "$status" "$path" "$used" "$load"
+printf '{"key":"disk","type":"gauge","value":%s,"unit":"%%","min":0,"max":100},' "$used"
+printf '{"key":"load","type":"number","value":%s}' "$load"
+printf ']}\n'

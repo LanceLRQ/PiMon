@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""示例 exec 插件（Python，仅标准库）：报告本地文件的大小与行数。
+
+协议：stdin 收到一份 JSON 输入，stdout 输出一份 JSON 报告，退出码 0 表示成功。
+演示 state 的用法：上次的文件大小写在报告的 state 里，下次运行时从 stdin 取回。
+"""
+import json
+import os
+import sys
+
+
+def main():
+    payload = json.load(sys.stdin)
+    config = payload.get("config", {})
+    path = config["path"]
+    max_bytes = config.get("max_bytes")
+    # payload["secrets"] 里是密钥字段（如 token），按字段键名取用，切勿打印。
+
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            lines = sum(1 for _ in f)
+    except OSError as e:
+        # 文件读不了不算采集失败：数据项仍以 state 形式报告，整体状态为 critical。
+        report = {
+            "status": "critical",
+            "summary": "无法读取 %s: %s" % (path, e.strerror),
+            "items": [{"key": "readable", "type": "state", "state": "critical", "text": e.strerror or "error"}],
+        }
+        json.dump(report, sys.stdout, ensure_ascii=False)
+        return 0
+
+    previous = None
+    if payload.get("state"):
+        try:
+            previous = int(payload["state"])
+        except ValueError:
+            previous = None
+    growth = size - previous if previous is not None else 0
+
+    status = "ok"
+    if max_bytes is not None and size > max_bytes:
+        status = "warning"
+
+    report = {
+        "status": status,
+        "summary": "%s: %d 字节，%d 行" % (path, size, lines),
+        "state": str(size),
+        "items": [
+            {"key": "size", "type": "number", "value": size, "unit": "B"},
+            {"key": "lines", "type": "number", "value": lines},
+            {"key": "growth", "type": "number", "value": growth, "unit": "B"},
+            {"key": "readable", "type": "state", "state": "ok"},
+        ],
+    }
+    json.dump(report, sys.stdout, ensure_ascii=False)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

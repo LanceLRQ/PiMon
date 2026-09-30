@@ -23,7 +23,7 @@ func TestVersion(t *testing.T) {
 
 func TestHelp(t *testing.T) {
 	code, out, _ := runArgs("help")
-	if code != 0 || !strings.Contains(out, "serve") || !strings.Contains(out, "restore") {
+	if code != 0 || !strings.Contains(out, "serve") || !strings.Contains(out, "restore") || !strings.Contains(out, "plugin") {
 		t.Fatalf("code=%d out=%q", code, out)
 	}
 }
@@ -49,5 +49,29 @@ func TestCommandFailureExitsOne(t *testing.T) {
 	code, _, errOut := runArgs("restore", "--data-dir", t.TempDir(), "/nonexistent/x.tar.gz")
 	if code != 1 || errOut == "" {
 		t.Fatalf("code=%d err=%q", code, errOut)
+	}
+}
+
+func TestPluginHelpAndUsage(t *testing.T) {
+	code, out, _ := runArgs("plugin", "help")
+	if code != 0 || !strings.Contains(out, "validate") || !strings.Contains(out, "run") {
+		t.Fatalf("code=%d out=%q", code, out)
+	}
+	if code, _, _ := runArgs("plugin"); code != 2 {
+		t.Fatalf("无子命令应退出 2，得到 %d", code)
+	}
+	if code, _, _ := runArgs("plugin", "validate"); code != 2 {
+		t.Fatalf("缺目录应退出 2，得到 %d", code)
+	}
+}
+
+func TestPluginValidateExitCodes(t *testing.T) {
+	code, out, _ := runArgs("plugin", "validate", "../../../examples/plugins/shell-disk-load")
+	if code != 0 || !strings.Contains(out, "校验通过") {
+		t.Fatalf("示例应通过: code=%d out=%q", code, out)
+	}
+	code, _, errOut := runArgs("plugin", "validate", t.TempDir())
+	if code != 1 || errOut == "" {
+		t.Fatalf("空目录应退出 1: code=%d err=%q", code, errOut)
 	}
 }

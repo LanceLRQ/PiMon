@@ -1,0 +1,431 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "alertDoc": {
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/i18nDoc"
+        },
+        "item": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "enum": [
+            "<",
+            "<=",
+            ">",
+            ">=",
+            "==",
+            "!="
+          ]
+        },
+        "value": true,
+        "severity": {
+          "type": "string",
+          "enum": [
+            "info",
+            "warning",
+            "critical"
+          ]
+        },
+        "for": {
+          "type": "string",
+          "description": "持续时长，如 5m"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "item",
+        "op"
+      ]
+    },
+    "condDoc": {
+      "oneOf": [
+        {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        {
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "type": "array",
+          "minItems": 1
+        }
+      ]
+    },
+    "fieldDoc": {
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "text",
+            "number",
+            "boolean",
+            "enum",
+            "secret",
+            "secret_url",
+            "url",
+            "proxy",
+            "duration",
+            "list",
+            "kv",
+            "object_list",
+            "lookup"
+          ]
+        },
+        "title": {
+          "$ref": "#/$defs/i18nDoc"
+        },
+        "help": {
+          "$ref": "#/$defs/i18nDoc"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "default": true,
+        "min": {
+          "type": "number",
+          "description": "字符串为字符数，number 为数值，duration 为秒，list/kv/object_list 为元素个数"
+        },
+        "max": {
+          "type": "number"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "正则，仅 string/text/secret/list 可用"
+        },
+        "visible_when": {
+          "additionalProperties": {
+            "$ref": "#/$defs/condDoc"
+          },
+          "type": "object"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/optionDoc"
+          },
+          "type": "array",
+          "description": "仅 enum 可用"
+        },
+        "allow_query": {
+          "type": "boolean",
+          "description": "仅 url 可用"
+        },
+        "allow_public_http": {
+          "type": "boolean",
+          "description": "仅 url 可用"
+        },
+        "follow_redirects": {
+          "type": "boolean",
+          "description": "仅 url 可用"
+        },
+        "secret_values": {
+          "type": "boolean",
+          "description": "仅 kv 可用：每个值都是密钥"
+        },
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/fieldDoc"
+          },
+          "type": "array",
+          "description": "仅 object_list 可用，不能嵌套 object_list"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "key",
+        "type"
+      ]
+    },
+    "i18nDoc": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "properties": {
+            "zh": {
+              "type": "string"
+            },
+            "en": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "minProperties": 1
+        }
+      ],
+      "description": "多语言文本：字符串，或 {zh, en} 映射"
+    },
+    "optionDoc": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "properties": {
+            "value": {
+              "type": "string",
+              "minLength": 1
+            },
+            "title": {
+              "$ref": "#/$defs/i18nDoc"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "value"
+          ]
+        }
+      ]
+    },
+    "outputDoc": {
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "数据项键名；以 [*] 结尾表示动态集合，如 disk[*]"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "gauge",
+            "number",
+            "quota",
+            "money",
+            "state",
+            "text",
+            "table"
+          ]
+        },
+        "title": {
+          "$ref": "#/$defs/i18nDoc"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "key",
+        "type"
+      ]
+    },
+    "refDoc": {
+      "properties": {
+        "item": {
+          "type": "string",
+          "description": "outputs 中声明的数据项，动态集合可写 disk[*] 或 disk[/vol1]"
+        },
+        "field": {
+          "type": "string",
+          "description": "缺省取该数据项类型的默认字段"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "item"
+      ]
+    },
+    "sizeDoc": {
+      "properties": {
+        "template": {
+          "type": "string",
+          "enum": [
+            "value",
+            "gauge",
+            "state",
+            "status-grid",
+            "list",
+            "table",
+            "chart",
+            "clock",
+            "weather",
+            "text",
+            "quota",
+            "quota-multi"
+          ]
+        },
+        "bind": {
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/refDoc"
+              },
+              {
+                "items": {
+                  "$ref": "#/$defs/refDoc"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "type": "object",
+          "description": "槽名到数据项引用；值可以是单个引用，也可以是引用列表"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "template"
+      ]
+    },
+    "widgetDoc": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "$ref": "#/$defs/i18nDoc"
+        },
+        "sizes": {
+          "patternProperties": {
+            "^[1-6]x[1-4]$": {
+              "$ref": "#/$defs/sizeDoc"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "minProperties": 1,
+          "description": "键为 NxM 尺寸"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "sizes"
+      ]
+    }
+  },
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "插件 id，与 exec 插件的目录名一致"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+([-+][0-9A-Za-z.-]+)?$",
+      "description": "插件版本 x.y.z"
+    },
+    "api_version": {
+      "type": "integer",
+      "enum": [
+        1
+      ]
+    },
+    "name": {
+      "$ref": "#/$defs/i18nDoc"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "source",
+        "notifier"
+      ]
+    },
+    "runtime": {
+      "type": "string",
+      "enum": [
+        "builtin",
+        "exec"
+      ],
+      "description": "目录里的 exec 插件必须写 exec"
+    },
+    "runs_on": {
+      "items": {
+        "type": "string",
+        "enum": [
+          "hub",
+          "agent"
+        ]
+      },
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "interval": {
+      "type": "string",
+      "description": "默认刷新间隔，如 30s、5m；缺省 5m"
+    },
+    "min_interval": {
+      "type": "string",
+      "description": "实例刷新间隔下限，不得大于 interval"
+    },
+    "timeout": {
+      "type": "string",
+      "description": "单次采集超时；缺省 30s"
+    },
+    "config_schema": {
+      "items": {
+        "$ref": "#/$defs/fieldDoc"
+      },
+      "type": "array"
+    },
+    "outputs": {
+      "items": {
+        "$ref": "#/$defs/outputDoc"
+      },
+      "type": "array"
+    },
+    "widgets": {
+      "items": {
+        "$ref": "#/$defs/widgetDoc"
+      },
+      "type": "array"
+    },
+    "alerts": {
+      "items": {
+        "$ref": "#/$defs/alertDoc"
+      },
+      "type": "array"
+    }
+  },
+  "additionalProperties": false,
+  "type": "object",
+  "required": [
+    "id",
+    "version",
+    "api_version",
+    "name",
+    "kind",
+    "runtime",
+    "runs_on"
+  ],
+  "title": "PiMon plugin.yaml",
+  "description": "PiMon 插件描述文件（plugin.yaml）。YAML 文档可直接用本 Schema 校验（先转成 JSON）。"
+}
