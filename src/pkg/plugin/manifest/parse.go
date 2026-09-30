@@ -148,7 +148,12 @@ func (p *parser) parseRoot(root *yaml.Node) *Manifest {
 		case "runs_on":
 			m.RunsOn = p.runsOn(v)
 		case "interval":
-			m.Interval, _ = p.duration(v, "interval")
+			if d, ok := p.duration(v, "interval"); ok {
+				m.Interval = d
+				if d < MinAllowedInterval {
+					p.add(v, "interval", "interval（%s）不能低于全局下限 %s", d, MinAllowedInterval)
+				}
+			}
 		case "min_interval":
 			m.MinInterval, _ = p.duration(v, "min_interval")
 			minIntervalNode = v

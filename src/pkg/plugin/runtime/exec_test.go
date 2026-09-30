@@ -276,3 +276,20 @@ func TestTailBuffer(t *testing.T) {
 		t.Fatalf("单次写入超过容量: %q", b.String())
 	}
 }
+
+// 相对路径的 run（数据目录为相对路径时）也能启动：cmd.Dir 为插件目录，路径须先绝对化。
+func TestExecRelativeRunPath(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "plugins", "rel")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "run"), []byte("#!/bin/sh\ncat >/dev/null\nprintf '"+okReport+"'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	src := NewExecSource(&manifest.Manifest{ID: "rel", Timeout: 5 * time.Second}, filepath.Join("plugins", "rel", "run"))
+	if _, err := src.Collect(context.Background(), Input{}); err != nil {
+		t.Fatalf("相对路径的插件应能运行: %v", err)
+	}
+}

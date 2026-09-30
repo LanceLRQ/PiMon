@@ -41,7 +41,11 @@ type ExecSource struct {
 }
 
 // NewExecSource 由 manifest 与可执行文件路径构造 exec 形态的 Source。
+// 子进程的工作目录是插件目录，相对路径在这里先按当前目录绝对化，否则会相对插件目录解析而找不到。
 func NewExecSource(m *manifest.Manifest, runPath string) *ExecSource {
+	if abs, err := filepath.Abs(runPath); err == nil {
+		runPath = abs
+	}
 	return &ExecSource{manifest: m, runPath: runPath}
 }
 

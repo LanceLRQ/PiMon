@@ -40,6 +40,8 @@ func classify(parent, runCtx context.Context, err error) error {
 // 内置与 exec 两种形态共用，内置插件同样受 ctx 超时控制。
 // 返回的错误已脱敏：Input 里的密钥值与代理凭据不会出现在错误文字里（内置插件的
 // *url.Error 等常带完整 URL）。
+//
+// 插件 panic 被恢复为 ErrFailed（panic 文字同样脱敏）；未返回报告也算 ErrFailed。
 func CollectWithTimeout(ctx context.Context, src Source, in Input) (*report.Report, error) {
 	runCtx := ctx
 	if d := src.Manifest().Timeout; d > 0 {
@@ -47,11 +49,35 @@ func CollectWithTimeout(ctx context.Context, src Source, in Input) (*report.Repo
 		runCtx, cancel = context.WithTimeout(ctx, d)
 		defer cancel()
 	}
-	rep, err := src.Collect(runCtx, in)
+	rep, err := collectRecovered(runCtx, src, in)
+	if err == nil && rep == nil {
+		err = fmt.Errorf("%w: 采集未返回报告", ErrFailed)
+	}
 	if err != nil {
 		return nil, redactError(classify(ctx, runCtx, err), in)
 	}
 	return rep, nil
+}
+
+// collectRecovered 调用 Collect 并把 panic 转成 ErrFailed。
+func collectRecovered(ctx context.Context, src Source, in Input) (rep *report.Report, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			rep, err = nil, fmt.Errorf("%w: 插件 panic: %v", ErrFailed, r)
+		}
+	}()
+	return src.Collect(ctx, in)
+}
+
+// SafeLookup 调用插件的 Lookup，把 panic 转成 ErrFailed。lookup 的输入不含密钥，
+// 但 panic 值可能带任意内容，错误文字只保留类型，不带值。
+func SafeLookup(ctx context.Context, lk Lookuper, key, query, lang string) (cands []Candidate, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			cands, err = nil, fmt.Errorf("%w: 插件 lookup panic（%T）", ErrFailed, r)
+		}
+	}()
+	return lk.Lookup(ctx, key, query, lang)
 }
 
 // backoffCap 是连续失败时间隔放大的上限倍数。

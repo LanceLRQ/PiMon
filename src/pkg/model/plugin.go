@@ -12,12 +12,15 @@ type PluginInfo struct {
 	// Origin 是插件来源：builtin（编译期注册）| exec（插件目录）。
 	Origin string `json:"origin"`
 	// RunsOn 是允许的运行位置：hub、agent。
-	RunsOn          []string       `json:"runs_on"`
-	IntervalSeconds int            `json:"interval_seconds"`
-	TimeoutSeconds  int            `json:"timeout_seconds"`
-	ConfigSchema    []PluginField  `json:"config_schema"`
-	Outputs         []PluginOutput `json:"outputs"`
-	Widgets         []PluginWidget `json:"widgets"`
+	RunsOn []string `json:"runs_on"`
+	// IntervalSeconds 是插件默认刷新间隔（未写 interval 时为默认值 300）。
+	IntervalSeconds int `json:"interval_seconds"`
+	// MinIntervalSeconds 是实例刷新间隔的下限，0 表示插件未声明（只受全局 5 秒下限约束）。
+	MinIntervalSeconds int            `json:"min_interval_seconds"`
+	TimeoutSeconds     int            `json:"timeout_seconds"`
+	ConfigSchema       []PluginField  `json:"config_schema"`
+	Outputs            []PluginOutput `json:"outputs"`
+	Widgets            []PluginWidget `json:"widgets"`
 }
 
 // PluginField 是 config_schema 的一个字段，前端据此生成配置表单。

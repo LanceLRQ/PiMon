@@ -312,10 +312,12 @@ func (s *Scheduler) logFailure(e *entry, err error) {
 }
 
 // safeRun 执行 run 并把 panic 与空结果转成错误，避免拖垮调度 goroutine。
+// 调度器不知道任务的密钥，panic 值可能含明文，错误文字只保留类型；
+// 需要保留 panic 文字的调用方应在 run 里用 CollectWithTimeout（它恢复 panic 并脱敏）。
 func safeRun(ctx context.Context, run RunFunc) (rep *report.Report, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			rep, err = nil, fmt.Errorf("%w: 插件 panic: %v", ErrFailed, r)
+			rep, err = nil, fmt.Errorf("%w: 任务 panic（%T）", ErrFailed, r)
 		}
 	}()
 	rep, err = run(ctx)

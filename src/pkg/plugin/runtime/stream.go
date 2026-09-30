@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -151,7 +152,7 @@ func (m *StreamManager) loop(e *streamEntry) {
 	lastErr := ""
 	for {
 		start := m.clk.Now()
-		err := e.task.Streamer.Run(e.ctx, e.task.Input, emit)
+		err := runStreamer(e.ctx, e.task.Streamer, e.task.Input, emit)
 		if e.ctx.Err() != nil {
 			return
 		}
@@ -169,7 +170,17 @@ func (m *StreamManager) loop(e *streamEntry) {
 	}
 }
 
-// logExit 相同的退出原因只记第一次。
+// runStreamer 运行 Streamer 并把 panic 转成错误（文字只保留类型，不带可能含密钥的值）。
+func runStreamer(ctx context.Context, st Streamer, in Input, emit func(*report.Report)) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%w: Streamer panic（%T）", ErrFailed, r)
+		}
+	}()
+	return st.Run(ctx, in, emit)
+}
+
+// logExit 相同的退出原因只记第一次；日志里的错误文字按该任务的输入脱敏。
 func (m *StreamManager) logExit(e *streamEntry, err error, last *string) {
 	msg := ""
 	if err != nil {
@@ -180,7 +191,7 @@ func (m *StreamManager) logExit(e *streamEntry, err error, last *string) {
 	}
 	*last = msg
 	if err != nil {
-		m.log.Warn("Streamer 异常退出，将退避重启", "task", e.task.ID, "err", err)
+		m.log.Warn("Streamer 异常退出，将退避重启", "task", e.task.ID, "err", redactError(err, e.task.Input))
 	} else {
 		m.log.Info("Streamer 正常退出，将退避重启", "task", e.task.ID)
 	}

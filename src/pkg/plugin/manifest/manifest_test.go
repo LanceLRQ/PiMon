@@ -415,3 +415,16 @@ func TestOutputKeySyntax(t *testing.T) {
 		expectProblem(t, src, err, c.key[1:len(c.key)-1], c.msg)
 	}
 }
+
+// interval 低于全局下限 5 秒在解析期拒绝，带行号；恰好 5 秒合法。
+func TestIntervalGlobalFloor(t *testing.T) {
+	src := strings.Replace(minIntervalBase, "interval: 10m", "interval: 4s", 1)
+	src = strings.Replace(src, "%EXTRA%", "", 1)
+	_, err := Parse([]byte(src))
+	expectProblem(t, src, err, "interval: 4s", "interval")
+
+	src = strings.Replace(minIntervalBase, "interval: 10m", "interval: 5s", 1)
+	if _, err := Parse([]byte(strings.Replace(src, "%EXTRA%", "", 1))); err != nil {
+		t.Fatalf("5 秒应合法: %v", err)
+	}
+}

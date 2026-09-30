@@ -44,6 +44,8 @@ const (
 	SupportedAPIVersion = 1
 	DefaultInterval     = 300 * time.Second
 	DefaultTimeout      = 30 * time.Second
+	// MinAllowedInterval 是全局刷新间隔下限：interval 不得低于它，实例生效间隔也钳到它之上。
+	MinAllowedInterval = 5 * time.Second
 	// MaxCols、MaxRows 是小组件尺寸上限（最小网格 800×480 为 6×4）。
 	MaxCols = 6
 	MaxRows = 4

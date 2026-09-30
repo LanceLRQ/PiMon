@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -72,7 +73,7 @@ func (s *server) lookupPlugin(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), lookupTimeout)
 	defer cancel()
-	cands, err := lk.Lookup(ctx, key, req.Query, s.requestLang(r))
+	cands, err := runtime.SafeLookup(ctx, lk, key, req.Query, s.requestLang(r))
 	if err != nil {
 		writeUpstreamError(w, r, err)
 		return
@@ -134,10 +135,12 @@ func pluginInfo(p plugins.Plugin, lang string) model.PluginInfo {
 		Kind: string(m.Kind), Runtime: string(m.Runtime), Origin: string(p.Origin),
 		RunsOn:          append([]string{}, m.RunsOn...),
 		IntervalSeconds: int(m.Interval.Seconds()),
-		TimeoutSeconds:  int(m.Timeout.Seconds()),
-		ConfigSchema:    fieldsInfo(m.ConfigSchema, lang),
-		Outputs:         make([]model.PluginOutput, 0, len(m.Outputs)),
-		Widgets:         make([]model.PluginWidget, 0, len(m.Widgets)),
+		// 0 表示插件未声明 min_interval（只受全局 5 秒下限约束）。
+		MinIntervalSeconds: int(math.Ceil(m.MinInterval.Seconds())),
+		TimeoutSeconds:     int(m.Timeout.Seconds()),
+		ConfigSchema:       fieldsInfo(m.ConfigSchema, lang),
+		Outputs:            make([]model.PluginOutput, 0, len(m.Outputs)),
+		Widgets:            make([]model.PluginWidget, 0, len(m.Widgets)),
 	}
 	for _, o := range m.Outputs {
 		info.Outputs = append(info.Outputs, model.PluginOutput{Key: o.Key, Type: o.Type, Title: o.Title.Get(lang)})

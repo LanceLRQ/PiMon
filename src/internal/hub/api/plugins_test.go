@@ -25,6 +25,7 @@ kind: source
 runtime: %RT%
 runs_on: [hub]
 interval: 60s
+min_interval: 30s
 timeout: 10s
 config_schema:
   - {key: name, type: string, title: {zh: 名称, en: Name}, required: true}
@@ -66,6 +67,8 @@ func (lookupSource) Lookup(_ context.Context, key, query, lang string) ([]runtim
 		return nil, errors.New("upstream down")
 	case "slow":
 		return nil, fmt.Errorf("上游太慢: %w", context.DeadlineExceeded)
+	case "panic":
+		panic("lookup 崩溃")
 	}
 	return []runtime.Candidate{{Value: key + ":" + query, Label: lang + "/" + query}}, nil
 }
@@ -107,7 +110,7 @@ func TestListPluginsResolvesLanguage(t *testing.T) {
 	}
 	p := zh.Plugins[0]
 	if p.Name != "中文名" || p.Version != "1.2.3" || p.Origin != "builtin" || p.Runtime != "builtin" ||
-		p.IntervalSeconds != 60 || p.TimeoutSeconds != 10 || len(p.RunsOn) != 1 {
+		p.IntervalSeconds != 60 || p.MinIntervalSeconds != 30 || p.TimeoutSeconds != 10 || len(p.RunsOn) != 1 {
 		t.Fatalf("基本信息不对: %+v", p)
 	}
 	if len(p.ConfigSchema) != 3 || p.ConfigSchema[1].Type != "lookup" || p.ConfigSchema[1].Title != "城市" ||
@@ -229,6 +232,9 @@ func TestLookup(t *testing.T) {
 	}
 	resp, data = e.do(admin, "POST", "/api/plugins/looker/lookup/city", model.PluginLookupRequest{Query: "slow"})
 	e.expectError(resp, data, http.StatusGatewayTimeout, "run.timeout")
+	// 插件 lookup panic：恢复为 502 run.failed，服务不崩
+	resp, data = e.do(admin, "POST", "/api/plugins/looker/lookup/city", model.PluginLookupRequest{Query: "panic"})
+	e.expectError(resp, data, http.StatusBadGateway, "run.failed")
 
 	resp, data = e.do(admin, "POST", "/api/plugins/looker/lookup/city", map[string]any{"query": 1})
 	e.expectError(resp, data, http.StatusBadRequest, "request.invalid_json")
