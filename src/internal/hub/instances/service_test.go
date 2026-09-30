@@ -56,6 +56,23 @@ outputs:
   - {key: temp, type: number, title: Temp}
 `
 
+// floorManifest 声明 min_interval: 30s，用来测试实例刷新间隔的下限。
+const floorManifest = `id: floor
+version: 1.0.0
+api_version: 1
+name: Floor
+kind: source
+runtime: builtin
+runs_on: [hub]
+interval: 60s
+min_interval: 30s
+timeout: 5s
+config_schema:
+  - {key: host, type: string, title: Host, required: true}
+outputs:
+  - {key: temp, type: number, title: Temp}
+`
+
 func parseManifest(t *testing.T, tpl, id, ver, rt string) *manifest.Manifest {
 	t.Helper()
 	y := strings.NewReplacer("%ID%", id, "%VER%", ver, "%RT%", rt).Replace(tpl)
@@ -185,6 +202,7 @@ type fx struct {
 	probe   *probeSource
 	plain   *probeSource
 	stream  *streamSource
+	floor   *probeSource
 	px      *fakeProxies
 	hist    *recHistory
 }
@@ -208,13 +226,14 @@ func newFx(t *testing.T) *fx {
 	f.probe = &probeSource{m: parseManifest(t, probeManifest, "probe", "1.0.0", "builtin")}
 	f.plain = &probeSource{m: parseManifest(t, plainManifest, "plain", "", "builtin")}
 	f.stream = &streamSource{probeSource: &probeSource{m: parseManifest(t, plainManifest, "streamer", "", "builtin")}}
+	f.floor = &probeSource{m: parseManifest(t, floorManifest, "floor", "", "builtin")}
 	f.plugDir = filepath.Join(dir, "plugins")
 	if err := os.MkdirAll(f.plugDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	f.reg = plugins.New(plugins.Config{
 		Dir: f.plugDir, DB: db, Clock: f.clk,
-		Builtins: []runtime.Source{f.probe, f.plain, f.stream},
+		Builtins: []runtime.Source{f.probe, f.plain, f.stream, f.floor},
 	})
 	if _, err := f.reg.Scan(context.Background()); err != nil {
 		t.Fatal(err)
@@ -912,5 +931,31 @@ func TestPrivateStateNotExposed(t *testing.T) {
 	in := f.probe.last()
 	if in.State != "s1" {
 		t.Fatalf("下次运行的 Input.State = %q，期望 s1", in.State)
+	}
+}
+
+func TestMinIntervalEnforced(t *testing.T) {
+	f := newFx(t)
+	cfg := map[string]any{"host": "h"}
+	var fe model.FieldErrors
+	if _, err := f.svc.Create(bg, model.InstanceInput{PluginID: "floor", Name: "x", Config: cfg, IntervalSeconds: 29}); !errors.As(err, &fe) || fe["interval_seconds"] != model.FieldOutOfRange {
+		t.Fatalf("低于 min_interval 应报 out_of_range: %v", err)
+	}
+	d, err := f.svc.Create(bg, model.InstanceInput{PluginID: "floor", Name: "x", Config: cfg, IntervalSeconds: 30})
+	if err != nil {
+		t.Fatalf("等于 min_interval 应通过: %v", err)
+	}
+	if _, err := f.svc.Create(bg, model.InstanceInput{PluginID: "floor", Name: "y", Config: cfg}); err != nil {
+		t.Fatalf("0 表示用默认值应通过: %v", err)
+	}
+	if _, err := f.svc.Update(bg, d.ID, model.InstanceInput{Name: "x", Config: cfg, IntervalSeconds: 10}); !errors.As(err, &fe) || fe["interval_seconds"] != model.FieldOutOfRange {
+		t.Fatalf("更新时低于 min_interval 应报 out_of_range: %v", err)
+	}
+	if _, err := f.svc.Update(bg, d.ID, model.InstanceInput{Name: "x", Config: cfg, IntervalSeconds: 0}); err != nil {
+		t.Fatalf("更新为 0 应通过: %v", err)
+	}
+	// 未声明 min_interval 的插件仍只受全局下限约束。
+	if _, err := f.svc.Create(bg, model.InstanceInput{PluginID: "plain", Name: "p", Config: cfg, IntervalSeconds: 5}); err != nil {
+		t.Fatalf("无 min_interval 的插件 5 秒应通过: %v", err)
 	}
 }

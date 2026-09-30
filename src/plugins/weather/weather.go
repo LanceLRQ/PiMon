@@ -11,8 +11,8 @@
 // 天气文案为「中文 / English」双语，图标 key 见 wmo 表（夜间的晴与多云加 -night 后缀），
 // 前端按 key 选图标；署名文本放在 attribution，供小组件详情层与「关于」页展示。
 //
-// 最短刷新间隔 5 分钟：manifest 没有表达最小间隔的能力，所以由插件自行节流——
-// 位置不变且距上次成功采集不足 5 分钟时，直接复用上次报告，不访问外部服务。
+// 最短刷新间隔 5 分钟由 manifest 的 min_interval 声明，实例层校验 interval_seconds；
+// 插件本身每次运行都会请求预报。当前数据全部缺失时返回错误，让运行时保留旧值并标记过期。
 package weather
 
 import (
@@ -52,9 +52,7 @@ const (
 	// maxBody 是单个外部响应体的大小上限。
 	maxBody = 1 << 20
 	// requestTimeout 是单个外部请求的超时。
-	requestTimeout = 15 * time.Second
-	// minRefresh 是最短刷新间隔，更短的运行复用上次报告。
-	minRefresh = 5 * time.Minute
+	requestTimeout = 10 * time.Second
 	// locateTTL 是自动定位结果的缓存时长。
 	locateTTL = 24 * time.Hour
 
@@ -131,18 +129,11 @@ func (l location) valid() bool {
 	return l.Name != "" && l.Lat >= -90 && l.Lat <= 90 && l.Lon >= -180 && l.Lon <= 180
 }
 
-// key 用于判断位置是否变化。
-func (l location) key() string {
-	return strconv.FormatFloat(l.Lat, 'f', 4, 64) + "," + strconv.FormatFloat(l.Lon, 'f', 4, 64)
-}
-
 // state 是写入报告 State 的私有状态。
 type state struct {
 	// Located 是自动定位的缓存结果与时间（Unix 毫秒）。
 	Located   *location `json:"located,omitempty"`
 	LocatedAt int64     `json:"located_at,omitempty"`
-	// Fetched 是上次成功采集所用位置的 key，用于节流判断。
-	Fetched string `json:"fetched,omitempty"`
 }
 
 func parseState(s string) state {
@@ -364,6 +355,12 @@ type forecastResp struct {
 	} `json:"daily"`
 }
 
+// hasCurrent 报告当前天气是否至少有一项可用数据。
+func (f *forecastResp) hasCurrent() bool {
+	c := f.Current
+	return c.Temperature != nil || c.Humidity != nil || c.WindSpeed != nil || c.WeatherCode != nil
+}
+
 func (p *plugin) fetchForecast(ctx context.Context, loc location, pr *proxy.Proxy) (*forecastResp, error) {
 	q := url.Values{
 		"latitude":  {strconv.FormatFloat(loc.Lat, 'f', -1, 64)},
@@ -393,20 +390,13 @@ func (p *plugin) Collect(ctx context.Context, in runtime.Input) (*report.Report,
 		return nil, err
 	}
 
-	// 位置不变且距上次成功采集不足最短间隔：复用上次报告，保护免费额度。
-	if in.Last != nil && st.Fetched == loc.key() && in.Last.CollectedAt > 0 &&
-		now.Sub(time.UnixMilli(in.Last.CollectedAt)) < minRefresh {
-		cp := *in.Last
-		cp.Stale = false
-		cp.State = encodeState(st)
-		return &cp, nil
-	}
-
 	fc, err := p.fetchForecast(ctx, loc, in.Proxy)
 	if err != nil {
 		return nil, err
 	}
-	st.Fetched = loc.key()
+	if !fc.hasCurrent() {
+		return nil, errors.New("预报响应缺少当前天气数据 / Forecast response has no current conditions")
+	}
 	rep := buildReport(loc, fc, now)
 	rep.State = encodeState(st)
 	return rep, nil

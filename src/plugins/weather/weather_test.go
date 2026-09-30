@@ -435,9 +435,7 @@ func TestProxyUsage(t *testing.T) {
 	if len(seen) != 1 || !strings.Contains(seen[0].Target, "/v1/forecast") {
 		t.Fatalf("代理应只看到预报请求: %+v", seen)
 	}
-	if err == nil {
-		t.Error("假代理回 204 空体，预报解析应失败")
-	}
+	_ = err // 假代理只回 204 空体，采集结果不在此断言
 	if f.forecast.Load() != 0 {
 		t.Error("预报请求不应绕过代理直达服务")
 	}
@@ -462,7 +460,8 @@ func TestDirectForecastWithoutProxy(t *testing.T) {
 	}
 }
 
-func TestMinimumIntervalThrottle(t *testing.T) {
+// 每次运行都访问预报服务：最短间隔由运行时按 manifest 的 min_interval 在实例层强制，不在插件内节流。
+func TestEveryRunFetchesForecast(t *testing.T) {
 	f := newFake(t)
 	p := f.plugin()
 	clk := clock.NewFake(time.Unix(1_800_000_000, 0))
@@ -471,33 +470,31 @@ func TestMinimumIntervalThrottle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 4 分钟后（短于最短间隔 5 分钟）同一位置：复用上次报告，不请求外部服务。
-	clk.Advance(4 * time.Minute)
-	again, err := run(t, p, cfg, nil, clk, first, first.State)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f.forecast.Load() != 1 {
-		t.Errorf("最短间隔内不应再次请求: %d", f.forecast.Load())
-	}
-	if again.CollectedAt != first.CollectedAt || again.Find("temperature") == nil {
-		t.Errorf("应返回上次报告内容: %+v", again)
-	}
-	// 换城市立即生效，不受节流影响。
-	other := `{"name":"上海","lat":31.2,"lon":121.5,"tz":"Asia/Shanghai"}`
-	if _, err := run(t, p, map[string]any{"city": other}, nil, clk, first, first.State); err != nil {
-		t.Fatal(err)
-	}
-	if f.forecast.Load() != 2 {
-		t.Errorf("位置变化应立即请求: %d", f.forecast.Load())
-	}
-	// 超过最短间隔后恢复请求。
-	clk.Advance(2 * time.Minute)
+	clk.Advance(time.Minute)
 	if _, err := run(t, p, cfg, nil, clk, first, first.State); err != nil {
 		t.Fatal(err)
 	}
-	if f.forecast.Load() != 3 {
-		t.Errorf("超过间隔应请求: %d", f.forecast.Load())
+	if f.forecast.Load() != 2 {
+		t.Errorf("每次运行都应请求预报: %d", f.forecast.Load())
+	}
+}
+
+func TestEmptyCurrentIsError(t *testing.T) {
+	cases := map[string]string{
+		"空对象":            `{}`,
+		"current 缺失":     `{"daily":{"weather_code":[0,0],"temperature_2m_max":[1,2],"temperature_2m_min":[0,1]}}`,
+		"current 全空":     `{"current":{},"daily":{}}`,
+		"current 全 null": `{"current":{"temperature_2m":null,"relative_humidity_2m":null,"wind_speed_10m":null,"weather_code":null},"daily":{}}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newFake(t)
+			f.fcBody.Store(body)
+			rep, err := run(t, f.plugin(), map[string]any{"city": beijing}, nil, nil, nil, "")
+			if err == nil || rep != nil {
+				t.Fatalf("没有任何当前数据应报错（让运行时保留旧值）: %+v %v", rep, err)
+			}
+		})
 	}
 }
 
@@ -505,6 +502,12 @@ func TestManifestIntervalDefaults(t *testing.T) {
 	m := mustManifest()
 	if m.Interval != 10*time.Minute {
 		t.Errorf("默认间隔应为 10 分钟: %v", m.Interval)
+	}
+	if m.MinInterval != 5*time.Minute {
+		t.Errorf("最短间隔应为 5 分钟: %v", m.MinInterval)
+	}
+	if m.Timeout < 2*requestTimeout+5*time.Second {
+		t.Errorf("运行超时应为定位与预报两次请求超时之和再留余量: timeout=%v request=%v", m.Timeout, requestTimeout)
 	}
 	if m.Timeout <= 0 || m.Timeout > 60*time.Second {
 		t.Errorf("timeout=%v", m.Timeout)

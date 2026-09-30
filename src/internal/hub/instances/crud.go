@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"reflect"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
@@ -39,8 +41,14 @@ func validateName(name string, errs model.FieldErrors) string {
 	return name
 }
 
-func validateInterval(sec int, errs model.FieldErrors) {
-	if sec != 0 && (sec < minIntervalSeconds || sec > maxIntervalSeconds) {
+// validateInterval 校验刷新间隔：0 表示用插件默认值；非 0 须在全局范围内，
+// 且不低于插件 manifest 声明的 min_interval（minInterval 为 0 表示未声明）。
+func validateInterval(sec int, minInterval time.Duration, errs model.FieldErrors) {
+	floor := minIntervalSeconds
+	if m := int(math.Ceil(minInterval.Seconds())); m > floor {
+		floor = m
+	}
+	if sec != 0 && (sec < floor || sec > maxIntervalSeconds) {
 		errs["interval_seconds"] = model.FieldOutOfRange
 	}
 }
@@ -81,7 +89,7 @@ func (s *Service) Create(ctx context.Context, in model.InstanceInput) (model.Ins
 	}
 	errs := model.FieldErrors{}
 	name := validateName(in.Name, errs)
-	validateInterval(in.IntervalSeconds, errs)
+	validateInterval(in.IntervalSeconds, p.Manifest.MinInterval, errs)
 	fields := p.Manifest.ConfigSchema
 	plain, secrets, err := s.prepareConfig(ctx, fields, in.Config, map[string]any{}, errs)
 	if err != nil {
@@ -133,7 +141,7 @@ func (s *Service) Update(ctx context.Context, id string, in model.InstanceInput)
 	}
 	errs := model.FieldErrors{}
 	name := validateName(in.Name, errs)
-	validateInterval(in.IntervalSeconds, errs)
+	validateInterval(in.IntervalSeconds, p.Manifest.MinInterval, errs)
 	fields := p.Manifest.ConfigSchema
 	plain, secrets, err := s.prepareConfig(ctx, fields, in.Config, existing, errs)
 	if err != nil {

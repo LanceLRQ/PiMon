@@ -94,7 +94,7 @@ func (p *parser) parseRoot(root *yaml.Node) *Manifest {
 	}
 	m := &Manifest{}
 	present := map[string]bool{}
-	var outputsNode, widgetsNode, alertsNode *yaml.Node
+	var outputsNode, widgetsNode, alertsNode, minIntervalNode *yaml.Node
 	for _, pr := range pairs {
 		if pr.Duplicate {
 			p.add(pr.KeyNode, pr.Key, "字段 %s 重复", pr.Key)
@@ -149,6 +149,9 @@ func (p *parser) parseRoot(root *yaml.Node) *Manifest {
 			m.RunsOn = p.runsOn(v)
 		case "interval":
 			m.Interval, _ = p.duration(v, "interval")
+		case "min_interval":
+			m.MinInterval, _ = p.duration(v, "min_interval")
+			minIntervalNode = v
 		case "timeout":
 			m.Timeout, _ = p.duration(v, "timeout")
 		case "config_schema":
@@ -172,6 +175,9 @@ func (p *parser) parseRoot(root *yaml.Node) *Manifest {
 	}
 	if m.Interval == 0 && !present["interval"] {
 		m.Interval = DefaultInterval
+	}
+	if m.MinInterval > m.Interval && minIntervalNode != nil {
+		p.add(minIntervalNode, "min_interval", "min_interval（%s）不能大于 interval（%s）", m.MinInterval, m.Interval)
 	}
 	if m.Timeout == 0 && !present["timeout"] {
 		m.Timeout = DefaultTimeout

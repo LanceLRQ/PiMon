@@ -351,3 +351,40 @@ func TestFieldOmittedAndTableAllowed(t *testing.T) {
 		t.Fatalf("类型内字段应合法: %v", err)
 	}
 }
+
+const minIntervalBase = `id: mi
+version: 0.1.0
+api_version: 1
+name: MI
+kind: source
+runtime: exec
+runs_on: [hub]
+interval: 10m
+%EXTRA%`
+
+func TestMinInterval(t *testing.T) {
+	m, err := Parse([]byte(strings.Replace(minIntervalBase, "%EXTRA%", "min_interval: 5m\n", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.MinInterval != 5*time.Minute {
+		t.Errorf("MinInterval=%v", m.MinInterval)
+	}
+	// 等于 interval 合法。
+	if _, err := Parse([]byte(strings.Replace(minIntervalBase, "%EXTRA%", "min_interval: 10m\n", 1))); err != nil {
+		t.Errorf("等于 interval 应合法: %v", err)
+	}
+	// 未声明为 0。
+	m, err = Parse([]byte(strings.Replace(minIntervalBase, "%EXTRA%", "", 1)))
+	if err != nil || m.MinInterval != 0 {
+		t.Errorf("未声明应为 0: %v %v", m, err)
+	}
+	// 大于 interval：带行号报错。
+	src := strings.Replace(minIntervalBase, "%EXTRA%", "min_interval: 15m\n", 1)
+	_, err = Parse([]byte(src))
+	expectProblem(t, src, err, "min_interval", "min_interval")
+	// 非法时长同样带行号。
+	src = strings.Replace(minIntervalBase, "%EXTRA%", "min_interval: abc\n", 1)
+	_, err = Parse([]byte(src))
+	expectProblem(t, src, err, "min_interval", "min_interval")
+}

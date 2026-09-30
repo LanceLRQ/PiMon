@@ -60,14 +60,16 @@ var OutputTypes = slices.Clone(report.ItemTypes)
 
 // Manifest 是解析后的 plugin.yaml。
 type Manifest struct {
-	ID           string
-	Version      string
-	APIVersion   int
-	Name         I18nText
-	Kind         Kind
-	Runtime      Runtime
-	RunsOn       []string
-	Interval     time.Duration
+	ID         string
+	Version    string
+	APIVersion int
+	Name       I18nText
+	Kind       Kind
+	Runtime    Runtime
+	RunsOn     []string
+	Interval   time.Duration
+	// MinInterval 是实例刷新间隔的下限，0 表示不限制（仅受全局下限约束）；存在时不大于 Interval。
+	MinInterval  time.Duration
 	Timeout      time.Duration
 	ConfigSchema []schema.Field
 	Outputs      []Output
