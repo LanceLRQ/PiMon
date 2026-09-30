@@ -123,3 +123,28 @@ func TestDecodeVisibleWhenMustBeScalar(t *testing.T) {
 	// 引用 enum、boolean、string、number 合法
 	decode(t, "- {key: a, type: enum, options: [x]}\n- {key: n, type: number}\n- {key: s, type: string}\n- {key: b, type: boolean}\n- {key: z, type: string, visible_when: {a: x, n: 1, s: q, b: true}}\n")
 }
+
+func TestDecodeObjectListRestrictions(t *testing.T) {
+	cases := []struct{ name, src, needle, msg string }{
+		{"object_list 嵌套 object_list",
+			"- key: outer\n  type: object_list\n  fields:\n    - {key: inner, type: object_list, fields: [{key: x, type: string}]}\n",
+			"key: inner", "object_list"},
+		{"object_list 内的 secret_values kv",
+			"- key: outer\n  type: object_list\n  fields:\n    - {key: hdr, type: kv, secret_values: true}\n",
+			"key: hdr", "secret_values"},
+	}
+	for _, c := range cases {
+		_, issues := decodeSrc(t, c.src)
+		found := false
+		for _, is := range issues {
+			if is.Line == lineOf(t, c.src, c.needle) && strings.Contains(is.Message, c.msg) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: 未在第 %d 行找到含 %q 的问题: %+v", c.name, lineOf(t, c.src, c.needle), c.msg, issues)
+		}
+	}
+	// 普通 kv 与标量密钥仍可放在 object_list 内
+	decode(t, "- key: outer\n  type: object_list\n  fields:\n    - {key: h, type: kv}\n    - {key: t, type: secret}\n")
+}

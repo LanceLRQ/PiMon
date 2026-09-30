@@ -43,7 +43,8 @@ type secretLeaf struct {
 	field     *Field
 	container map[string]any
 	key       string
-	// 在 object_list 元素内时：listPath 是最内层列表的路径，idx 是元素下标；否则 idx 为 -1。
+	// 在 object_list 元素内时：listPath 是该列表的路径，idx 是元素下标；否则 idx 为 -1。
+	// 解析期禁止 object_list 嵌套，也禁止其内出现 secret_values 的 kv，故只有一层标量密钥会带 ref。
 	listPath string
 	idx      int
 }
@@ -172,6 +173,7 @@ func Merge(fields []Field, plain map[string]any, secrets map[string]any) map[str
 // Redact 返回可回显给前端的配置，永不含明文：已设置的密钥一律替换为 {"set": true}。
 // 契约：object_list 元素内的密钥回显为 {"set": true, "ref": <该元素在本配置中的下标>}，
 // 前端增删或重排元素后原样带回 ref，KeepSecrets 据此找回原值；顶层与 kv 的密钥只回显 {"set": true}。
+// ref 只覆盖一层 object_list 内的标量密钥（schema 禁止 object_list 嵌套及其内的密钥 kv）。
 func Redact(fields []Field, cfg map[string]any) map[string]any {
 	out := deepCopy(cfg)
 	walkSecrets(fields, out, "", func(l secretLeaf) {
@@ -194,7 +196,7 @@ func Redact(fields []Field, cfg map[string]any) map[string]any {
 // KeepSecrets 实现密钥的「保留原值」语义：incoming 中的密钥若缺省、为空串、nil 或回显的
 // {"set": true}，就取 existing 里的原值（existing 里没有则视为未设置）。匹配方式：
 //   - 顶层密钥按路径；kv 密钥按键。
-//   - object_list 元素内的密钥按回显标记里的 ref（原下标）匹配，与元素当前位置无关，
+//   - 一层 object_list 元素内的标量密钥按回显标记里的 ref（原下标）匹配，与元素当前位置无关，
 //     所以增删、重排元素不会错配。留空且没有 ref 时视为未设置（必填密钥报 required）；
 //     ref 越界、或 ref 指向的旧元素没有该密钥时，报该路径 required，绝不静默丢弃或错配。
 //

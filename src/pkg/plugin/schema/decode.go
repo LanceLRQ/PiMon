@@ -200,6 +200,16 @@ func (d *decoder) checkTypeSpecific(n *yaml.Node, path string, f *Field, present
 	if f.Type == TypeObjectList && len(f.Fields) == 0 {
 		d.add(n, path+".fields", "object_list 必须声明非空的 fields")
 	}
+	for i := range f.Fields {
+		sub := &f.Fields[i]
+		subPath := fmt.Sprintf("%s.fields[%d]", path, i)
+		switch {
+		case sub.Type == TypeObjectList:
+			d.issues = append(d.issues, Issue{Line: sub.Line, Path: subPath + ".type", Message: "object_list 的子字段不能是 object_list（不支持嵌套）"})
+		case sub.Type == TypeKV && sub.SecretValues:
+			d.issues = append(d.issues, Issue{Line: sub.Line, Path: subPath + ".secret_values", Message: "object_list 的子字段不能是带 secret_values 的 kv"})
+		}
+	}
 	if f.Type != TypeObjectList && present["fields"] {
 		d.add(n, path+".fields", "只有 object_list 可以声明 fields")
 	}

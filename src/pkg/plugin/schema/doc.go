@@ -14,7 +14,8 @@
 //   - number：数字；boolean：布尔；duration：time.ParseDuration 可解析的字符串
 //   - list：字符串数组，pattern 对每个元素生效
 //   - kv：字符串到字符串的映射；声明 secret_values: true 时每个值都是密钥
-//   - object_list：对象数组，子字段由 fields 声明，校验错误路径形如 targets[2].url
+//   - object_list：对象数组，子字段由 fields 声明，校验错误路径形如 targets[2].url；
+//     子字段不能是 object_list，也不能是带 secret_values 的 kv
 //   - lookup：字符串，或由插件定义形状的对象（如城市搜索返回的 {id, name, lat, lon}）
 //
 // secret_url（整条地址即凭据）：公网只允许 https，禁止内嵌凭据，允许查询参数，内网地址允许 http。
@@ -42,5 +43,6 @@
 // 用具体路径（api_key、headers.X-Token、accounts[1].token）标识密钥；Split 把配置拆成
 // 普通部分与密钥部分（kv 密钥在普通部分里以 nil 占位，保留键名）；Redact 把密钥回显为
 // {"set": true}（object_list 元素内为 {"set": true, "ref": 原下标}）；KeepSecrets 实现
-// 「密钥字段留空、缺省或回显值表示保留原值」，object_list 内按 ref 匹配。
+// 「密钥字段留空、缺省或回显值表示保留原值」，object_list 内的标量密钥按 ref 匹配
+// （ref 只覆盖一层 object_list）。
 package schema
