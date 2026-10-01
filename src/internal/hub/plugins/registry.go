@@ -5,6 +5,7 @@ package plugins
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"sync"
@@ -115,6 +116,14 @@ func (r *Registry) Snapshot() Snapshot {
 		Plugins: slices.Clone(r.snap.Plugins),
 		Issues:  slices.Clone(r.snap.Issues),
 	}
+}
+
+// Dir 返回 exec 插件目录的绝对路径（无法换算时原样返回配置值）。
+func (r *Registry) Dir() string {
+	if abs, err := filepath.Abs(r.cfg.Dir); err == nil {
+		return abs
+	}
+	return r.cfg.Dir
 }
 
 // Get 按 id 取可用插件。内置插件带 Source；exec 插件带目录与 run 路径，

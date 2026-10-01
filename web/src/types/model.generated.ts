@@ -380,6 +380,10 @@ export interface PluginList {
    */
   errors: PluginLoadIssue[];
   conflicts: PluginLoadIssue[];
+  /**
+   * PluginDir 是 exec 插件目录的绝对路径，供管理界面提示用户把插件放到哪里。
+   */
+  plugin_dir: string;
 }
 /**
  * PluginLookupRequest 是 POST /api/plugins/{id}/lookup/{key} 的请求体。

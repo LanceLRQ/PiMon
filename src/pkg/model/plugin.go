@@ -124,6 +124,8 @@ type PluginList struct {
 	// Errors 是加载失败的目录；Conflicts 是与内置插件 id 冲突的目录（供系统页提示）。
 	Errors    []PluginLoadIssue `json:"errors"`
 	Conflicts []PluginLoadIssue `json:"conflicts"`
+	// PluginDir 是 exec 插件目录的绝对路径，供管理界面提示用户把插件放到哪里。
+	PluginDir string `json:"plugin_dir"`
 }
 
 // PluginLookupRequest 是 POST /api/plugins/{id}/lookup/{key} 的请求体。
