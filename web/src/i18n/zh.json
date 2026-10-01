@@ -144,7 +144,9 @@
   "errorFallback": "操作失败（{{code}}）",
   "common": {
     "show": "显示密码",
-    "hide": "隐藏密码"
+    "hide": "隐藏密码",
+    "close": "关闭",
+    "cancel": "取消"
   },
   "login": {
     "title": "登录管理界面",
@@ -248,5 +250,221 @@
       "codeValue": "已作废",
       "enter": "进入总览"
     }
+  },
+  "time": {
+    "never": "从未成功",
+    "secondsAgo": "{{n}} 秒前",
+    "minutesAgo": "{{n}} 分钟前",
+    "hoursAgo": "{{n}} 小时前",
+    "daysAgo": "{{n}} 天前",
+    "passed": "已过",
+    "inSeconds": "{{n}} 秒后",
+    "inMinutes": "{{n}} 分钟后",
+    "inHours": "{{n}} 小时后",
+    "inDays": "{{n}} 天后"
+  },
+  "items": {
+    "unknown": "未知",
+    "gauge": "仪表读数",
+    "quota": "额度",
+    "quotaPct": "剩余 {{pct}}%",
+    "quotaUsed": "已用 {{used}} / 总量 {{total}}",
+    "quotaRemaining": "剩余量 {{value}}",
+    "resetsAt": "重置于 {{at}}（{{in}}）",
+    "expiresAt": "到期 {{at}}（{{in}}）",
+    "moneyUsed": "已用 {{value}}",
+    "moneyTotal": "总额 {{value}}",
+    "tableEmpty": "没有数据行",
+    "itemError": "条目错误：{{message}}",
+    "unsupported": "不支持的数据项类型「{{type}}」"
+  },
+  "instances": {
+    "sub": "{{total}} 个实例 · {{hub}} 在 hub · {{other}} 在其他位置",
+    "stripLabel": "状态汇总",
+    "strip": {
+      "plugins": "插件",
+      "exec": " · exec {{count}}",
+      "locations": "运行位置"
+    },
+    "listTitle": "实例列表",
+    "add": "添加实例",
+    "hubLocal": "hub 本机",
+    "local": "本机",
+    "search": "搜索实例，支持查询语法",
+    "filter": {
+      "label": "筛选",
+      "all": "全部",
+      "attention": "需关注",
+      "location": "运行位置",
+      "locationSet": "位置：{{value}}",
+      "allLocations": "全部位置",
+      "plugin": "插件",
+      "pluginSet": "插件：{{value}}",
+      "allPlugins": "全部插件"
+    },
+    "cols": {
+      "status": "状态",
+      "name": "名称",
+      "runs": "运行位置",
+      "reading": "关键读数",
+      "updated": "更新于",
+      "actions": "操作"
+    },
+    "severityFirst": "严重优先",
+    "sort": {
+      "status": "按状态 · 严重优先",
+      "name": "按名称",
+      "run": "按运行位置",
+      "ago": "按更新时间",
+      "reversed": "（反序）"
+    },
+    "count": "显示 {{shown}} / {{total}} · 排序：{{sort}}",
+    "groupedSuffix": " · 按插件分组",
+    "syntax": "语法：status:ok|warning|critical|error|stale · runs:hub|agent · plugin:插件 id",
+    "empty": "还没有监控实例",
+    "noMatch": "没有匹配的实例 · 清除筛选或修改查询",
+    "clearFilter": "清除筛选",
+    "select": "选择 {{name}}",
+    "selectAll": "全选",
+    "pausedTag": "已暂停",
+    "rowMenu": "{{name}} 的更多操作",
+    "groupCount": "{{count}} 个实例",
+    "groupAllOk": "全部正常",
+    "menu": {
+      "detail": "查看详情",
+      "run": "立即采集",
+      "edit": "编辑配置",
+      "copy": "复制为新实例",
+      "pause": "暂停采集",
+      "resume": "恢复采集",
+      "delete": "删除实例"
+    },
+    "view": {
+      "label": "视图",
+      "flat": "平铺",
+      "group": "按插件分组"
+    },
+    "batch": {
+      "label": "批量操作",
+      "selected": "已选 {{count}} 项",
+      "clear": "取消选择"
+    },
+    "execDir": "exec 插件目录",
+    "execWatched": "已监视，放入插件后自动出现",
+    "execErrors": "{{count}} 个插件目录加载失败",
+    "rescan": "重新扫描",
+    "rescanDone": "扫描完成 · {{found}} · {{time}}",
+    "rescanFound": "发现 {{count}} 个新插件",
+    "rescanNone": "未发现新插件",
+    "toast": {
+      "ran": "已采集「{{name}}」",
+      "ranMany": "已完成 {{count}} 个实例的采集",
+      "paused": "已暂停「{{name}}」",
+      "resumed": "已恢复「{{name}}」",
+      "pausedMany": "已暂停 {{count}} 个实例",
+      "copied": "已复制为「{{name}}」，请补全配置",
+      "deleted": "已删除 {{count}} 个实例"
+    },
+    "delete": {
+      "title": "删除所选的 {{count}} 个实例？",
+      "body": "将删除以下 {{count}} 个实例及其历史数据，屏幕上绑定它们的小组件会显示「引用失效」。",
+      "irreversible": "此操作不能撤销。",
+      "confirm": "删除",
+      "affectedTitle": "这些实例仍被屏幕引用",
+      "affectedBody": "下列实例被 screen 上的小组件引用，继续删除后这些小组件会显示「引用失效」。",
+      "screens": "引用的 screen：",
+      "force": "仍然删除"
+    }
+  },
+  "detail": {
+    "title": "实例详情：{{name}}",
+    "status": "状态",
+    "state": "展示状态",
+    "plugin": "插件",
+    "interval": "刷新间隔",
+    "intervalValue": "{{n}} 秒",
+    "intervalOverride": "（已覆盖）",
+    "lastSuccess": "最近成功",
+    "failures": "连续失败",
+    "paused": "采集",
+    "pausedYes": "已暂停",
+    "items": "数据项（{{count}}）",
+    "noReport": "还没有成功采集过，暂无数据项",
+    "noItems": "这份报告没有数据项",
+    "staleReport": "最近一次采集失败，以下为失败前保留的旧值。",
+    "history": "最近 24 小时历史",
+    "historyNoNumeric": "该实例没有数值数据项，没有历史曲线。",
+    "historyNone": "该数据项没有历史。",
+    "historyEmpty": "最近 24 小时还没有采样点。",
+    "historyItem": "选择数据项",
+    "historyField": "曲线字段",
+    "fieldRemainingPct": "剩余比例",
+    "fieldUsed": "已用量",
+    "historyMeta": "{{points}} 个点 · {{tier}} 档",
+    "errors": "最近错误与 stderr 摘要",
+    "issue": "实例当前无法运行",
+    "lastError": "最近一次失败（已脱敏，含 stderr 尾部）",
+    "noError": "最近一次采集成功，没有错误。",
+    "problems": "配置与插件不符的字段",
+    "weatherCredit": "天气数据来源："
+  },
+  "overview": {
+    "sub": "现在一切正常吗？哪里要我处理？",
+    "instanceUnit": "个监控实例",
+    "noInstances": "还没有监控实例，先添加一个吧。",
+    "otherState": "未知/其他",
+    "distribution": "{{count}} 个实例的状态分布",
+    "legend": "图例",
+    "listSep": "、",
+    "also": "另有 {{list}}",
+    "alsoItem": {
+      "critical": "{{count}} 项严重",
+      "error": "{{count}} 项采集失败",
+      "warning": "{{count}} 项警告",
+      "stale": "{{count}} 项过期",
+      "other": "{{count}} 项状态未知"
+    },
+    "verdict": {
+      "allOk": "全部正常",
+      "critical": "{{count}} 项严重：{{name}} {{reading}}",
+      "error": "{{count}} 项采集失败：{{name}} {{reading}}",
+      "warning": "{{count}} 项警告：{{name}} {{reading}}",
+      "stale": "{{count}} 项过期：{{name}}",
+      "other": "{{count}} 项状态未知：{{name}}"
+    },
+    "health": {
+      "title": "健康汇总"
+    },
+    "hub": {
+      "title": "hub 概况",
+      "version": "版本",
+      "connection": "实时连接",
+      "online": "hub 在线",
+      "offline": "连接已断开",
+      "lastBackup": "最近备份",
+      "noBackup": "暂无备份",
+      "timezone": "时区",
+      "instances": "实例数",
+      "agents": "在线 agent",
+      "agentsLater": "M2 提供"
+    },
+    "attention": {
+      "title": "需要处理",
+      "meta": "{{count}} 项 · 按严重度",
+      "none": "没有需要处理的项",
+      "view": "查看实例",
+      "retry": "立即重试",
+      "lastSuccess": "上次成功 {{ago}}"
+    },
+    "screen": {
+      "title": "屏幕",
+      "meta": "M1d 接入",
+      "pending": "屏幕模块待接入",
+      "keyRefresh": "刷新",
+      "keySwitch": "切换 screen",
+      "keyOff": "关屏",
+      "keyWake": "临时亮屏"
+    },
+    "table": "实例一览"
   }
 }

@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Outlet } from 'react-router'
 import { selectBuildOutdated, useLiveStore } from '@/store/live-store'
 import { MobileTabBar } from './MobileTabBar'
+import { ToastProvider } from '@/ui/toast'
 import { Sidebar } from './Sidebar'
 import { useLiveConnection, useSettingsLanguage } from './live'
 
@@ -13,17 +14,19 @@ export function AdminLayout() {
   const { t } = useTranslation()
   const outdated = useLiveStore(selectBuildOutdated)
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background">
-      <Sidebar />
-      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto mobile:pb-16">
-        {outdated && (
-          <div role="status" className="border-b border-border bg-signal-soft px-6 py-2 text-[13px] mobile:px-3.5">
-            {t('shell.versionUpdated')}
-          </div>
-        )}
-        <Outlet />
-      </main>
-      <MobileTabBar />
-    </div>
+    <ToastProvider>
+      <div className="flex h-screen w-screen overflow-hidden bg-background">
+        <Sidebar />
+        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto mobile:pb-16">
+          {outdated && (
+            <div role="status" className="border-b border-border bg-signal-soft px-6 py-2 text-[13px] mobile:px-3.5">
+              {t('shell.versionUpdated')}
+            </div>
+          )}
+          <Outlet />
+        </main>
+        <MobileTabBar />
+      </div>
+    </ToastProvider>
   )
 }

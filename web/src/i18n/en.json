@@ -144,7 +144,9 @@
   "errorFallback": "Operation failed ({{code}})",
   "common": {
     "show": "Show password",
-    "hide": "Hide password"
+    "hide": "Hide password",
+    "close": "Close",
+    "cancel": "Cancel"
   },
   "login": {
     "title": "Sign in to the admin console",
@@ -248,5 +250,221 @@
       "codeValue": "Used",
       "enter": "Open overview"
     }
+  },
+  "time": {
+    "never": "Never succeeded",
+    "secondsAgo": "{{n}}s ago",
+    "minutesAgo": "{{n}} min ago",
+    "hoursAgo": "{{n}} h ago",
+    "daysAgo": "{{n}} d ago",
+    "passed": "passed",
+    "inSeconds": "in {{n}}s",
+    "inMinutes": "in {{n}} min",
+    "inHours": "in {{n}} h",
+    "inDays": "in {{n}} d"
+  },
+  "items": {
+    "unknown": "Unknown",
+    "gauge": "Gauge reading",
+    "quota": "Quota",
+    "quotaPct": "{{pct}}% remaining",
+    "quotaUsed": "Used {{used}} / total {{total}}",
+    "quotaRemaining": "Remaining {{value}}",
+    "resetsAt": "Resets {{at}} ({{in}})",
+    "expiresAt": "Expires {{at}} ({{in}})",
+    "moneyUsed": "Used {{value}}",
+    "moneyTotal": "Total {{value}}",
+    "tableEmpty": "No rows",
+    "itemError": "Item error: {{message}}",
+    "unsupported": "Unsupported item type \"{{type}}\""
+  },
+  "instances": {
+    "sub": "{{total}} instances · {{hub}} on hub · {{other}} elsewhere",
+    "stripLabel": "Status summary",
+    "strip": {
+      "plugins": "Plugins",
+      "exec": " · exec {{count}}",
+      "locations": "Locations"
+    },
+    "listTitle": "Instance list",
+    "add": "Add instance",
+    "hubLocal": "hub (local)",
+    "local": "local",
+    "search": "Search instances, query syntax supported",
+    "filter": {
+      "label": "Filters",
+      "all": "All",
+      "attention": "Needs attention",
+      "location": "Location",
+      "locationSet": "Location: {{value}}",
+      "allLocations": "All locations",
+      "plugin": "Plugin",
+      "pluginSet": "Plugin: {{value}}",
+      "allPlugins": "All plugins"
+    },
+    "cols": {
+      "status": "Status",
+      "name": "Name",
+      "runs": "Runs on",
+      "reading": "Key reading",
+      "updated": "Updated",
+      "actions": "Actions"
+    },
+    "severityFirst": "worst first",
+    "sort": {
+      "status": "by status · worst first",
+      "name": "by name",
+      "run": "by location",
+      "ago": "by update time",
+      "reversed": " (reversed)"
+    },
+    "count": "Showing {{shown}} / {{total}} · sorted {{sort}}",
+    "groupedSuffix": " · grouped by plugin",
+    "syntax": "Syntax: status:ok|warning|critical|error|stale · runs:hub|agent · plugin:plugin id",
+    "empty": "No monitoring instances yet",
+    "noMatch": "No matching instances · clear the filters or edit the query",
+    "clearFilter": "Clear filters",
+    "select": "Select {{name}}",
+    "selectAll": "Select all",
+    "pausedTag": "paused",
+    "rowMenu": "More actions for {{name}}",
+    "groupCount": "{{count}} instances",
+    "groupAllOk": "all OK",
+    "menu": {
+      "detail": "View details",
+      "run": "Collect now",
+      "edit": "Edit config",
+      "copy": "Copy as new instance",
+      "pause": "Pause collection",
+      "resume": "Resume collection",
+      "delete": "Delete instance"
+    },
+    "view": {
+      "label": "View",
+      "flat": "Flat",
+      "group": "By plugin"
+    },
+    "batch": {
+      "label": "Batch actions",
+      "selected": "{{count}} selected",
+      "clear": "Clear selection"
+    },
+    "execDir": "exec plugin directory",
+    "execWatched": "is watched; plugins dropped in appear automatically",
+    "execErrors": "{{count}} plugin directories failed to load",
+    "rescan": "Rescan",
+    "rescanDone": "Scan finished · {{found}} · {{time}}",
+    "rescanFound": "{{count}} new plugins found",
+    "rescanNone": "no new plugins",
+    "toast": {
+      "ran": "Collected \"{{name}}\"",
+      "ranMany": "Collection finished for {{count}} instances",
+      "paused": "Paused \"{{name}}\"",
+      "resumed": "Resumed \"{{name}}\"",
+      "pausedMany": "Paused {{count}} instances",
+      "copied": "Copied as \"{{name}}\", please complete its configuration",
+      "deleted": "Deleted {{count}} instances"
+    },
+    "delete": {
+      "title": "Delete the {{count}} selected instances?",
+      "body": "The following {{count}} instances and their history will be deleted; widgets bound to them on screens will show \"broken reference\".",
+      "irreversible": "This cannot be undone.",
+      "confirm": "Delete",
+      "affectedTitle": "These instances are still used by screens",
+      "affectedBody": "The instances below are referenced by widgets on screens. After deleting, those widgets will show \"broken reference\".",
+      "screens": "Referenced by screens: ",
+      "force": "Delete anyway"
+    }
+  },
+  "detail": {
+    "title": "Instance details: {{name}}",
+    "status": "Status",
+    "state": "Display state",
+    "plugin": "Plugin",
+    "interval": "Refresh interval",
+    "intervalValue": "{{n}} s",
+    "intervalOverride": " (overridden)",
+    "lastSuccess": "Last success",
+    "failures": "Consecutive failures",
+    "paused": "Collection",
+    "pausedYes": "paused",
+    "items": "Data items ({{count}})",
+    "noReport": "Never collected successfully, no data items yet",
+    "noItems": "This report has no data items",
+    "staleReport": "The last collection failed; values below were kept from before the failure.",
+    "history": "Last 24 hours",
+    "historyNoNumeric": "This instance has no numeric items, so there is no history chart.",
+    "historyNone": "This item has no history.",
+    "historyEmpty": "No samples in the last 24 hours yet.",
+    "historyItem": "Choose data item",
+    "historyField": "Chart field",
+    "fieldRemainingPct": "Remaining %",
+    "fieldUsed": "Used",
+    "historyMeta": "{{points}} points · {{tier}} tier",
+    "errors": "Recent error and stderr excerpt",
+    "issue": "This instance cannot run right now",
+    "lastError": "Last failure (redacted, includes stderr tail)",
+    "noError": "The last collection succeeded, no errors.",
+    "problems": "Fields that do not match the plugin",
+    "weatherCredit": "Weather data source: "
+  },
+  "overview": {
+    "sub": "Is everything fine now? What needs my attention?",
+    "instanceUnit": "monitoring instances",
+    "noInstances": "No monitoring instances yet, add one first.",
+    "otherState": "Unknown/other",
+    "distribution": "Status distribution of {{count}} instances",
+    "legend": "legend",
+    "listSep": ", ",
+    "also": "also {{list}}",
+    "alsoItem": {
+      "critical": "{{count}} critical",
+      "error": "{{count}} collection failures",
+      "warning": "{{count}} warnings",
+      "stale": "{{count}} stale",
+      "other": "{{count}} unknown"
+    },
+    "verdict": {
+      "allOk": "All OK",
+      "critical": "{{count}} critical: {{name}} {{reading}}",
+      "error": "{{count}} collection failures: {{name}} {{reading}}",
+      "warning": "{{count}} warnings: {{name}} {{reading}}",
+      "stale": "{{count}} stale: {{name}}",
+      "other": "{{count}} with unknown state: {{name}}"
+    },
+    "health": {
+      "title": "Health summary"
+    },
+    "hub": {
+      "title": "Hub overview",
+      "version": "Version",
+      "connection": "Live connection",
+      "online": "hub online",
+      "offline": "disconnected",
+      "lastBackup": "Last backup",
+      "noBackup": "No backups yet",
+      "timezone": "Time zone",
+      "instances": "Instances",
+      "agents": "Agents online",
+      "agentsLater": "Coming in M2"
+    },
+    "attention": {
+      "title": "Needs attention",
+      "meta": "{{count}} items · by severity",
+      "none": "Nothing needs attention",
+      "view": "View instance",
+      "retry": "Retry now",
+      "lastSuccess": "last success {{ago}}"
+    },
+    "screen": {
+      "title": "Screen",
+      "meta": "arrives in M1d",
+      "pending": "Screen module not connected yet",
+      "keyRefresh": "Refresh",
+      "keySwitch": "Switch screen",
+      "keyOff": "Screen off",
+      "keyWake": "Wake temporarily"
+    },
+    "table": "All instances"
   }
 }
