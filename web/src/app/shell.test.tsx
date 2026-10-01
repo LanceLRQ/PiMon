@@ -104,17 +104,17 @@ describe('应用外壳与会话守卫', () => {
     expect(screen.queryByRole('heading', { name: '设置' })).not.toBeInTheDocument()
   })
 
-  it('屏幕会话访问 /screen：不再跳转，显示「屏幕端将在 M1d 提供」占位且没有管理外壳', async () => {
+  it('屏幕会话访问 /screen：不再跳转，渲染屏幕端应用且没有管理外壳', async () => {
     const redirect = vi.fn()
     await mount({ session: { authenticated: true, kind: 'screen', needs_setup: false }, path: '/screen', redirectExternal: redirect })
-    expect(await screen.findByText('屏幕端将在 M1d 提供')).toBeInTheDocument()
+    await waitFor(() => expect(document.querySelector('[data-screen-root]')).not.toBeNull())
     expect(redirect).not.toHaveBeenCalled()
     expect(screen.queryByRole('complementary', { name: '主导航' })).not.toBeInTheDocument()
   })
 
-  it('屏幕会话占位页英文界面', async () => {
+  it('屏幕会话访问 /screen 英文界面同样渲染屏幕端应用', async () => {
     await mount({ session: { authenticated: true, kind: 'screen', needs_setup: false }, path: '/screen', lng: 'en' })
-    expect(await screen.findByText('The screen app arrives in M1d')).toBeInTheDocument()
+    await waitFor(() => expect(document.querySelector('[data-screen-root]')).not.toBeNull())
   })
 
   it('屏幕会话访问 /screens（管理页，与 /screen 前缀相近）仍跳 /screen', async () => {
