@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
@@ -171,7 +172,14 @@ func TestLogin_WrongPasswordAndLock(t *testing.T) {
 		}
 	}
 	resp, data := e.do(c, "POST", "/api/login", map[string]any{"password": "wrong-password"})
-	e.expectError(resp, data, 429, "auth.locked")
+	er := e.expectError(resp, data, 429, "auth.locked")
+	wantUntil := e.clk.Now().Add(15 * time.Minute).UTC().Format(time.RFC3339)
+	if got := er.Error.Details["locked_until"]; got != wantUntil {
+		t.Fatalf("locked_until = %v，期望 %s", got, wantUntil)
+	}
+	if got, _ := er.Error.Details["client_ip"].(string); got != "127.0.0.1" {
+		t.Fatalf("client_ip = %v", er.Error.Details["client_ip"])
+	}
 	// 锁定期内正确密码也被拒绝。
 	resp, data = e.do(c, "POST", "/api/login", map[string]any{"password": testPassword})
 	e.expectError(resp, data, 429, "auth.locked")

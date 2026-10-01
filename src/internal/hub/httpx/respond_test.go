@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -65,23 +66,29 @@ func TestWriteValidationFailed(t *testing.T) {
 }
 
 func TestWriteLocked(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
-		d    time.Duration
-		want string
+		d     time.Duration
+		want  string
+		until string
 	}{
-		{15 * time.Minute, "900"},
-		{1500 * time.Millisecond, "2"},
-		{1 * time.Millisecond, "1"},
-		{0, "1"},
-		{-time.Second, "1"},
+		{15 * time.Minute, "900", "2026-01-01T12:15:00Z"},
+		{1500 * time.Millisecond, "2", "2026-01-01T12:00:02Z"},
+		{1 * time.Millisecond, "1", "2026-01-01T12:00:01Z"},
+		{0, "1", "2026-01-01T12:00:01Z"},
+		{-time.Second, "1", "2026-01-01T12:00:01Z"},
 	}
 	for _, tc := range tests {
 		w := httptest.NewRecorder()
-		WriteLocked(w, tc.d)
+		r := httptest.NewRequest("POST", "/api/login", nil)
+		r.RemoteAddr = "192.168.1.35:5555"
+		WithRequestInfo(func() []netip.Prefix { return nil })(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			WriteLocked(w, r, now, tc.d)
+		})).ServeHTTP(w, r)
 		if w.Code != 429 || w.Header().Get("Retry-After") != tc.want {
 			t.Errorf("%v: code=%d Retry-After=%q", tc.d, w.Code, w.Header().Get("Retry-After"))
 		}
-		want := `{"error":{"code":"auth.locked","details":{"retry_after_seconds":` + tc.want + `}}}`
+		want := `{"error":{"code":"auth.locked","details":{"client_ip":"192.168.1.35","locked_until":"` + tc.until + `","retry_after_seconds":` + tc.want + `}}}`
 		if strings.TrimSpace(w.Body.String()) != want {
 			t.Errorf("%v: body=%q", tc.d, w.Body.String())
 		}

@@ -11,7 +11,8 @@ package httpx
 //	auth.required            需要登录                              401
 //	auth.forbidden           无权限                                403
 //	auth.invalid_password    密码错误，details.remaining           401
-//	auth.locked              已锁定，details.retry_after_seconds   429
+//	auth.locked              已锁定，details.retry_after_seconds、locked_until（RFC 3339）、
+//	                         client_ip（请求者来源 IP）                    429
 //	setup.required           尚未完成首次设置                      409
 //	setup.already_done       已完成首次设置                        409
 //	setup.invalid_code       设置码错误，details.remaining         401

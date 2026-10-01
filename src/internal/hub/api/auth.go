@@ -44,7 +44,7 @@ func (s *server) verifyAdminPassword(w http.ResponseWriter, r *http.Request, pas
 	defer s.keyLocks.lock(key)()
 
 	if d := s.Limiter.Locked(key); d > 0 {
-		httpx.WriteLocked(w, d)
+		s.writeLocked(w, r, d)
 		return false
 	}
 	hash, err := s.Admins.PasswordHash(r.Context())
@@ -67,7 +67,7 @@ func (s *server) verifyAdminPassword(w http.ResponseWriter, r *http.Request, pas
 	}
 	remaining := s.Limiter.Fail(key)
 	if remaining == 0 {
-		httpx.WriteLocked(w, s.Limiter.Locked(key))
+		s.writeLocked(w, r, s.Limiter.Locked(key))
 		return false
 	}
 	httpx.WriteError(w, http.StatusUnauthorized, httpx.CodeInvalidPassword, map[string]any{"remaining": remaining})
