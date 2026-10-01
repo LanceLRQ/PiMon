@@ -22,6 +22,9 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/system"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/webui"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/ws"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
 	"github.com/LanceLRQ/PiMon/src/plugins/hubself"
@@ -49,6 +52,7 @@ type App struct {
 	plugins    *plugins.Registry
 	instances  *instances.Service
 	history    *history.Service
+	ws         *ws.Hub
 	notifier   *sdnotify.Notifier
 	handler    http.Handler
 	closed     bool
@@ -151,10 +155,20 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	if err := a.instances.Load(ctx); err != nil {
 		return fmt.Errorf("恢复实例状态: %w", err)
 	}
+	// 实例与设置的变化经广播中心合并后推给 UI WebSocket 的订阅者。
+	a.ws = ws.New(ws.Config{
+		Clock: o.clk, Build: o.version, Instances: a.instances, Settings: st, Sessions: a.sessions,
+	})
+	a.instances.OnChange(a.ws.NotifyInstance)
+	a.sessions.OnRevoke(a.ws.RecheckSessions)
+	st.OnChange(a.ws.NotifySettings)
 	a.handler = api.New(api.Deps{
-		Plugins:      a.plugins,
-		Instances:    a.instances,
-		History:      a.history,
+		Plugins:   a.plugins,
+		Instances: a.instances,
+		History:   a.history,
+		System: system.New(system.Config{
+			Clock: o.clk, Version: o.version, DataDir: a.cfg.DataDir, Plugins: a.plugins, Ring: o.logRing,
+		}),
 		Settings:     st,
 		Hasher:       auth.Hasher{Params: o.params},
 		Limiter:      auth.NewLimiter(o.clk, loginMaxFailures, loginLockTime),
@@ -164,6 +178,8 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		ScreenTokens: a.screen,
 		Backups:      a.backups,
 		Proxies:      proxyStore,
+		Web:          webui.New(webui.Embedded(), o.version),
+		WS:           a.ws.Handler(),
 	})
 	return nil
 }

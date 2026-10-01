@@ -35,7 +35,7 @@ func (s *server) requestLang(r *http.Request) string {
 }
 
 func (s *server) listPlugins(w http.ResponseWriter, r *http.Request) {
-	httpx.WriteJSON(w, http.StatusOK, pluginList(s.Plugins.Snapshot(), s.requestLang(r)))
+	httpx.WriteJSON(w, http.StatusOK, pluginList(s.Plugins.Snapshot(), s.Plugins.Dir(), s.requestLang(r)))
 }
 
 func (s *server) rescanPlugins(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +44,7 @@ func (s *server) rescanPlugins(w http.ResponseWriter, r *http.Request) {
 		internalError(w, r, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, pluginList(snap, s.requestLang(r)))
+	httpx.WriteJSON(w, http.StatusOK, pluginList(snap, s.Plugins.Dir(), s.requestLang(r)))
 }
 
 func (s *server) lookupPlugin(w http.ResponseWriter, r *http.Request) {
@@ -105,11 +105,12 @@ func hasLookupField(m *manifest.Manifest, key string) bool {
 	return false
 }
 
-func pluginList(snap plugins.Snapshot, lang string) model.PluginList {
+func pluginList(snap plugins.Snapshot, dir, lang string) model.PluginList {
 	out := model.PluginList{
 		Plugins:   make([]model.PluginInfo, 0, len(snap.Plugins)),
 		Errors:    []model.PluginLoadIssue{},
 		Conflicts: []model.PluginLoadIssue{},
+		PluginDir: dir,
 	}
 	for _, p := range snap.Plugins {
 		out.Plugins = append(out.Plugins, pluginInfo(p, lang))

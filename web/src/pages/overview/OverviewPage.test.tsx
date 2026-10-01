@@ -1,0 +1,256 @@
+import { act, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { fixtureNow, makeInstance, prototypeInstances } from '@/pages/instances/instances.fixtures'
+import { json, mockApi, patchInstance, renderWithApp, seedStore } from '@/pages/instances/test-utils'
+import { liveStore } from '@/store/live-store'
+import { OverviewPage } from './OverviewPage'
+
+beforeEach(() => {
+  liveStore.reset()
+  localStorage.clear()
+})
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
+
+function cell(title: string): HTMLElement {
+  return screen.getByRole('region', { name: title })
+}
+
+describe('总览页', () => {
+  it('健康汇总：总数、最严重结论与其余状态', async () => {
+    mockApi()
+    seedStore(prototypeInstances)
+    await renderWithApp(<OverviewPage />)
+    const health = cell('健康汇总')
+    expect(within(health).getByText('17')).toBeInTheDocument()
+    expect(within(health).getByText('1 项严重：ubuntu-srv 磁盘 95%')).toBeInTheDocument()
+    expect(within(health).getByText('另有 1 项采集失败、2 项警告')).toBeInTheDocument()
+    const counts = within(health).getAllByRole('term').map((dt) => [dt.textContent, dt.nextElementSibling?.textContent])
+    expect(counts).toEqual([
+      ['正常', '13'],
+      ['警告', '2'],
+      ['严重', '1'],
+      ['采集失败', '1'],
+      ['过期', '0'],
+      ['引用失效', '0'],
+      ['离线', '0'],
+      ['未配置', '0'],
+      ['已暂停', '0'],
+      ['未知/其他', '0'],
+    ])
+    expect(within(health).getByRole('img', { name: '17 个实例的状态分布' }).children).toHaveLength(17)
+  })
+
+  it('全部正常与空集合的结论', async () => {
+    mockApi()
+    seedStore([makeInstance({ id: 'a', name: 'a' })])
+    await renderWithApp(<OverviewPage />)
+    expect(within(cell('健康汇总')).getByText('全部正常')).toBeInTheDocument()
+    expect(within(cell('需要处理')).getByText('没有需要处理的项')).toBeInTheDocument()
+    act(() => liveStore.applyPatch({ type: 'patch', entity: 'instance_removed', id: 'a', server_time: new Date().toISOString() } as never))
+    expect(within(cell('健康汇总')).getByText('还没有监控实例，先添加一个吧。')).toBeInTheDocument()
+  })
+
+  it('其余状态（未知等）单独成类，不被算进正常', async () => {
+    mockApi()
+    seedStore([makeInstance({ id: 'a', name: 'a' }), makeInstance({ id: 'b', name: 'b', display_state: 'unknown' })])
+    await renderWithApp(<OverviewPage />)
+    expect(within(cell('健康汇总')).getByText('1 项状态未知：b')).toBeInTheDocument()
+  })
+
+  it('没有 snapshot 时显示加载中，数字为占位', async () => {
+    mockApi()
+    await renderWithApp(<OverviewPage />)
+    const health = cell('健康汇总')
+    expect(within(health).getByText('加载中')).toBeInTheDocument()
+    expect(within(health).queryByText('0')).toBeNull()
+  })
+
+  it('hub 概况：snapshot 到达前实例数显示未知，不显示 0', async () => {
+    mockApi()
+    await renderWithApp(<OverviewPage />)
+    const hub = cell('hub 概况')
+    expect(within(hub).queryByText('0')).toBeNull()
+    expect(within(hub).getByText('实例数').parentElement).toHaveTextContent('未知')
+  })
+
+  it('需要处理按严重度排序，只有采集失败的行有「立即重试」', async () => {
+    const user = userEvent.setup()
+    const { calls } = mockApi((req) => (req.url === '/api/instances/i04/run' ? json(200, { instance: prototypeInstances[3] }) : undefined))
+    seedStore(prototypeInstances)
+    await renderWithApp(<OverviewPage />)
+    const todo = cell('需要处理')
+    expect(within(todo).getByText('4 项 · 按严重度')).toBeInTheDocument()
+    const items = within(todo).getAllByRole('listitem')
+    expect(items.map((li) => li.getAttribute('data-state-row'))).toEqual(['critical', 'error', 'warning', 'warning'])
+    expect(within(items[0]).getByText('ubuntu-srv')).toBeInTheDocument()
+    expect(within(items[1]).getByText('连接被拒绝')).toBeInTheDocument()
+    expect(within(todo).getAllByRole('button', { name: '立即重试' })).toHaveLength(1)
+    await user.click(within(todo).getByRole('button', { name: '立即重试' }))
+    await waitFor(() => expect(calls.some((c) => c.url === '/api/instances/i04/run' && c.method === 'POST')).toBe(true))
+  })
+
+  it('需要处理纳入 broken、offline、unconfigured 并按严重度排序，排除暂停、维护与未知', async () => {
+    mockApi()
+    seedStore([
+      makeInstance({ id: 'u', name: 'u', display_state: 'unconfigured' }),
+      makeInstance({ id: 'o', name: 'o', display_state: 'offline' }),
+      makeInstance({ id: 'b', name: 'b', display_state: 'broken' }),
+      makeInstance({ id: 'p', name: 'p', display_state: 'critical', paused: true }),
+      makeInstance({ id: 'm', name: 'm', display_state: 'maintenance' }),
+      makeInstance({ id: 'k', name: 'k', display_state: 'unknown' }),
+    ])
+    await renderWithApp(<OverviewPage />)
+    const todo = cell('需要处理')
+    expect(within(todo).getByText('3 项 · 按严重度')).toBeInTheDocument()
+    expect(within(todo).getAllByRole('listitem').map((li) => li.getAttribute('data-state-row'))).toEqual(['broken', 'offline', 'unconfigured'])
+  })
+
+  it('健康汇总：broken、offline、unconfigured 各自计数，不再算作状态未知', async () => {
+    mockApi()
+    seedStore([
+      makeInstance({ id: 'b', name: 'b', display_state: 'broken' }),
+      makeInstance({ id: 'o1', name: 'o1', display_state: 'offline' }),
+      makeInstance({ id: 'o2', name: 'o2', display_state: 'offline' }),
+      makeInstance({ id: 'u', name: 'u', display_state: 'unconfigured' }),
+      makeInstance({ id: 'k', name: 'k', display_state: 'unknown' }),
+    ])
+    await renderWithApp(<OverviewPage />)
+    const health = cell('健康汇总')
+    const count = (label: string) => within(health).getByText(label, { selector: 'dt' }).parentElement!.querySelector('dd')!.textContent
+    expect(count('引用失效')).toBe('1')
+    expect(count('离线')).toBe('2')
+    expect(count('未配置')).toBe('1')
+    expect(count('未知/其他')).toBe('1')
+    expect(within(health).getByText(/^1 项引用失效：b/)).toBeInTheDocument()
+  })
+
+  it('健康汇总：已暂停的严重实例不影响结论，单独计入已暂停', async () => {
+    mockApi()
+    seedStore([
+      makeInstance({ id: 'p', name: 'p', display_state: 'critical', paused: true }),
+      makeInstance({ id: 'a', name: 'a' }),
+    ])
+    await renderWithApp(<OverviewPage />)
+    const health = cell('健康汇总')
+    expect(within(health).getByText('全部正常')).toBeInTheDocument()
+    expect(within(health).getByText('已暂停', { selector: 'dt' }).parentElement!.querySelector('dd')!.textContent).toBe('1')
+    expect(within(health).getByText('严重', { selector: 'dt' }).parentElement!.querySelector('dd')!.textContent).toBe('0')
+    expect(within(cell('需要处理')).getByText('没有需要处理的项')).toBeInTheDocument()
+  })
+
+  it('健康汇总：全部实例已暂停时给出中性结论，不显示全部正常', async () => {
+    mockApi()
+    seedStore([
+      makeInstance({ id: 'p1', name: 'p1', paused: true }),
+      makeInstance({ id: 'p2', name: 'p2', display_state: 'critical', paused: true }),
+    ])
+    await renderWithApp(<OverviewPage />)
+    const health = cell('健康汇总')
+    expect(within(health).getByText('没有运行中的实例（2 个已暂停）')).toBeInTheDocument()
+    expect(within(health).queryByText('全部正常')).toBeNull()
+  })
+
+  it('查看实例打开详情抽屉', async () => {
+    const user = userEvent.setup()
+    mockApi((req) => (req.url === '/api/instances/i01' ? json(200, { ...prototypeInstances[0], config: {}, report: null }) : undefined))
+    seedStore(prototypeInstances)
+    await renderWithApp(<OverviewPage />)
+    await user.click(within(cell('需要处理')).getAllByRole('button', { name: '查看实例' })[0])
+    const dlg = await screen.findByRole('dialog')
+    expect(within(dlg).getByRole('heading', { name: 'ubuntu-srv' })).toBeInTheDocument()
+  })
+
+  it('patch 到达后汇总、结论与需要处理同步变化', async () => {
+    mockApi()
+    seedStore(prototypeInstances)
+    await renderWithApp(<OverviewPage />)
+    act(() => patchInstance({ ...prototypeInstances[0], display_state: 'ok', summary: '磁盘 40%' }))
+    const health = cell('健康汇总')
+    expect(within(health).getByText(/^1 项采集失败：/)).toBeInTheDocument()
+    expect(within(cell('需要处理')).getByText('3 项 · 按严重度')).toBeInTheDocument()
+    expect(within(cell('需要处理')).queryByText('ubuntu-srv')).toBeNull()
+  })
+
+  it('屏幕卡片本期是占位，按键不可点', async () => {
+    mockApi()
+    seedStore(prototypeInstances)
+    await renderWithApp(<OverviewPage />)
+    const screenCard = cell('屏幕')
+    expect(within(screenCard).getByText('屏幕模块待接入')).toBeInTheDocument()
+    for (const b of within(screenCard).getAllByRole('button')) expect(b).toBeDisabled()
+  })
+
+  it('hub 概况：版本、连接状态与最近备份', async () => {
+    mockApi((req) =>
+      req.url === '/api/backups'
+        ? json(200, [
+            { name: 'a', reason: 'daily', created_at: '2026-09-29T04:00:00Z', size: 1 },
+            { name: 'b', reason: 'daily', created_at: '2026-09-30T04:00:00Z', size: 1 },
+          ])
+        : undefined,
+    )
+    seedStore(prototypeInstances, { build: 'v0.1.0-test' })
+    await renderWithApp(<OverviewPage />)
+    const hub = cell('hub 概况')
+    expect(within(hub).getByText('v0.1.0-test')).toBeInTheDocument()
+    expect(within(hub).getByText('hub 在线')).toBeInTheDocument()
+    expect(await within(hub).findByText(/9\/30/)).toBeInTheDocument()
+  })
+
+  it('hub 概况：运行时长取自 /api/system 的 uptime_seconds（不用浏览器时间），取不到时显示未知', async () => {
+    mockApi((req) => (req.url === '/api/system' ? json(200, { version: 'v', started_at: '2000-01-01T00:00:00Z', uptime_seconds: 2 * 86400 + 5 * 3600 + 60 }) : undefined))
+    seedStore(prototypeInstances)
+    await renderWithApp(<OverviewPage />)
+    const hub = cell('hub 概况')
+    await waitFor(() => expect(within(hub).getByText('运行时长').nextElementSibling).toHaveTextContent('2 天 5 小时'))
+  })
+
+  it('hub 概况：/api/system 失败时运行时长显示未知，不当作 0', async () => {
+    mockApi((req) => (req.url === '/api/system' ? new Response('boom', { status: 500 }) : undefined))
+    seedStore(prototypeInstances)
+    await renderWithApp(<OverviewPage />)
+    const hub = cell('hub 概况')
+    await waitFor(() => expect(within(hub).getByText('运行时长').nextElementSibling).toHaveTextContent('未知'))
+  })
+
+  it('备份接口失败时最近备份显示未知，而不是「暂无备份」', async () => {
+    mockApi((req) => (req.url === '/api/backups' ? new Response('boom', { status: 500 }) : undefined))
+    seedStore(prototypeInstances)
+    await renderWithApp(<OverviewPage />)
+    const hub = cell('hub 概况')
+    await waitFor(() => expect(within(hub).getByText('最近备份').nextElementSibling).toHaveTextContent('未知'))
+    expect(within(hub).queryByText('暂无备份')).toBeNull()
+  })
+
+  it('实例一览与实例列表共用同一张表，查询语法可用', async () => {
+    const user = userEvent.setup()
+    mockApi()
+    seedStore(prototypeInstances)
+    await renderWithApp(<OverviewPage />)
+    const table = cell('实例一览')
+    await user.type(within(table).getByLabelText('搜索实例，支持查询语法'), 'http 博客')
+    expect(within(table).getAllByRole('row')).toHaveLength(2)
+    expect(within(table).getByRole('button', { name: '个人博客' })).toBeInTheDocument()
+  })
+
+  it('英文界面', async () => {
+    mockApi()
+    seedStore(prototypeInstances)
+    await renderWithApp(<OverviewPage />, { lng: 'en' })
+    expect(within(cell('Health summary')).getByText('1 critical: ubuntu-srv 磁盘 95%')).toBeInTheDocument()
+    expect(within(cell('Screen')).getByText('Screen module not connected yet')).toBeInTheDocument()
+  })
+
+  it('时钟不影响汇总（时间只用于「更新于」）', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    vi.setSystemTime(fixtureNow)
+    mockApi()
+    seedStore(prototypeInstances)
+    await renderWithApp(<OverviewPage />)
+    expect(within(cell('实例一览')).getByText('12 秒前')).toBeInTheDocument()
+  })
+})

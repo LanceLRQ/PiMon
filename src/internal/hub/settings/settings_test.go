@@ -280,3 +280,19 @@ func TestDetectTimezone(t *testing.T) {
 		})
 	}
 }
+
+func TestOnChange_仅在更新成功后通知(t *testing.T) {
+	s := load(t, openDB(t))
+	calls := 0
+	s.OnChange(func() { calls++ })
+	n := s.Get()
+	n.Language = "en"
+	if err := s.Update(context.Background(), n); err != nil || calls != 1 {
+		t.Fatalf("成功更新应通知一次: calls=%d err=%v", calls, err)
+	}
+	bad := s.Get()
+	bad.Timezone = "Not/AZone"
+	if err := s.Update(context.Background(), bad); err == nil || calls != 1 {
+		t.Fatalf("校验失败不应通知: calls=%d err=%v", calls, err)
+	}
+}

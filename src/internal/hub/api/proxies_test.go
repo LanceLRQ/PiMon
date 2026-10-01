@@ -26,7 +26,7 @@ func (f *fakeReferrers) ListByProxy(_ context.Context, id string) ([]model.Proxy
 	return append([]model.ProxyReferrer(nil), f.refs[id]...), nil
 }
 
-func (f *fakeReferrers) ResetToDirect(_ context.Context, id string) error {
+func (f *fakeReferrers) DetachAndPause(_ context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.resets = append(f.resets, id)
@@ -186,7 +186,7 @@ func TestProxiesDeleteInUseAndForce(t *testing.T) {
 		t.Fatalf("force DELETE = %d %s", resp.StatusCode, data)
 	}
 	if len(e.refs.resets) != 1 || e.refs.resets[0] != p.ID {
-		t.Errorf("应把引用改为直连: %v", e.refs.resets)
+		t.Errorf("应把引用改为直连并暂停: %v", e.refs.resets)
 	}
 	resp, data = e.do(admin, "GET", "/api/proxies/"+p.ID, nil)
 	e.expectError(resp, data, http.StatusNotFound, httpx.CodeProxyNotFound)

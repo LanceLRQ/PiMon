@@ -11,7 +11,8 @@ package httpx
 //	auth.required            需要登录                              401
 //	auth.forbidden           无权限                                403
 //	auth.invalid_password    密码错误，details.remaining           401
-//	auth.locked              已锁定，details.retry_after_seconds   429
+//	auth.locked              已锁定，details.retry_after_seconds、locked_until（RFC 3339）、
+//	                         client_ip（请求者来源 IP）                    429
 //	setup.required           尚未完成首次设置                      409
 //	setup.already_done       已完成首次设置                        409
 //	setup.invalid_code       设置码错误，details.remaining         401
@@ -29,6 +30,11 @@ package httpx
 //	run.failed               采集失败（或上游请求失败），details.message 可选  502
 //	run.busy                 该实例正在运行，等待至多插件超时仍未轮到       409
 //	internal                 内部错误                              500
+//	server.shutting_down     中枢正在关停，暂不接受新的 WebSocket 连接    503
+//	ws.subscribe_denied      UI WebSocket 协议级错误消息（非 HTTP 响应，连接不断开）：
+//	                         当前会话无权订阅所请求的主题，details.topics 为被拒主题
+//	ws.bad_message           UI WebSocket 协议级错误消息（同上）：消息不是合法 JSON、type 未知
+//	                         或订阅了未知主题（details.topics）
 const (
 	CodeInvalidJSON           = "request.invalid_json"
 	CodeValidationFail        = "validation.failed"
@@ -52,4 +58,5 @@ const (
 	CodeRunFailed             = "run.failed"
 	CodeRunBusy               = "run.busy"
 	CodeInternal              = "internal"
+	CodeShuttingDown          = "server.shutting_down"
 )

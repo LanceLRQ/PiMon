@@ -132,6 +132,9 @@ func TestListPluginsResolvesLanguage(t *testing.T) {
 	if zh.Errors == nil || zh.Conflicts == nil {
 		t.Fatal("errors 与 conflicts 应为 [] 而非 null")
 	}
+	if zh.PluginDir != e.pluginDir {
+		t.Fatalf("plugin_dir = %q，期望 %q", zh.PluginDir, e.pluginDir)
+	}
 
 	en := getPlugins(t, e, admin, "GET", "/api/plugins?lang=en")
 	if en.Plugins[0].Name != "English Name" || en.Plugins[0].ConfigSchema[1].Title != "City" {

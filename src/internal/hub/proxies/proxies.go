@@ -46,8 +46,8 @@ func (e *InUseError) Error() string {
 type Referrers interface {
 	// ListByProxy 按代理 id 列出引用它的实例（至少含 id 与名称）。
 	ListByProxy(ctx context.Context, proxyID string) ([]model.ProxyReferrer, error)
-	// ResetToDirect 把所有引用该代理的实例改为直连。
-	ResetToDirect(ctx context.Context, proxyID string) error
+	// DetachAndPause 把所有引用该代理的实例改为直连并暂停（用户重选代理后再恢复）。
+	DetachAndPause(ctx context.Context, proxyID string) error
 }
 
 // Config 是 Store 的依赖。
@@ -119,7 +119,29 @@ func (s *Store) List(ctx context.Context) ([]model.Proxy, error) {
 		}
 		out = append(out, p)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if err := s.fillReferrers(ctx, &out[i]); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// fillReferrers 填入引用该代理的实例，没有引用时为空数组。
+func (s *Store) fillReferrers(ctx context.Context, p *model.Proxy) error {
+	p.Referrers = []model.ProxyReferrer{}
+	if s.refs == nil {
+		return nil
+	}
+	refs, err := s.refs.ListByProxy(ctx, p.ID)
+	if err != nil {
+		return err
+	}
+	p.Referrers = append(p.Referrers, refs...)
+	return nil
 }
 
 func (s *Store) get(ctx context.Context, id string) (model.Proxy, string, error) {
@@ -130,10 +152,13 @@ func (s *Store) get(ctx context.Context, id string) (model.Proxy, string, error)
 	return p, enc, err
 }
 
-// Get 返回单个代理（认证只给"已设置"标记）。
+// Get 返回单个代理（认证只给"已设置"标记），含引用它的实例。
 func (s *Store) Get(ctx context.Context, id string) (model.Proxy, error) {
 	p, _, err := s.get(ctx, id)
-	return p, err
+	if err != nil {
+		return p, err
+	}
+	return p, s.fillReferrers(ctx, &p)
 }
 
 // normalized 是校验并规整后的输入。
@@ -290,8 +315,10 @@ func (s *Store) Update(ctx context.Context, id string, in model.ProxyInput) (mod
 	return s.Get(ctx, id)
 }
 
-// Delete 删除代理。被引用且 force=false 返回 *InUseError；force=true 先把引用改为直连再删除
-// （两步不在同一事务内：改直连成功而删除失败时，引用已是直连，重试即可）。
+// Delete 删除代理。被引用且 force=false 返回 *InUseError；force=true 先把引用的实例清除代理设置并暂停再删除
+// （两步不在同一事务内：先改实例，失败即返回错误且不删代理；改成功而删除失败时，实例已暂停且为直连，重试即可）。
+// 竞态窗口：DetachAndPause 与随后的 DELETE 之间，若有实例刚好改为引用该代理，
+// 它不会被暂停，代理删除后该实例引用已不存在的代理，运行时会明确失败并提示重新选择（Ruling 49），不会静默直连。
 func (s *Store) Delete(ctx context.Context, id string, force bool) error {
 	if _, _, err := s.get(ctx, id); err != nil {
 		return err
@@ -304,7 +331,7 @@ func (s *Store) Delete(ctx context.Context, id string, force bool) error {
 		if !force {
 			return &InUseError{Referrers: refs}
 		}
-		if err := s.refs.ResetToDirect(ctx, id); err != nil {
+		if err := s.refs.DetachAndPause(ctx, id); err != nil {
 			return err
 		}
 	}

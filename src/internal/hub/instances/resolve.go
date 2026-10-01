@@ -34,7 +34,13 @@ type issue struct {
 	kind     issueKind
 	msg      string
 	problems model.FieldErrors
+	// refill 表示配置损坏或密钥无法解密：旧配置不可再用，编辑时须以请求体为完整新配置。
+	refill bool
 }
+
+// RefillKey 是实例详情 problems 里的特殊键：出现表示配置损坏或密钥无法解密，需要重新填写，
+// 而不是某个具体字段的问题。
+const RefillKey = "_config"
 
 // resolved 是一个可运行实例的完整输入：当前插件、整理后的完整配置及其拆分结果。
 type resolved struct {
@@ -53,11 +59,11 @@ func (s *Service) loadFull(r row) (plugins.Plugin, map[string]any, *issue) {
 		return plugins.Plugin{}, nil, &issue{kind: issueBroken, msg: fmt.Sprintf("插件 %s 不可用", r.PluginID)}
 	}
 	if r.Corrupt != "" {
-		return p, nil, &issue{kind: issueBroken, msg: r.Corrupt}
+		return p, nil, &issue{kind: issueBroken, msg: r.Corrupt, refill: true}
 	}
 	secrets, err := s.decodeSecrets(r.SecretsEnc)
 	if err != nil {
-		return p, nil, &issue{kind: issueBroken, msg: err.Error()}
+		return p, nil, &issue{kind: issueBroken, msg: err.Error(), refill: true}
 	}
 	fields := p.Manifest.ConfigSchema
 	var dropped []string

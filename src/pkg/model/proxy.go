@@ -34,9 +34,11 @@ type Proxy struct {
 	// Location 是可用位置：hub | lan | any。
 	Location string `json:"location"`
 	// Auth 只表示是否设置了认证。
-	Auth      ProxyAuthState `json:"auth"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
+	Auth ProxyAuthState `json:"auth"`
+	// Referrers 是引用该代理的监控实例；没有引用时为空数组。
+	Referrers []ProxyReferrer `json:"referrers"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
 // ProxyAuthState 是认证的回显形式：{"set": true}。

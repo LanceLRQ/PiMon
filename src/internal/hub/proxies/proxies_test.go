@@ -28,7 +28,7 @@ func (f *fakeReferrers) ListByProxy(_ context.Context, id string) ([]model.Proxy
 	return append([]model.ProxyReferrer(nil), f.refs[id]...), nil
 }
 
-func (f *fakeReferrers) ResetToDirect(_ context.Context, id string) error {
+func (f *fakeReferrers) DetachAndPause(_ context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.resets = append(f.resets, id)
@@ -388,5 +388,33 @@ func TestTestDefaultsAndValidation(t *testing.T) {
 		if !errors.As(err, &fe) || fe["url"] == "" {
 			t.Errorf("%q: err = %v", bad, err)
 		}
+	}
+}
+
+func TestListAndGetIncludeReferrers(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	a, err := f.s.Create(ctx, input("A"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := f.s.Create(ctx, input("B"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Referrers) != 0 || a.Referrers == nil {
+		t.Fatalf("无引用应为空数组: %#v", a.Referrers)
+	}
+	f.refs.refs[a.ID] = []model.ProxyReferrer{{ID: "i1", Name: "网络连通"}}
+	g, err := f.s.Get(ctx, a.ID)
+	if err != nil || len(g.Referrers) != 1 || g.Referrers[0].Name != "网络连通" {
+		t.Fatalf("Get = %+v, %v", g, err)
+	}
+	list, err := f.s.List(ctx)
+	if err != nil || len(list) != 2 {
+		t.Fatal(err)
+	}
+	if list[0].ID != a.ID || len(list[0].Referrers) != 1 || list[1].ID != b.ID || len(list[1].Referrers) != 0 || list[1].Referrers == nil {
+		t.Fatalf("List 引用不对: %+v", list)
 	}
 }

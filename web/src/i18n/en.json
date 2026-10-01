@@ -1,0 +1,1030 @@
+{
+  "app": {
+    "name": "PiMon",
+    "tagline": "Admin console for the desktop monitoring panel"
+  },
+  "nav": {
+    "primary": "Main navigation",
+    "mobile": "Mobile navigation",
+    "overview": "Overview",
+    "screens": "Screens",
+    "instances": "Instances",
+    "instancesShort": "Instances",
+    "proxies": "Proxies",
+    "settings": "Settings",
+    "system": "System",
+    "devices": "Devices",
+    "alerts": "Alert rules",
+    "channels": "Channels",
+    "later": "later",
+    "more": "More",
+    "laterHint": "Available in {{milestone}}",
+    "sub": {
+      "screenManage": "Screen manager",
+      "layoutEditor": "Layout editor",
+      "schedule": "Schedule & theme",
+      "remote": "Remote control",
+      "instanceList": "Instance list",
+      "instanceNew": "New instance"
+    }
+  },
+  "shell": {
+    "admin": "Administrator",
+    "logout": "Sign out",
+    "logoutFailed": "Sign-out failed",
+    "theme": {
+      "label": "Theme",
+      "system": "Follow system",
+      "light": "Light",
+      "dark": "Dark",
+      "toDark": "Switch to dark",
+      "toLight": "Switch to light"
+    },
+    "language": {
+      "label": "Interface language",
+      "zh": "中",
+      "en": "EN"
+    },
+    "connection": {
+      "online": "Live connection is healthy",
+      "offline": "Live connection lost, reconnecting"
+    },
+    "loading": "Loading",
+    "pageLoadFailed": "Failed to load the page resources. The hub may have just been upgraded; reload the page and try again.",
+    "pageError": "Something went wrong on this page. Reload and try again; check the browser console if it keeps happening.",
+    "reload": "Reload page",
+    "sessionError": "Cannot read the session state. Check that the hub is running.",
+    "retry": "Retry",
+    "screenPlaceholder": "The screen app arrives in M1d",
+    "notFound": "Page not found",
+    "versionUpdated": "The hub was upgraded. Reload the page to load the new version."
+  },
+  "placeholder": {
+    "pending": "This page will be implemented in a later task.",
+    "m1d": "This page will be implemented in M1d."
+  },
+  "pages": {
+    "login": "Sign in",
+    "setup": "First-time setup",
+    "overview": "Overview",
+    "instances": "Instances",
+    "instanceNew": "New instance",
+    "instanceEdit": "Edit instance",
+    "proxies": "Proxies",
+    "settings": "Settings",
+    "system": "System",
+    "screens": "Screen manager",
+    "layoutEditor": "Layout editor",
+    "schedule": "Schedule & theme",
+    "remote": "Remote control"
+  },
+  "status": {
+    "ok": "OK",
+    "warning": "Warning",
+    "critical": "Critical",
+    "unknown": "Unknown",
+    "error": "Collection failed",
+    "stale": "Stale",
+    "offline": "Offline",
+    "maintenance": "Maintenance",
+    "unconfigured": "Not configured",
+    "broken": "Broken reference"
+  },
+  "errors": {
+    "request": {
+      "invalid_json": "The request body is malformed",
+      "timeout": "The request timed out"
+    },
+    "validation": {
+      "failed": "Some fields did not pass validation. Check the highlighted fields."
+    },
+    "auth": {
+      "required": "Sign-in required",
+      "forbidden": "You are not allowed to do this",
+      "invalid_password": "Wrong password",
+      "locked": "Too many attempts. Temporarily locked, try again later."
+    },
+    "setup": {
+      "required": "First-time setup has not been completed",
+      "already_done": "First-time setup is already done",
+      "invalid_code": "Wrong setup code"
+    },
+    "origin": {
+      "mismatch": "Origin check failed. Open this page through the hub address directly."
+    },
+    "not_found": "Resource not found",
+    "backup": {
+      "exists": "A backup with the same reason already exists for this second. Try again shortly."
+    },
+    "plugin": {
+      "not_found": "Plugin not found",
+      "invalid_manifest": "The plugin manifest is invalid"
+    },
+    "proxy": {
+      "not_found": "Proxy not found",
+      "in_use": "The proxy is used by instances and cannot be deleted"
+    },
+    "instance": {
+      "not_found": "Instance not found",
+      "in_use": "The instance is used by screens and cannot be deleted"
+    },
+    "run": {
+      "timeout": "Collection timed out",
+      "failed": "Collection failed",
+      "busy": "This instance is running. Try again shortly."
+    },
+    "internal": "Internal hub error",
+    "server": {
+      "shutting_down": "The hub is shutting down. Try again shortly."
+    },
+    "ws": {
+      "subscribe_denied": "This session may not subscribe to the requested topics",
+      "bad_message": "The live connection received an unrecognised message"
+    },
+    "network": {
+      "failed": "Cannot reach the hub. Check your network."
+    }
+  },
+  "errorFallback": "Operation failed ({{code}})",
+  "common": {
+    "show": "Show password",
+    "hide": "Hide password",
+    "close": "Close",
+    "cancel": "Cancel",
+    "save": "Save",
+    "discard": "Discard",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "test": "Test",
+    "refresh": "Refresh",
+    "retry": "Retry",
+    "loading": "Loading…",
+    "yes": "Yes",
+    "no": "No",
+    "download": "Download",
+    "saving": "Saving…",
+    "withDetail": "{{summary}}: {{detail}}",
+    "colon": ": ",
+    "loadFailed": "Failed to load",
+    "stay": "Stay",
+    "leave": "Leave"
+  },
+  "login": {
+    "title": "Sign in to the admin console",
+    "singleAdmin": "Single admin",
+    "password": "Admin password",
+    "passwordPlaceholder": "Enter password",
+    "submit": "Sign in",
+    "wrongPassword": "Wrong password, {{remaining}} attempts left",
+    "locked": {
+      "title": "Too many failed attempts, locked",
+      "until": "You can try again after {{time}}",
+      "untilWithIp": "You can try again after {{time}} (by source IP {{ip}})",
+      "remaining": "{{remaining}} left"
+    },
+    "httpWarning": "This is an HTTP connection: the password travels in plain text on your LAN. Consider enabling HTTPS via nginx.",
+    "originMismatch": "Origin check failed. You are most likely behind an HTTPS reverse proxy that is not yet a trusted proxy (the list is empty by default and the first-time setup endpoint cannot change it). Finish setup by connecting to the hub directly, then add the proxy address on the Settings page.",
+    "sessionHint": "Session 30 days",
+    "lockHint": "10 failures lock for 15 min",
+    "forgot": "Forgot the password? Run this on the Raspberry Pi:"
+  },
+  "setup": {
+    "topLabel": "pimon-hub · no admin yet",
+    "title": "First-time setup",
+    "noAdmin": "No administrator yet",
+    "steps": {
+      "code": "Setup code",
+      "password": "Admin password",
+      "basics": "Basics",
+      "done": "Done"
+    },
+    "prev": "Back",
+    "next": "Next",
+    "finish": "Finish setup",
+    "position": "Step {{n}} / 3",
+    "originMismatch": "Origin check failed. You are most likely behind an HTTPS reverse proxy that is not yet a trusted proxy (the list is empty by default and the first-time setup endpoint cannot change it). Finish setup by connecting to the hub directly, then add the proxy address on the Settings page.",
+    "code": {
+      "label": "Setup code",
+      "meta": "6 groups × 4 chars",
+      "group": "Group {{n}}",
+      "help": "Case-insensitive. Pasting the whole code splits it into groups.",
+      "incomplete": "Enter the full 24-character setup code",
+      "wrongRemaining": "Wrong setup code, {{remaining}} attempts left",
+      "where": "Where to find it",
+      "whereBody": "The code is shown on the Raspberry Pi screen and in the install terminal. It is valid for 24 hours and single-use. If it expired, run"
+    },
+    "password": {
+      "title": "Set the admin password",
+      "meta": "Single admin · no username",
+      "label": "Password",
+      "confirm": "Confirm password",
+      "length": "{{n}} chars",
+      "min": "At least {{min}} chars",
+      "tooShort": "Password must be at least {{min}} characters",
+      "mismatch": "The two entries do not match",
+      "match": "The two entries match"
+    },
+    "strength": {
+      "label": "Strength",
+      "0": "Very weak",
+      "1": "Weak",
+      "2": "Fair",
+      "3": "Good",
+      "4": "Strong"
+    },
+    "basics": {
+      "meta": "Can be changed later in Settings",
+      "language": "Language",
+      "timezone": "Time zone",
+      "fromBrowser": "from browser",
+      "timezoneHelp": "Schedules and log times use this time zone.",
+      "accessUrl": "Access URL",
+      "optional": "optional",
+      "accessUrlHelp": "Used for links in push messages; leave empty to send messages without links."
+    },
+    "fieldError": {
+      "invalid": "Invalid value",
+      "required": "Required",
+      "out_of_range": "Out of the allowed range",
+      "pattern_mismatch": "Wrong format",
+      "duplicate": "Already exists",
+      "password": {
+        "out_of_range": "Password must be at least 8 characters"
+      },
+      "timezone": {
+        "invalid": "The server does not recognise this time zone, pick another"
+      },
+      "language": {
+        "invalid": "Unsupported language"
+      },
+      "access_url": {
+        "invalid": "The access URL must be a valid address starting with http:// or https://"
+      }
+    },
+    "done": {
+      "title": "Setup complete",
+      "body": "The screen will show the home page in a few seconds.",
+      "admin": "Admin",
+      "adminValue": "Set · {{strength}}",
+      "langTz": "Language · time zone",
+      "code": "Setup code",
+      "codeValue": "Used",
+      "enter": "Open overview"
+    }
+  },
+  "time": {
+    "never": "Never succeeded",
+    "secondsAgo": "{{n}}s ago",
+    "minutesAgo": "{{n}} min ago",
+    "hoursAgo": "{{n}} h ago",
+    "daysAgo": "{{n}} d ago",
+    "passed": "passed",
+    "inSeconds": "in {{n}}s",
+    "inMinutes": "in {{n}} min",
+    "inHours": "in {{n}} h",
+    "inDays": "in {{n}} d",
+    "uptimeDays": "{{d}}d {{h}}h",
+    "uptimeHours": "{{h}}h {{m}}m",
+    "uptimeMinutes": "{{m}} min",
+    "uptimeSeconds": "{{s}} s"
+  },
+  "items": {
+    "unknown": "Unknown",
+    "gauge": "Gauge reading",
+    "quota": "Quota",
+    "quotaPct": "{{pct}}% remaining",
+    "quotaUsed": "Used {{used}} / total {{total}}",
+    "quotaRemaining": "Remaining {{value}}",
+    "resetsAt": "Resets {{at}} ({{in}})",
+    "expiresAt": "Expires {{at}} ({{in}})",
+    "moneyUsed": "Used {{value}}",
+    "moneyTotal": "Total {{value}}",
+    "tableEmpty": "No rows",
+    "itemError": "Item error: {{message}}",
+    "unsupported": "Unsupported item type \"{{type}}\""
+  },
+  "instances": {
+    "sub": "{{total}} instances · {{hub}} on hub · {{other}} elsewhere",
+    "stripLabel": "Status summary",
+    "strip": {
+      "plugins": "Plugins",
+      "exec": " · exec {{count}}",
+      "locations": "Locations"
+    },
+    "listTitle": "Instance list",
+    "add": "Add instance",
+    "hubLocal": "hub (local)",
+    "local": "local",
+    "search": "Search instances, query syntax supported",
+    "filter": {
+      "label": "Filters",
+      "all": "All",
+      "attention": "Needs attention",
+      "location": "Location",
+      "locationSet": "Location: {{value}}",
+      "allLocations": "All locations",
+      "plugin": "Plugin",
+      "pluginSet": "Plugin: {{value}}",
+      "allPlugins": "All plugins"
+    },
+    "cols": {
+      "status": "Status",
+      "name": "Name",
+      "runs": "Runs on",
+      "reading": "Key reading",
+      "updated": "Updated",
+      "actions": "Actions"
+    },
+    "severityFirst": "worst first",
+    "sort": {
+      "status": "by status · worst first",
+      "name": "by name",
+      "run": "by location",
+      "ago": "by update time",
+      "reversed": " (reversed)"
+    },
+    "count": "Showing {{shown}} / {{total}} · sorted {{sort}}",
+    "groupedSuffix": " · grouped by plugin",
+    "syntax": "Syntax: status:ok|warning|critical|error|stale · runs:hub|agent · plugin:plugin id",
+    "empty": "No monitoring instances yet",
+    "noMatch": "No matching instances · clear the filters or edit the query",
+    "clearFilter": "Clear filters",
+    "select": "Select {{name}}",
+    "selectAll": "Select all",
+    "pausedTag": "paused",
+    "rowMenu": "More actions for {{name}}",
+    "groupCount": "{{count}} instances",
+    "groupAllOk": "all OK",
+    "menu": {
+      "detail": "View details",
+      "run": "Collect now",
+      "edit": "Edit config",
+      "copy": "Copy as new instance",
+      "pause": "Pause collection",
+      "resume": "Resume collection",
+      "delete": "Delete instance"
+    },
+    "view": {
+      "label": "View",
+      "flat": "Flat",
+      "group": "By plugin"
+    },
+    "batch": {
+      "label": "Batch actions",
+      "selected": "{{count}} selected",
+      "clear": "Clear selection",
+      "failedItem": "{{name}} ({{reason}})",
+      "more": ", and {{count}} more",
+      "summary": "{{ok}} succeeded, {{failed}} failed: {{list}}"
+    },
+    "execDir": "exec plugin directory",
+    "execWatched": "is watched; plugins dropped in appear automatically",
+    "execErrors": "{{count}} plugin directories failed to load",
+    "rescan": "Rescan",
+    "rescanDone": "Scan finished · {{found}} · {{time}}",
+    "rescanFound": "{{count}} new plugins found",
+    "rescanNone": "no new plugins",
+    "toast": {
+      "ran": "Collected \"{{name}}\"",
+      "ranMany": "Collection finished for {{count}} instances",
+      "paused": "Paused \"{{name}}\"",
+      "resumed": "Resumed \"{{name}}\"",
+      "pausedMany": "Paused {{count}} instances",
+      "copied": "Copied as \"{{name}}\", please complete its configuration",
+      "deleted": "Deleted {{count}} instances"
+    },
+    "delete": {
+      "title": "Delete the {{count}} selected instances?",
+      "body": "The following {{count}} instances and their history will be deleted; widgets bound to them on screens will show \"broken reference\".",
+      "irreversible": "This cannot be undone.",
+      "confirm": "Delete",
+      "affectedTitle": "These instances are still used by screens",
+      "affectedBody": "The instances below are referenced by widgets on screens. After deleting, those widgets will show \"broken reference\".",
+      "screens": "Referenced by screens: ",
+      "force": "Delete anyway"
+    }
+  },
+  "detail": {
+    "title": "Instance details: {{name}}",
+    "status": "Status",
+    "state": "Display state",
+    "plugin": "Plugin",
+    "interval": "Refresh interval",
+    "intervalValue": "{{n}} s",
+    "intervalOverride": " (overridden)",
+    "lastSuccess": "Last success",
+    "failures": "Consecutive failures",
+    "paused": "Collection",
+    "pausedYes": "paused",
+    "items": "Data items ({{count}})",
+    "noReport": "Never collected successfully, no data items yet",
+    "noItems": "This report has no data items",
+    "staleReport": "The last collection failed; values below were kept from before the failure.",
+    "history": "Last 24 hours",
+    "historyNoNumeric": "This instance has no numeric items, so there is no history chart.",
+    "historyNone": "This item has no history.",
+    "historyEmpty": "No samples in the last 24 hours yet.",
+    "historyItem": "Choose data item",
+    "historyField": "Chart field",
+    "fieldRemainingPct": "Remaining %",
+    "fieldUsed": "Used",
+    "historyMeta": "{{points}} points · {{tier}} tier",
+    "errors": "Recent error and stderr excerpt",
+    "issue": "This instance cannot run right now",
+    "lastError": "Last failure (redacted, includes stderr tail)",
+    "noError": "The last collection succeeded, no errors.",
+    "problems": "Fields that do not match the plugin",
+    "weatherCredit": "Weather data source: "
+  },
+  "overview": {
+    "sub": "Is everything fine now? What needs my attention?",
+    "instanceUnit": "monitoring instances",
+    "noInstances": "No monitoring instances yet, add one first.",
+    "otherState": "Unknown/other",
+    "pausedState": "Paused",
+    "distribution": "Status distribution of {{count}} instances",
+    "legend": "legend",
+    "listSep": ", ",
+    "also": "also {{list}}",
+    "alsoItem": {
+      "broken": "{{count}} broken references",
+      "offline": "{{count}} offline",
+      "unconfigured": "{{count}} unconfigured",
+      "paused": "{{count}} paused",
+      "critical": "{{count}} critical",
+      "error": "{{count}} collection failures",
+      "warning": "{{count}} warnings",
+      "stale": "{{count}} stale",
+      "other": "{{count}} unknown"
+    },
+    "verdict": {
+      "broken": "{{count}} broken references: {{name}}",
+      "offline": "{{count}} offline: {{name}}",
+      "unconfigured": "{{count}} unconfigured: {{name}}",
+      "allOk": "All OK",
+      "noActive": "No active instances ({{count}} paused)",
+      "critical": "{{count}} critical: {{name}} {{reading}}",
+      "error": "{{count}} collection failures: {{name}} {{reading}}",
+      "warning": "{{count}} warnings: {{name}} {{reading}}",
+      "stale": "{{count}} stale: {{name}}",
+      "other": "{{count}} with unknown state: {{name}}"
+    },
+    "health": {
+      "title": "Health summary"
+    },
+    "hub": {
+      "title": "Hub overview",
+      "version": "Version",
+      "connection": "Live connection",
+      "online": "hub online",
+      "offline": "disconnected",
+      "lastBackup": "Last backup",
+      "noBackup": "No backups yet",
+      "timezone": "Time zone",
+      "instances": "Instances",
+      "agents": "Agents online",
+      "agentsLater": "Coming in M2",
+      "uptime": "Uptime"
+    },
+    "attention": {
+      "title": "Needs attention",
+      "meta": "{{count}} items · by severity",
+      "none": "Nothing needs attention",
+      "view": "View instance",
+      "retry": "Retry now",
+      "lastSuccess": "last success {{ago}}"
+    },
+    "screen": {
+      "title": "Screen",
+      "meta": "arrives in M1d",
+      "pending": "Screen module not connected yet",
+      "keyRefresh": "Refresh",
+      "keySwitch": "Switch screen",
+      "keyOff": "Screen off",
+      "keyWake": "Wake temporarily"
+    },
+    "table": "All instances"
+  },
+  "form": {
+    "required": "required",
+    "on": "On",
+    "off": "Off",
+    "numberDefault": "default {{value}}",
+    "enumNone": "Not selected",
+    "durationPresets": "Common durations",
+    "durationFormat": "Format: 10s, 1m30s",
+    "secretKeep": "Already set; leave empty to keep it",
+    "secretNew": "Enter the secret",
+    "secretUrlNew": "Enter the full address (the address itself is the credential)",
+    "secretIsSet": "Set",
+    "show": "Show",
+    "hide": "Hide",
+    "urlRules": "Validation rules",
+    "urlAllowQuery": "Query parameters allowed",
+    "urlAllowPublicHttp": "Public http allowed",
+    "urlFollowRedirects": "Follows redirects",
+    "yes": " (yes)",
+    "no": " (no)",
+    "proxyDirect": "Direct (no proxy)",
+    "proxyUnavailable": "Proxy {{id}} (not usable here)",
+    "proxyMissing": "Proxy {{id}} (no longer exists)",
+    "proxyLoadFailed": "Could not load the proxy list; only direct is available for now.",
+    "proxyHelp": "Refers to the global list on the Proxies page.",
+    "proxyManage": "Manage proxies",
+    "listItem": "{{title}} item {{n}}",
+    "listRemove": "Remove item {{n}}",
+    "add": "Add item",
+    "addRow": "Add row",
+    "kvKey": "Name",
+    "kvValue": "Value",
+    "kvSecretValue": "Value (secret, never shown again)",
+    "kvKeyOf": "Row {{n}} name",
+    "kvValueOf": "Row {{n}} value",
+    "kvRemove": "Remove row {{n}}",
+    "lookupPlaceholder": "Type to search",
+    "lookupSearching": "Searching…",
+    "lookupNoMatch": "No matches",
+    "lookupClear": "Clear",
+    "lookupCandidates": "Candidates",
+    "lookupUnsupported": "This plugin does not support candidate lookup",
+    "objectEmpty": "No entries yet.",
+    "objectRow": "Entry {{n}}",
+    "objectUp": "Move entry {{n}} up",
+    "objectDown": "Move entry {{n}} down",
+    "objectRemove": "Remove entry {{n}}",
+    "errors": {
+      "required": "This field is required",
+      "invalid": "Invalid format",
+      "out_of_range": "Out of the allowed range",
+      "pattern_mismatch": "Does not match the required format",
+      "duplicate": "Duplicates an existing entry"
+    }
+  },
+  "editor": {
+    "sub": "Pick a plugin, fill in the fields it declares, save and test",
+    "cancel": "Cancel",
+    "back": "Back to instances",
+    "catalog": {
+      "title": "Plugins",
+      "meta": "{{total}} · builtin {{builtin}} · exec {{exec}}",
+      "search": "Search plugin name or id",
+      "none": "No matching plugins",
+      "change": "Change plugin",
+      "current": "Current plugin: {{name}}",
+      "cat": {
+        "system": "System",
+        "host": "Host",
+        "service": "Services",
+        "network": "Network",
+        "weather": "Weather",
+        "other": "Other"
+      }
+    },
+    "config": {
+      "title": "Configuration",
+      "meta": "{{id}} v{{version}} · config_schema",
+      "pick": "Pick a plugin on the left, then fill in the fields it declares.",
+      "pluginFields": "Plugin fields",
+      "fieldCount": "{{count}} fields · {{required}} required",
+      "common": "Common fields",
+      "commonMeta": "Every plugin has these",
+      "name": "Instance name",
+      "nameHelp": "Shown in the instance list and on screen widgets.",
+      "namePlaceholder": "e.g. {{example}}",
+      "runsOn": "Runs on",
+      "runsHub": "hub (local)",
+      "runsAgent": "agent",
+      "agentLater": "Running on an agent comes in a later phase",
+      "runsOnHelp": "For now instances run on the hub itself.",
+      "agentOnly": "This plugin can only run on an agent, which is not available yet.",
+      "interval": "Refresh interval",
+      "intervalOverride": "Override the plugin default ({{value}})",
+      "intervalHelp": "At least {{min}}, at most 24 hours; formats like 30s, 5m, 1h.",
+      "loadFailed": "Could not load the instance",
+      "notFound": "This instance does not exist; it may have been deleted.",
+      "pluginMissing": "The plugin \"{{id}}\" used by this instance is unavailable, so it cannot be edited.",
+      "refill": "This instance's configuration is damaged or its secrets cannot be decrypted. Fill in every required field again (including secrets) and save.",
+      "problems": "The configuration no longer matches the plugin's current fields; the fields to complete or correct are marked below.",
+      "unmapped": "These problems do not map to a form field:",
+      "pluginsFailed": "Could not load the plugin list"
+    },
+    "save": {
+      "title": "Save",
+      "valid": "Ready",
+      "invalid": "Not passing",
+      "summaryPlugin": "Plugin",
+      "summaryName": "Instance name",
+      "summaryRuns": "Runs on",
+      "summaryInterval": "Refresh interval",
+      "summaryCheck": "Field check",
+      "intervalDefault": "{{value}} (default)",
+      "intervalCustom": "{{value}} (override)",
+      "checkPass": "Passed",
+      "checkFail": "{{count}} to fix",
+      "save": "Save",
+      "saveTest": "Save and test",
+      "saving": "Saving…",
+      "testing": "Collecting…",
+      "saved": "Saved \"{{name}}\"",
+      "savedTested": "Saved \"{{name}}\" and finished the test",
+      "fixFirst": "{{count}} more to fix"
+    },
+    "result": {
+      "title": "Test result",
+      "empty": "Not tested yet. \"Save and test\" runs one collection right away and shows the report.",
+      "running": "Collecting, please wait…",
+      "duration": "Took {{ms}} ms",
+      "at": "Finished at {{time}}",
+      "items": "Items ({{count}})",
+      "noItems": "The report has no items.",
+      "rawJson": "Raw report JSON",
+      "rawSize": "{{size}} B",
+      "failedSaved": "The instance is saved, but this collection failed; the hub retries with backoff.",
+      "failedNotSaved": "The test did not run.",
+      "stale": "This is retained old data.",
+      "summary": "Summary",
+      "busyTitle": "Collecting",
+      "busy": "The instance is saved; it is being collected right now, try the test again shortly."
+    },
+    "withDetail": "{{summary}}: {{detail}}"
+  },
+  "proxies": {
+    "sub": "Global proxy list; plugins pick one from a dropdown, default is direct",
+    "add": "Add proxy",
+    "loadFailed": "Could not load the proxy list",
+    "list": {
+      "title": "Proxies",
+      "meta": "{{count}} · credentials are write-only",
+      "empty": "No proxies yet",
+      "emptyHint": "A plugin whose proxy field is empty connects directly; once you add a proxy you can pick it from the dropdown in plugin settings."
+    },
+    "cols": {
+      "name": "Name",
+      "scheme": "scheme",
+      "address": "Address",
+      "auth": "Auth",
+      "remoteDns": "Remote dns",
+      "location": "Available on",
+      "refs": "Used by",
+      "lastTest": "Last test"
+    },
+    "auth": {
+      "has": "Set",
+      "none": "None"
+    },
+    "dns": {
+      "na": "n/a",
+      "yes": "Yes",
+      "no": "No"
+    },
+    "location": {
+      "hub": "hub",
+      "lan": "LAN",
+      "any": "Any"
+    },
+    "refs": {
+      "count": "{{count}} instance(s)",
+      "zero": "0 instances"
+    },
+    "test": {
+      "never": "Not tested",
+      "ok": "{{status}} · {{ms}} ms",
+      "failed": "Failed",
+      "running": "Testing…",
+      "okShort": "OK",
+      "toastOk": "\"{{name}}\" passed: {{status}} · {{ms}} ms",
+      "toastFail": "\"{{name}}\" failed: {{error}}",
+      "aria": "Test {{name}}",
+      "atTime": "{{time}}"
+    },
+    "edit": "Edit {{name}}",
+    "delete": "Delete {{name}}",
+    "note": "\"Direct\" is not a proxy entry: leave a plugin's proxy field empty to connect directly. Deleting a proxy that is in use pauses the instances using it and clears their proxy setting; choose a new proxy before resuming them.",
+    "legend": {
+      "title": "Available on",
+      "meta": "Decides which run locations can pick it",
+      "hub": "Only plugins running on the Raspberry Pi, e.g. a proxy that listens on 127.0.0.1 only.",
+      "lan": "The hub and agents on the LAN; agents on a public VPS cannot pick it.",
+      "any": "Every run location, including a VPS the hub dials out to."
+    },
+    "drawer": {
+      "titleNew": "Add proxy",
+      "titleEdit": "Edit proxy · {{name}}",
+      "name": "Name",
+      "scheme": "scheme",
+      "address": "Address",
+      "host": "Host",
+      "port": "Port",
+      "hostPlaceholder": "10.0.0.2",
+      "portPlaceholder": "1080",
+      "username": "Username",
+      "password": "Password",
+      "passwordSet": "Set · leave empty to keep",
+      "passwordOptional": "Optional",
+      "passwordHelp": "Stored encrypted, never shown again. When changing the password, re-enter the username too.",
+      "clearAuth": "Clear the saved credentials",
+      "remoteDns": "Remote DNS",
+      "remoteDnsLabel": "Resolve domain names on the proxy server",
+      "remoteDnsHelp": "socks5h always resolves remotely; socks5 is optional; http and https proxies resolve on the proxy side, nothing to set.",
+      "location": "Available on",
+      "refs": "Used by",
+      "noRefs": "No instance uses it",
+      "test": "Test",
+      "testNew": "Save first to test it.",
+      "testTarget": "Test target",
+      "testHelp": "Defaults to the Google 204 address and can be changed; the test uses the saved settings, not unsaved edits.",
+      "saved": "Saved proxy \"{{name}}\"",
+      "created": "Added proxy \"{{name}}\""
+    },
+    "deleteDialog": {
+      "title": "Delete proxy \"{{name}}\"?",
+      "bodyRefs": "{{count}} instance(s) use it. These instances will be paused and their proxy setting cleared; choose a new proxy for them before resuming:",
+      "bodyNone": "No instance uses it, so it can be deleted right away.",
+      "ack": "I understand these instances will be paused",
+      "confirm": "Delete proxy",
+      "deleted": "Deleted proxy \"{{name}}\"",
+      "inUse": "An instance just started using this proxy; please review the affected instances."
+    },
+    "fieldError": {
+      "invalid": "Invalid value",
+      "required": "Required",
+      "duplicate": "A proxy with this name already exists",
+      "name": {
+        "required": "Enter a name",
+        "duplicate": "A proxy with this name already exists"
+      },
+      "scheme": {
+        "required": "Choose a protocol",
+        "invalid": "Unsupported protocol"
+      },
+      "address": {
+        "required": "Enter an address",
+        "invalid": "Use \"host:port\", without a protocol or credentials"
+      },
+      "location": {
+        "invalid": "Unsupported location"
+      },
+      "auth": {
+        "username": {
+          "required": "A username is required when a password is set"
+        }
+      },
+      "clear_auth": {
+        "invalid": "Cannot clear the credentials and submit new ones at once"
+      },
+      "url": {
+        "invalid": "The target must start with http:// or https://"
+      }
+    },
+    "portInvalid": "The port must be an integer from 1 to 65535"
+  },
+  "settings": {
+    "sub": "Global hub settings; changes take effect after saving",
+    "loadFailed": "Could not load settings",
+    "anchors": "Settings sections",
+    "general": {
+      "title": "General",
+      "meta": "general",
+      "language": "Language",
+      "languageHelp": "Global language for plugin text and notifications; use the 中/EN switch in the sidebar for this browser's UI language.",
+      "timezone": "Time zone",
+      "timezoneHelp": "Schedules, logs and backup times all follow this time zone.",
+      "accessUrl": "Access URL",
+      "accessUrlPlaceholder": "https://pimon.home.arpa",
+      "accessUrlHelp": "Used for links in push messages; leave empty to omit links."
+    },
+    "net": {
+      "title": "Network & security",
+      "meta": "security",
+      "https": "HTTPS",
+      "httpsNow": "This page is served over {{scheme}} · port {{port}}",
+      "httpsRestart": "Applies after restart",
+      "httpsHelp": "Direct HTTPS uses a self-signed certificate, so browsers will warn; an nginx reverse proxy is recommended for HTTPS. The hub must restart for a change to apply.",
+      "trusted": "Trusted proxies",
+      "trustedHelp": "Empty by default. X-Forwarded-* is only honored from these sources; the same headers from anywhere else are ignored.",
+      "trustedEmpty": "None added",
+      "trustedPlaceholder": "IP or CIDR, e.g. 10.0.0.0/24",
+      "trustedAdd": "Add",
+      "trustedAddAria": "Add a trusted proxy",
+      "trustedRemove": "Remove {{value}}",
+      "trustedDuplicate": "This source is already listed",
+      "password": "Admin password",
+      "passwordChange": "Change password",
+      "lockout": "Login lockout",
+      "lockoutHelp": "Fixed policy, not configurable.",
+      "lockoutTimes": "10 failures",
+      "lockoutFor": "locked for 15 min",
+      "lockoutPerIp": "per source IP"
+    },
+    "display": {
+      "title": "Display",
+      "meta": "display",
+      "reduce": "Reduce effects",
+      "reduceHelp": "Turns off glow and motion; suits always-on screens or weak hardware. Same switch as on the Schedule page.",
+      "theme": "Admin theme",
+      "themeHelp": "Light by default; affects the admin UI only, applies immediately and is remembered in this browser, no need to save. The screen theme is set under Schedule & themes."
+    },
+    "retention": {
+      "title": "Data retention",
+      "meta": "retention",
+      "label": "History",
+      "raw": "Raw samples",
+      "fiveMin": "5-minute rollups",
+      "hour": "1-hour rollups",
+      "hours": "{{n}} h",
+      "days": "{{n}} days",
+      "help": "Three downsampling tiers; data past its limit is purged by the hub periodically."
+    },
+    "backup": {
+      "title": "Backups",
+      "meta": "backup",
+      "last": "Latest {{time}} · {{reason}}",
+      "none": "No backups yet",
+      "daily": "Daily local backup",
+      "dailyHelp": "Backup files are written to the backups directory inside the hub data directory.",
+      "keep": "Copies to keep",
+      "keepUnit": "copies",
+      "keepOriginal": "Was {{n}}",
+      "download": "Download latest backup",
+      "downloadBtn": "Download {{name}}",
+      "downloadNone": "No backup to download yet",
+      "nas": "NAS backup",
+      "nasHelp": "Encrypted sync to a NAS, coming in phase 2.",
+      "nasBadge": "M2",
+      "backupNow": "Back up now"
+    },
+    "reason": {
+      "daily": "Daily",
+      "manual": "Manual",
+      "pre-upgrade": "Pre-upgrade"
+    },
+    "downloadWarn": {
+      "title": "Download backup",
+      "body": "The archive contains key files (encryption key, agent credentials, notification tokens). Keep it safe and never upload it anywhere public.",
+      "file": "File: {{name}}",
+      "confirm": "I understand, download"
+    },
+    "bar": {
+      "dirty": "{{count}} unsaved change(s)",
+      "errors": "{{count}} failed validation",
+      "hint": "Applies on save; the HTTPS switch needs a hub restart",
+      "discard": "Discard",
+      "save": "Save",
+      "saving": "Saving…"
+    },
+    "saved": "Settings saved",
+    "savedRestart": "Settings saved; the HTTPS change applies after the hub restarts",
+    "discarded": "Changes discarded",
+    "saveFailed": "Could not save",
+    "changed": "Changed",
+    "fieldError": {
+      "invalid": "Invalid value",
+      "out_of_range": "Out of range",
+      "required": "Required",
+      "language": {
+        "invalid": "Unsupported language"
+      },
+      "timezone": {
+        "invalid": "The server does not recognise this time zone; pick another"
+      },
+      "access_url": {
+        "invalid": "The access URL must be a valid address starting with http:// or https://"
+      },
+      "trusted_proxies": {
+        "invalid": "Not a valid IP or CIDR"
+      },
+      "retention": {
+        "raw_hours": {
+          "out_of_range": "Raw samples are kept 1–168 hours"
+        },
+        "five_min_days": {
+          "out_of_range": "5-minute rollups are kept 1–365 days"
+        },
+        "hour_days": {
+          "out_of_range": "1-hour rollups are kept 1–1825 days"
+        }
+      },
+      "backup": {
+        "daily_at": {
+          "invalid": "The backup time must be HH:MM"
+        },
+        "keep": {
+          "out_of_range": "Keep 1–30 copies"
+        }
+      }
+    },
+    "password": {
+      "title": "Change admin password",
+      "current": "Current password",
+      "new": "New password",
+      "confirm": "Confirm new password",
+      "help": "At least {{min}} characters. All other sessions are signed out.",
+      "tooShort": "The new password needs at least {{min}} characters",
+      "mismatch": "The two new passwords do not match",
+      "currentRequired": "Enter the current password",
+      "submit": "Change password",
+      "done": "Password changed; other sessions were signed out",
+      "wrong": "Wrong current password, {{remaining}} attempt(s) left"
+    },
+    "leave": {
+      "title": "Leave Settings?",
+      "body": "You have unsaved changes; they will be lost if you leave.",
+      "stay": "Stay on this page",
+      "leave": "Discard changes and leave"
+    }
+  },
+  "system": {
+    "sub": "Hub version, resources, screen daemon and logs",
+    "loadFailed": "Could not load system info",
+    "readout": {
+      "hub": "hub {{version}}",
+      "uptime": "up {{uptime}}"
+    },
+    "version": {
+      "title": "Version",
+      "meta": "pimon-hub",
+      "uptime": "Uptime",
+      "go": "Go",
+      "startedAt": "Started",
+      "build": "build {{build}}"
+    },
+    "resources": {
+      "title": "Resources",
+      "meta": "hub process",
+      "memory": "Hub memory",
+      "memoryValue": "{{sys}} (heap {{heap}})",
+      "dataDir": "Data directory",
+      "dataUsed": "Data directory size",
+      "writes24h": "Disk writes (last 24 h)",
+      "writesSince": "Written since start",
+      "writesEstimated": "extrapolated from the average rate since start",
+      "unsupported": "Not readable on this platform",
+      "cached": "Refreshed every 60 s"
+    },
+    "screen": {
+      "title": "Screen",
+      "meta": "M1d",
+      "placeholder": "Screen online state, resolution and kiosk daemon details appear here once screen sessions are wired up in M1d."
+    },
+    "idle": {
+      "title": "System idle-blank check",
+      "meta": "M1e",
+      "placeholder": "Checks whether the system will blank the screen on its own (swayidle etc.); provided with the kiosk deployment in M1e."
+    },
+    "plugins": {
+      "title": "Plugins",
+      "meta": "{{total}} registered · builtin {{builtin}} · exec {{exec}}",
+      "cols": {
+        "plugin": "Plugin",
+        "kind": "Kind",
+        "source": "Source",
+        "status": "Status"
+      },
+      "loaded": "Loaded",
+      "error": "Failed to load",
+      "conflict": "Conflict",
+      "builtinRow": "builtin × {{count}}",
+      "builtinSource": "Compiled into pimon-hub",
+      "dir": "exec plugin directory",
+      "rescan": "Rescan plugin directory",
+      "rescanning": "Scanning…",
+      "rescanned": "Scan done · {{total}} plugins",
+      "scanFailed": "Scan failed",
+      "loadFailed": "Could not load the plugin list",
+      "issues": "{{errors}} failed to load, {{conflicts}} conflicting"
+    },
+    "logs": {
+      "title": "Recent hub logs",
+      "meta": "{{count}} / {{capacity}} entries",
+      "hint": "mono in the attributes is the monotonic time since start, useful for spotting clock jumps",
+      "level": "Log level",
+      "all": "All",
+      "info": "info",
+      "warn": "warn",
+      "error": "error",
+      "empty": "No matching log entries",
+      "emptyAll": "No logs yet",
+      "refresh": "Refresh logs",
+      "loadFailed": "Could not load logs",
+      "aria": "hub logs",
+      "maskNote": "Secret-like attributes are hidden in logs"
+    },
+    "backups": {
+      "title": "Backups",
+      "meta": "{{count}} · daily {{time}} · keep {{keep}}",
+      "settings": "Settings",
+      "cols": {
+        "time": "Time",
+        "file": "File",
+        "size": "Size",
+        "type": "Type"
+      },
+      "empty": "No backups yet",
+      "backupNow": "Back up now",
+      "backingUp": "Backing up…",
+      "created": "Created backup \"{{name}}\"",
+      "loadFailed": "Could not load the backup list"
+    }
+  }
+}

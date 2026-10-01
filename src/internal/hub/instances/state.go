@@ -158,6 +158,7 @@ func (s *Service) applyResult(id, hash string, rep *report.Report, err error) {
 	if err == nil {
 		hist.Record(id, now, rep)
 	}
+	s.notify(id)
 }
 
 // acquireRun 取实例的运行锁，给定时采集用：一直等到拿到锁或 ctx 结束。

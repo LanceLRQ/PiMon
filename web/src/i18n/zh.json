@@ -1,0 +1,1030 @@
+{
+  "app": {
+    "name": "PiMon",
+    "tagline": "桌面监控面板的管理界面"
+  },
+  "nav": {
+    "primary": "主导航",
+    "mobile": "手机导航",
+    "overview": "总览",
+    "screens": "屏幕",
+    "instances": "监控实例",
+    "instancesShort": "实例",
+    "proxies": "代理",
+    "settings": "设置",
+    "system": "系统",
+    "devices": "设备",
+    "alerts": "告警规则",
+    "channels": "通知渠道",
+    "later": "后续阶段",
+    "more": "更多",
+    "laterHint": "{{milestone}} 阶段提供",
+    "sub": {
+      "screenManage": "屏幕管理",
+      "layoutEditor": "布局编辑器",
+      "schedule": "时段计划与主题",
+      "remote": "远程操作",
+      "instanceList": "实例列表",
+      "instanceNew": "新建实例"
+    }
+  },
+  "shell": {
+    "admin": "管理员",
+    "logout": "退出登录",
+    "logoutFailed": "退出登录失败",
+    "theme": {
+      "label": "主题",
+      "system": "跟随系统",
+      "light": "浅色",
+      "dark": "深色",
+      "toDark": "切换到深色",
+      "toLight": "切换到浅色"
+    },
+    "language": {
+      "label": "界面语言",
+      "zh": "中",
+      "en": "EN"
+    },
+    "connection": {
+      "online": "实时连接正常",
+      "offline": "实时连接已断开，正在重连"
+    },
+    "loading": "加载中",
+    "pageLoadFailed": "页面资源加载失败，可能是中枢刚升级过，请刷新页面重试",
+    "pageError": "页面出错了，请刷新页面重试；若仍然如此，请查看浏览器控制台",
+    "reload": "刷新页面",
+    "sessionError": "无法获取登录状态，请确认中枢是否在运行",
+    "retry": "重试",
+    "screenPlaceholder": "屏幕端将在 M1d 提供",
+    "notFound": "页面不存在",
+    "versionUpdated": "中枢已升级，请手动刷新页面以加载新版本"
+  },
+  "placeholder": {
+    "pending": "页面内容将在后续任务中实现。",
+    "m1d": "此页面将在 M1d 实现。"
+  },
+  "pages": {
+    "login": "登录",
+    "setup": "首次设置",
+    "overview": "总览",
+    "instances": "监控实例",
+    "instanceNew": "新建实例",
+    "instanceEdit": "编辑实例",
+    "proxies": "代理",
+    "settings": "设置",
+    "system": "系统",
+    "screens": "屏幕管理",
+    "layoutEditor": "布局编辑器",
+    "schedule": "时段计划与主题",
+    "remote": "远程操作"
+  },
+  "status": {
+    "ok": "正常",
+    "warning": "警告",
+    "critical": "严重",
+    "unknown": "未知",
+    "error": "采集失败",
+    "stale": "过期",
+    "offline": "离线",
+    "maintenance": "维护中",
+    "unconfigured": "未配置",
+    "broken": "引用失效"
+  },
+  "errors": {
+    "request": {
+      "invalid_json": "请求内容格式不正确",
+      "timeout": "请求超时"
+    },
+    "validation": {
+      "failed": "填写内容未通过校验，请检查标出的字段"
+    },
+    "auth": {
+      "required": "需要登录",
+      "forbidden": "没有权限执行此操作",
+      "invalid_password": "密码错误",
+      "locked": "尝试次数过多，已被临时锁定，请稍后再试"
+    },
+    "setup": {
+      "required": "尚未完成首次设置",
+      "already_done": "首次设置已完成",
+      "invalid_code": "设置码错误"
+    },
+    "origin": {
+      "mismatch": "请求来源校验失败，请直接通过中枢地址访问本页面"
+    },
+    "not_found": "资源不存在",
+    "backup": {
+      "exists": "同一秒内已有相同原因的备份，请稍后再试"
+    },
+    "plugin": {
+      "not_found": "插件不存在",
+      "invalid_manifest": "插件描述文件不合法"
+    },
+    "proxy": {
+      "not_found": "代理不存在",
+      "in_use": "代理正被实例引用，无法删除"
+    },
+    "instance": {
+      "not_found": "实例不存在",
+      "in_use": "实例正被屏幕引用，无法删除"
+    },
+    "run": {
+      "timeout": "采集超时",
+      "failed": "采集失败",
+      "busy": "该实例正在运行，请稍后再试"
+    },
+    "internal": "中枢内部错误",
+    "server": {
+      "shutting_down": "中枢正在关停，请稍后重试"
+    },
+    "ws": {
+      "subscribe_denied": "当前会话无权订阅所请求的内容",
+      "bad_message": "实时连接收到无法识别的消息"
+    },
+    "network": {
+      "failed": "无法连接中枢，请检查网络"
+    }
+  },
+  "errorFallback": "操作失败（{{code}}）",
+  "common": {
+    "show": "显示密码",
+    "hide": "隐藏密码",
+    "close": "关闭",
+    "cancel": "取消",
+    "save": "保存",
+    "discard": "放弃",
+    "delete": "删除",
+    "edit": "编辑",
+    "add": "添加",
+    "test": "测试",
+    "refresh": "刷新",
+    "retry": "重试",
+    "loading": "加载中…",
+    "yes": "是",
+    "no": "否",
+    "download": "下载",
+    "saving": "保存中…",
+    "withDetail": "{{summary}}：{{detail}}",
+    "colon": "：",
+    "loadFailed": "加载失败",
+    "stay": "留下",
+    "leave": "离开"
+  },
+  "login": {
+    "title": "登录管理界面",
+    "singleAdmin": "单管理员",
+    "password": "管理员密码",
+    "passwordPlaceholder": "输入密码",
+    "submit": "登录",
+    "wrongPassword": "密码错误，还可尝试 {{remaining}} 次",
+    "locked": {
+      "title": "失败次数过多，已锁定",
+      "until": "{{time}} 后可再试",
+      "untilWithIp": "{{time}} 后可再试（按来源 IP {{ip}}）",
+      "remaining": "剩余 {{remaining}}"
+    },
+    "httpWarning": "当前为 HTTP 连接，密码在局域网内明文传输，建议配置 nginx HTTPS。",
+    "originMismatch": "请求来源校验失败：多半是经 HTTPS 反代访问，而中枢尚未配置受信任反代（默认为空，首次设置接口也不能设置它）。请先直连中枢地址完成设置，再到「设置」页添加反代地址。",
+    "sessionHint": "会话 30 天",
+    "lockHint": "失败 10 次锁定 15 分钟",
+    "forgot": "忘记密码：在树莓派上运行"
+  },
+  "setup": {
+    "topLabel": "pimon-hub · 尚未创建管理员",
+    "title": "首次设置",
+    "noAdmin": "系统还没有管理员",
+    "steps": {
+      "code": "输入设置码",
+      "password": "管理员密码",
+      "basics": "基础设置",
+      "done": "完成"
+    },
+    "prev": "上一步",
+    "next": "下一步",
+    "finish": "完成设置",
+    "position": "第 {{n}} / 3 步",
+    "originMismatch": "请求来源校验失败：多半是经 HTTPS 反代访问，而中枢尚未配置受信任反代（默认为空，首次设置接口也不能设置它）。请先直连中枢地址完成设置，再到「设置」页添加反代地址。",
+    "code": {
+      "label": "设置码",
+      "meta": "6 组 × 4 位",
+      "group": "第 {{n}} 组",
+      "help": "不区分大小写，粘贴整串会自动分组。",
+      "incomplete": "请输入完整的 24 位设置码",
+      "wrongRemaining": "设置码错误，还可尝试 {{remaining}} 次",
+      "where": "在哪里找",
+      "whereBody": "设置码显示在树莓派屏幕和安装终端里，24 小时内有效，用后作废；过期可运行"
+    },
+    "password": {
+      "title": "设置管理员密码",
+      "meta": "单管理员 · 无用户名",
+      "label": "密码",
+      "confirm": "确认密码",
+      "length": "{{n}} 位",
+      "min": "至少 {{min}} 位",
+      "tooShort": "密码至少 {{min}} 位",
+      "mismatch": "两次输入不一致",
+      "match": "两次输入一致"
+    },
+    "strength": {
+      "label": "强度",
+      "0": "很弱",
+      "1": "弱",
+      "2": "一般",
+      "3": "较强",
+      "4": "强"
+    },
+    "basics": {
+      "meta": "之后可在「设置」里修改",
+      "language": "语言",
+      "timezone": "时区",
+      "fromBrowser": "读取自浏览器",
+      "timezoneHelp": "时段计划、日志时间都按此时区。",
+      "accessUrl": "访问地址",
+      "optional": "可选",
+      "accessUrlHelp": "用于推送消息里的链接；留空则推送里不附链接。"
+    },
+    "fieldError": {
+      "invalid": "取值不合法",
+      "required": "必填",
+      "out_of_range": "超出允许范围",
+      "pattern_mismatch": "格式不正确",
+      "duplicate": "已存在",
+      "password": {
+        "out_of_range": "密码至少 8 位"
+      },
+      "timezone": {
+        "invalid": "服务端不识别这个时区，请重新选择"
+      },
+      "language": {
+        "invalid": "不支持这个语言"
+      },
+      "access_url": {
+        "invalid": "访问地址须是 http:// 或 https:// 开头的有效地址"
+      }
+    },
+    "done": {
+      "title": "设置完成",
+      "body": "屏幕将在几秒内显示首页。",
+      "admin": "管理员",
+      "adminValue": "已设置 · {{strength}}",
+      "langTz": "语言 · 时区",
+      "code": "设置码",
+      "codeValue": "已作废",
+      "enter": "进入总览"
+    }
+  },
+  "time": {
+    "never": "从未成功",
+    "secondsAgo": "{{n}} 秒前",
+    "minutesAgo": "{{n}} 分钟前",
+    "hoursAgo": "{{n}} 小时前",
+    "daysAgo": "{{n}} 天前",
+    "passed": "已过",
+    "inSeconds": "{{n}} 秒后",
+    "inMinutes": "{{n}} 分钟后",
+    "inHours": "{{n}} 小时后",
+    "inDays": "{{n}} 天后",
+    "uptimeDays": "{{d}} 天 {{h}} 小时",
+    "uptimeHours": "{{h}} 小时 {{m}} 分",
+    "uptimeMinutes": "{{m}} 分钟",
+    "uptimeSeconds": "{{s}} 秒"
+  },
+  "items": {
+    "unknown": "未知",
+    "gauge": "仪表读数",
+    "quota": "额度",
+    "quotaPct": "剩余 {{pct}}%",
+    "quotaUsed": "已用 {{used}} / 总量 {{total}}",
+    "quotaRemaining": "剩余量 {{value}}",
+    "resetsAt": "重置于 {{at}}（{{in}}）",
+    "expiresAt": "到期 {{at}}（{{in}}）",
+    "moneyUsed": "已用 {{value}}",
+    "moneyTotal": "总额 {{value}}",
+    "tableEmpty": "没有数据行",
+    "itemError": "条目错误：{{message}}",
+    "unsupported": "不支持的数据项类型「{{type}}」"
+  },
+  "instances": {
+    "sub": "{{total}} 个实例 · {{hub}} 在 hub · {{other}} 在其他位置",
+    "stripLabel": "状态汇总",
+    "strip": {
+      "plugins": "插件",
+      "exec": " · exec {{count}}",
+      "locations": "运行位置"
+    },
+    "listTitle": "实例列表",
+    "add": "添加实例",
+    "hubLocal": "hub 本机",
+    "local": "本机",
+    "search": "搜索实例，支持查询语法",
+    "filter": {
+      "label": "筛选",
+      "all": "全部",
+      "attention": "需关注",
+      "location": "运行位置",
+      "locationSet": "位置：{{value}}",
+      "allLocations": "全部位置",
+      "plugin": "插件",
+      "pluginSet": "插件：{{value}}",
+      "allPlugins": "全部插件"
+    },
+    "cols": {
+      "status": "状态",
+      "name": "名称",
+      "runs": "运行位置",
+      "reading": "关键读数",
+      "updated": "更新于",
+      "actions": "操作"
+    },
+    "severityFirst": "严重优先",
+    "sort": {
+      "status": "按状态 · 严重优先",
+      "name": "按名称",
+      "run": "按运行位置",
+      "ago": "按更新时间",
+      "reversed": "（反序）"
+    },
+    "count": "显示 {{shown}} / {{total}} · 排序：{{sort}}",
+    "groupedSuffix": " · 按插件分组",
+    "syntax": "语法：status:ok|warning|critical|error|stale · runs:hub|agent · plugin:插件 id",
+    "empty": "还没有监控实例",
+    "noMatch": "没有匹配的实例 · 清除筛选或修改查询",
+    "clearFilter": "清除筛选",
+    "select": "选择 {{name}}",
+    "selectAll": "全选",
+    "pausedTag": "已暂停",
+    "rowMenu": "{{name}} 的更多操作",
+    "groupCount": "{{count}} 个实例",
+    "groupAllOk": "全部正常",
+    "menu": {
+      "detail": "查看详情",
+      "run": "立即采集",
+      "edit": "编辑配置",
+      "copy": "复制为新实例",
+      "pause": "暂停采集",
+      "resume": "恢复采集",
+      "delete": "删除实例"
+    },
+    "view": {
+      "label": "视图",
+      "flat": "平铺",
+      "group": "按插件分组"
+    },
+    "batch": {
+      "label": "批量操作",
+      "selected": "已选 {{count}} 项",
+      "clear": "取消选择",
+      "failedItem": "{{name}}（{{reason}}）",
+      "more": "…另 {{count}} 个",
+      "summary": "成功 {{ok}} 个，失败 {{failed}} 个：{{list}}"
+    },
+    "execDir": "exec 插件目录",
+    "execWatched": "已监视，放入插件后自动出现",
+    "execErrors": "{{count}} 个插件目录加载失败",
+    "rescan": "重新扫描",
+    "rescanDone": "扫描完成 · {{found}} · {{time}}",
+    "rescanFound": "发现 {{count}} 个新插件",
+    "rescanNone": "未发现新插件",
+    "toast": {
+      "ran": "已采集「{{name}}」",
+      "ranMany": "已完成 {{count}} 个实例的采集",
+      "paused": "已暂停「{{name}}」",
+      "resumed": "已恢复「{{name}}」",
+      "pausedMany": "已暂停 {{count}} 个实例",
+      "copied": "已复制为「{{name}}」，请补全配置",
+      "deleted": "已删除 {{count}} 个实例"
+    },
+    "delete": {
+      "title": "删除所选的 {{count}} 个实例？",
+      "body": "将删除以下 {{count}} 个实例及其历史数据，屏幕上绑定它们的小组件会显示「引用失效」。",
+      "irreversible": "此操作不能撤销。",
+      "confirm": "删除",
+      "affectedTitle": "这些实例仍被屏幕引用",
+      "affectedBody": "下列实例被 screen 上的小组件引用，继续删除后这些小组件会显示「引用失效」。",
+      "screens": "引用的 screen：",
+      "force": "仍然删除"
+    }
+  },
+  "detail": {
+    "title": "实例详情：{{name}}",
+    "status": "状态",
+    "state": "展示状态",
+    "plugin": "插件",
+    "interval": "刷新间隔",
+    "intervalValue": "{{n}} 秒",
+    "intervalOverride": "（已覆盖）",
+    "lastSuccess": "最近成功",
+    "failures": "连续失败",
+    "paused": "采集",
+    "pausedYes": "已暂停",
+    "items": "数据项（{{count}}）",
+    "noReport": "还没有成功采集过，暂无数据项",
+    "noItems": "这份报告没有数据项",
+    "staleReport": "最近一次采集失败，以下为失败前保留的旧值。",
+    "history": "最近 24 小时历史",
+    "historyNoNumeric": "该实例没有数值数据项，没有历史曲线。",
+    "historyNone": "该数据项没有历史。",
+    "historyEmpty": "最近 24 小时还没有采样点。",
+    "historyItem": "选择数据项",
+    "historyField": "曲线字段",
+    "fieldRemainingPct": "剩余比例",
+    "fieldUsed": "已用量",
+    "historyMeta": "{{points}} 个点 · {{tier}} 档",
+    "errors": "最近错误与 stderr 摘要",
+    "issue": "实例当前无法运行",
+    "lastError": "最近一次失败（已脱敏，含 stderr 尾部）",
+    "noError": "最近一次采集成功，没有错误。",
+    "problems": "配置与插件不符的字段",
+    "weatherCredit": "天气数据来源："
+  },
+  "overview": {
+    "sub": "现在一切正常吗？哪里要我处理？",
+    "instanceUnit": "个监控实例",
+    "noInstances": "还没有监控实例，先添加一个吧。",
+    "otherState": "未知/其他",
+    "pausedState": "已暂停",
+    "distribution": "{{count}} 个实例的状态分布",
+    "legend": "图例",
+    "listSep": "、",
+    "also": "另有 {{list}}",
+    "alsoItem": {
+      "broken": "{{count}} 项引用失效",
+      "offline": "{{count}} 项离线",
+      "unconfigured": "{{count}} 项未配置",
+      "paused": "{{count}} 项已暂停",
+      "critical": "{{count}} 项严重",
+      "error": "{{count}} 项采集失败",
+      "warning": "{{count}} 项警告",
+      "stale": "{{count}} 项过期",
+      "other": "{{count}} 项状态未知"
+    },
+    "verdict": {
+      "broken": "{{count}} 项引用失效：{{name}}",
+      "offline": "{{count}} 项离线：{{name}}",
+      "unconfigured": "{{count}} 项未配置：{{name}}",
+      "allOk": "全部正常",
+      "noActive": "没有运行中的实例（{{count}} 个已暂停）",
+      "critical": "{{count}} 项严重：{{name}} {{reading}}",
+      "error": "{{count}} 项采集失败：{{name}} {{reading}}",
+      "warning": "{{count}} 项警告：{{name}} {{reading}}",
+      "stale": "{{count}} 项过期：{{name}}",
+      "other": "{{count}} 项状态未知：{{name}}"
+    },
+    "health": {
+      "title": "健康汇总"
+    },
+    "hub": {
+      "title": "hub 概况",
+      "version": "版本",
+      "connection": "实时连接",
+      "online": "hub 在线",
+      "offline": "连接已断开",
+      "lastBackup": "最近备份",
+      "noBackup": "暂无备份",
+      "timezone": "时区",
+      "instances": "实例数",
+      "agents": "在线 agent",
+      "agentsLater": "M2 提供",
+      "uptime": "运行时长"
+    },
+    "attention": {
+      "title": "需要处理",
+      "meta": "{{count}} 项 · 按严重度",
+      "none": "没有需要处理的项",
+      "view": "查看实例",
+      "retry": "立即重试",
+      "lastSuccess": "上次成功 {{ago}}"
+    },
+    "screen": {
+      "title": "屏幕",
+      "meta": "M1d 接入",
+      "pending": "屏幕模块待接入",
+      "keyRefresh": "刷新",
+      "keySwitch": "切换 screen",
+      "keyOff": "关屏",
+      "keyWake": "临时亮屏"
+    },
+    "table": "实例一览"
+  },
+  "form": {
+    "required": "必填",
+    "on": "已开启",
+    "off": "已关闭",
+    "numberDefault": "默认 {{value}}",
+    "enumNone": "未选择",
+    "durationPresets": "常用时长",
+    "durationFormat": "格式 10s · 1m30s",
+    "secretKeep": "已设置，留空则保持不变",
+    "secretNew": "输入密钥",
+    "secretUrlNew": "输入完整地址（地址本身即凭据）",
+    "secretIsSet": "已设置",
+    "show": "显示",
+    "hide": "隐藏",
+    "urlRules": "校验选项",
+    "urlAllowQuery": "允许查询参数",
+    "urlAllowPublicHttp": "允许公网 http",
+    "urlFollowRedirects": "跟随重定向",
+    "yes": "（是）",
+    "no": "（否）",
+    "proxyDirect": "直连（不走代理）",
+    "proxyUnavailable": "代理 {{id}}（此位置不可用）",
+    "proxyMissing": "代理 {{id}}（已不存在）",
+    "proxyLoadFailed": "代理列表加载失败，暂时只能选择直连。",
+    "proxyHelp": "引用「代理」页的全局列表。",
+    "proxyManage": "管理代理",
+    "listItem": "{{title}} 第 {{n}} 项",
+    "listRemove": "删除第 {{n}} 项",
+    "add": "添加一项",
+    "addRow": "添加一行",
+    "kvKey": "名称",
+    "kvValue": "值",
+    "kvSecretValue": "值（保密，保存后不回显）",
+    "kvKeyOf": "第 {{n}} 行名称",
+    "kvValueOf": "第 {{n}} 行的值",
+    "kvRemove": "删除第 {{n}} 行",
+    "lookupPlaceholder": "输入关键字搜索",
+    "lookupSearching": "搜索中…",
+    "lookupNoMatch": "没有匹配的结果",
+    "lookupClear": "清除",
+    "lookupCandidates": "候选结果",
+    "lookupUnsupported": "此插件暂不支持候选查询",
+    "objectEmpty": "还没有任何一项。",
+    "objectRow": "第 {{n}} 项",
+    "objectUp": "上移第 {{n}} 项",
+    "objectDown": "下移第 {{n}} 项",
+    "objectRemove": "删除第 {{n}} 项",
+    "errors": {
+      "required": "必填项不能为空",
+      "invalid": "格式不正确",
+      "out_of_range": "超出允许范围",
+      "pattern_mismatch": "格式不符合要求",
+      "duplicate": "与已有内容重复"
+    }
+  },
+  "editor": {
+    "sub": "选插件 → 按插件声明的字段填写 → 保存并测试",
+    "cancel": "取消",
+    "back": "返回实例列表",
+    "catalog": {
+      "title": "选插件",
+      "meta": "{{total}} · builtin {{builtin}} · exec {{exec}}",
+      "search": "搜索插件名称或 id",
+      "none": "没有匹配的插件",
+      "change": "更换插件",
+      "current": "当前插件：{{name}}",
+      "cat": {
+        "system": "系统",
+        "host": "主机",
+        "service": "服务",
+        "network": "网络",
+        "weather": "天气",
+        "other": "其他"
+      }
+    },
+    "config": {
+      "title": "配置",
+      "meta": "{{id}} v{{version}} · config_schema",
+      "pick": "从左侧选择一个插件，再按它声明的字段填写配置。",
+      "pluginFields": "插件字段",
+      "fieldCount": "{{count}} 个字段 · {{required}} 个必填",
+      "common": "通用字段",
+      "commonMeta": "所有插件都有",
+      "name": "实例名称",
+      "nameHelp": "显示在实例列表和屏幕小组件上。",
+      "namePlaceholder": "例如：{{example}}",
+      "runsOn": "运行位置",
+      "runsHub": "hub 本机",
+      "runsAgent": "agent",
+      "agentLater": "agent 运行位置在后续阶段提供",
+      "runsOnHelp": "本期实例只在中枢本机运行。",
+      "agentOnly": "这个插件只能在 agent 上运行，本期暂不能创建。",
+      "interval": "刷新间隔",
+      "intervalOverride": "覆盖插件默认值（{{value}}）",
+      "intervalHelp": "最短 {{min}}，最长 24 小时；格式 30s、5m、1h。",
+      "loadFailed": "无法加载实例",
+      "notFound": "这个实例不存在，可能已被删除。",
+      "pluginMissing": "实例所用的插件「{{id}}」当前不可用，无法编辑。",
+      "refill": "这个实例的配置已损坏，或其中的密钥无法解密。请重新填写所有必填项（包括密钥）后保存。",
+      "problems": "配置与插件当前的字段声明不符，下面标出了需要补全或修正的字段。",
+      "unmapped": "以下问题无法对应到表单字段：",
+      "pluginsFailed": "无法加载插件列表"
+    },
+    "save": {
+      "title": "保存",
+      "valid": "可保存",
+      "invalid": "未通过",
+      "summaryPlugin": "插件",
+      "summaryName": "实例名称",
+      "summaryRuns": "运行位置",
+      "summaryInterval": "刷新间隔",
+      "summaryCheck": "字段校验",
+      "intervalDefault": "{{value}}（默认）",
+      "intervalCustom": "{{value}}（覆盖）",
+      "checkPass": "通过",
+      "checkFail": "{{count}} 处待修正",
+      "save": "保存",
+      "saveTest": "保存并测试",
+      "saving": "保存中…",
+      "testing": "采集中…",
+      "saved": "已保存「{{name}}」",
+      "savedTested": "已保存「{{name}}」并完成测试",
+      "fixFirst": "还有 {{count}} 处需要修正"
+    },
+    "result": {
+      "title": "测试结果",
+      "empty": "尚未测试。「保存并测试」会立即运行一次采集并显示报告。",
+      "running": "正在采集，请稍候…",
+      "duration": "耗时 {{ms}} ms",
+      "at": "{{time}} 完成",
+      "items": "数据项（{{count}}）",
+      "noItems": "报告里没有数据项。",
+      "rawJson": "原始报告 JSON",
+      "rawSize": "{{size}} B",
+      "failedSaved": "实例已保存，但本次采集失败；中枢会按退避策略重试。",
+      "failedNotSaved": "本次测试没有执行。",
+      "stale": "这是保留的旧数据。",
+      "summary": "摘要",
+      "busyTitle": "正在采集中",
+      "busy": "实例已保存；该实例正在采集中，请稍后再测。"
+    },
+    "withDetail": "{{summary}}：{{detail}}"
+  },
+  "proxies": {
+    "sub": "全局代理列表；插件配置里以下拉引用，默认直连",
+    "add": "添加代理",
+    "loadFailed": "无法加载代理列表",
+    "list": {
+      "title": "代理列表",
+      "meta": "{{count}} 个 · 认证信息只写不读",
+      "empty": "还没有添加代理",
+      "emptyHint": "插件的代理字段留空即直连；添加代理后，可以在插件配置里用下拉选择它。"
+    },
+    "cols": {
+      "name": "名称",
+      "scheme": "scheme",
+      "address": "地址",
+      "auth": "认证",
+      "remoteDns": "远端 dns",
+      "location": "可用位置",
+      "refs": "被引用",
+      "lastTest": "最近测试"
+    },
+    "auth": {
+      "has": "有",
+      "none": "无"
+    },
+    "dns": {
+      "na": "不适用",
+      "yes": "是",
+      "no": "否"
+    },
+    "location": {
+      "hub": "hub",
+      "lan": "局域网",
+      "any": "任意"
+    },
+    "refs": {
+      "count": "{{count}} 个实例",
+      "zero": "0 个实例"
+    },
+    "test": {
+      "never": "未测试",
+      "ok": "{{status}} · {{ms}} ms",
+      "failed": "失败",
+      "running": "测试中…",
+      "okShort": "通过",
+      "toastOk": "「{{name}}」测试通过：{{status}} · {{ms}} ms",
+      "toastFail": "「{{name}}」测试失败：{{error}}",
+      "aria": "测试 {{name}}",
+      "atTime": "{{time}}"
+    },
+    "edit": "编辑 {{name}}",
+    "delete": "删除 {{name}}",
+    "note": "「直连」不是代理条目：插件的代理字段留空即直连。删除被引用的代理时，引用它的实例会被暂停并清除代理设置，需重新选择代理后再恢复。",
+    "legend": {
+      "title": "可用位置",
+      "meta": "决定哪些运行位置能选它",
+      "hub": "只在树莓派上的插件可用，例如代理只监听 127.0.0.1。",
+      "lan": "hub 和局域网里的 agent 可用；公网 VPS 上的 agent 不可选。",
+      "any": "所有运行位置都可用，包括中枢拨出连接的 VPS。"
+    },
+    "drawer": {
+      "titleNew": "添加代理",
+      "titleEdit": "编辑代理 · {{name}}",
+      "name": "名称",
+      "scheme": "scheme",
+      "address": "地址",
+      "host": "主机",
+      "port": "端口",
+      "hostPlaceholder": "10.0.0.2",
+      "portPlaceholder": "1080",
+      "username": "用户名",
+      "password": "密码",
+      "passwordSet": "已设置 · 留空则不修改",
+      "passwordOptional": "可选",
+      "passwordHelp": "加密存储，不回显。更换密码时需要同时重新填写用户名。",
+      "clearAuth": "清除已保存的认证",
+      "remoteDns": "远端 DNS",
+      "remoteDnsLabel": "由代理服务器解析域名",
+      "remoteDnsHelp": "socks5h 固定为远端解析；socks5 可选；http 与 https 代理由代理端解析，无需设置。",
+      "location": "可用位置",
+      "refs": "被引用",
+      "noRefs": "没有实例引用",
+      "test": "测试",
+      "testNew": "保存后才能测试。",
+      "testTarget": "测试目标",
+      "testHelp": "默认目标为 Google 204 地址，可改；测试使用已保存的配置，不含尚未保存的修改。",
+      "saved": "已保存代理「{{name}}」",
+      "created": "已添加代理「{{name}}」"
+    },
+    "deleteDialog": {
+      "title": "删除代理「{{name}}」？",
+      "bodyRefs": "有 {{count}} 个实例正在引用它。这些实例将被暂停，并清除代理设置；请为它们重新选择代理后再恢复：",
+      "bodyNone": "没有实例引用它，可以直接删除。",
+      "ack": "我已了解，这些实例将被暂停",
+      "confirm": "删除代理",
+      "deleted": "已删除代理「{{name}}」",
+      "inUse": "刚刚有实例开始引用这个代理，请确认受影响的实例。"
+    },
+    "fieldError": {
+      "invalid": "取值不合法",
+      "required": "必填",
+      "duplicate": "已有同名代理",
+      "name": {
+        "required": "请填写名称",
+        "duplicate": "已有同名代理"
+      },
+      "scheme": {
+        "required": "请选择协议",
+        "invalid": "不支持这个协议"
+      },
+      "address": {
+        "required": "请填写地址",
+        "invalid": "地址须为「主机:端口」，不含协议与账号"
+      },
+      "location": {
+        "invalid": "不支持这个可用位置"
+      },
+      "auth": {
+        "username": {
+          "required": "填写密码时必须同时填写用户名"
+        }
+      },
+      "clear_auth": {
+        "invalid": "不能一边清除认证一边提交新认证"
+      },
+      "url": {
+        "invalid": "目标地址须以 http:// 或 https:// 开头"
+      }
+    },
+    "portInvalid": "端口须为 1–65535 的整数"
+  },
+  "settings": {
+    "sub": "hub 全局设置；改动需保存后生效",
+    "loadFailed": "无法加载设置",
+    "anchors": "设置分组",
+    "general": {
+      "title": "通用",
+      "meta": "general",
+      "language": "语言",
+      "languageHelp": "全局语言，影响插件文案与推送；本浏览器的界面语言用侧栏的中/EN 切换。",
+      "timezone": "时区",
+      "timezoneHelp": "时段计划、日志、备份时间都按此时区。",
+      "accessUrl": "访问地址",
+      "accessUrlPlaceholder": "https://pimon.home.arpa",
+      "accessUrlHelp": "用于推送消息里的链接；留空则不附链接。"
+    },
+    "net": {
+      "title": "网络与安全",
+      "meta": "security",
+      "https": "HTTPS",
+      "httpsNow": "当前页面经 {{scheme}} 访问 · 端口 {{port}}",
+      "httpsRestart": "重启后生效",
+      "httpsHelp": "直连 HTTPS 使用自签名证书，浏览器会提示不受信任；推荐用 nginx 反代提供 HTTPS。修改后需重启 hub 才生效。",
+      "trusted": "受信任反代",
+      "trustedHelp": "默认空。只对这些来源采信 X-Forwarded-*；其他来源的这类请求头一律忽略。",
+      "trustedEmpty": "尚未添加",
+      "trustedPlaceholder": "IP 或 CIDR，例如 10.0.0.0/24",
+      "trustedAdd": "添加",
+      "trustedAddAria": "添加受信任反代",
+      "trustedRemove": "移除 {{value}}",
+      "trustedDuplicate": "这个来源已在列表里",
+      "password": "管理员密码",
+      "passwordChange": "修改密码",
+      "lockout": "登录失败锁定",
+      "lockoutHelp": "固定策略，不可修改。",
+      "lockoutTimes": "10 次",
+      "lockoutFor": "锁定 15 分钟",
+      "lockoutPerIp": "按来源 IP"
+    },
+    "display": {
+      "title": "显示",
+      "meta": "display",
+      "reduce": "降低特效",
+      "reduceHelp": "关闭光晕与动效，适合长时间常亮或性能不足。与「时段计划」页是同一开关。",
+      "theme": "管理界面主题",
+      "themeHelp": "默认浅色；只影响管理界面，立即生效，记在本浏览器里，不需要保存。屏幕主题在「时段计划与主题」里设置。"
+    },
+    "retention": {
+      "title": "数据保留",
+      "meta": "retention",
+      "label": "历史数据",
+      "raw": "原始采样",
+      "fiveMin": "5 分钟聚合",
+      "hour": "1 小时聚合",
+      "hours": "{{n}} 小时",
+      "days": "{{n}} 天",
+      "help": "三档降采样，超期数据由 hub 定期清理。"
+    },
+    "backup": {
+      "title": "备份",
+      "meta": "backup",
+      "last": "最近一次 {{time}} · {{reason}}",
+      "none": "暂无备份",
+      "daily": "每日本地备份",
+      "dailyHelp": "备份文件写在 hub 数据目录下的 backups 目录。",
+      "keep": "保留份数",
+      "keepUnit": "份",
+      "keepOriginal": "原值 {{n}} 份",
+      "download": "下载最新备份",
+      "downloadBtn": "下载 {{name}}",
+      "downloadNone": "还没有备份可下载",
+      "nas": "NAS 备份",
+      "nasHelp": "加密后同步到 NAS，阶段 2 提供。",
+      "nasBadge": "M2",
+      "backupNow": "立即备份"
+    },
+    "reason": {
+      "daily": "每日",
+      "manual": "手动",
+      "pre-upgrade": "升级前"
+    },
+    "downloadWarn": {
+      "title": "下载备份",
+      "body": "备份包含密钥文件（加密密钥、agent 凭据、通知渠道令牌），请妥善保管，不要上传到公开位置。",
+      "file": "文件：{{name}}",
+      "confirm": "我已了解，下载"
+    },
+    "bar": {
+      "dirty": "有 {{count}} 处未保存的修改",
+      "errors": "{{count}} 处未通过校验",
+      "hint": "保存后立即生效；HTTPS 开关需重启 hub",
+      "discard": "放弃",
+      "save": "保存",
+      "saving": "保存中…"
+    },
+    "saved": "已保存设置",
+    "savedRestart": "已保存设置；HTTPS 的改动需重启 hub 后生效",
+    "discarded": "已放弃修改",
+    "saveFailed": "保存失败",
+    "changed": "已修改",
+    "fieldError": {
+      "invalid": "取值不合法",
+      "out_of_range": "超出允许范围",
+      "required": "必填",
+      "language": {
+        "invalid": "不支持这个语言"
+      },
+      "timezone": {
+        "invalid": "服务端不识别这个时区，请重新选择"
+      },
+      "access_url": {
+        "invalid": "访问地址须是 http:// 或 https:// 开头的有效地址"
+      },
+      "trusted_proxies": {
+        "invalid": "不是合法的 IP 或 CIDR"
+      },
+      "retention": {
+        "raw_hours": {
+          "out_of_range": "原始采样保留 1–168 小时"
+        },
+        "five_min_days": {
+          "out_of_range": "5 分钟聚合保留 1–365 天"
+        },
+        "hour_days": {
+          "out_of_range": "1 小时聚合保留 1–1825 天"
+        }
+      },
+      "backup": {
+        "daily_at": {
+          "invalid": "备份时刻须为 HH:MM"
+        },
+        "keep": {
+          "out_of_range": "保留 1–30 份"
+        }
+      }
+    },
+    "password": {
+      "title": "修改管理员密码",
+      "current": "当前密码",
+      "new": "新密码",
+      "confirm": "确认新密码",
+      "help": "至少 {{min}} 位。修改后其他会话全部退出。",
+      "tooShort": "新密码至少 {{min}} 位",
+      "mismatch": "两次输入的新密码不一致",
+      "currentRequired": "请输入当前密码",
+      "submit": "修改密码",
+      "done": "密码已修改，其他会话已退出",
+      "wrong": "当前密码错误，还可尝试 {{remaining}} 次"
+    },
+    "leave": {
+      "title": "离开设置页？",
+      "body": "有未保存的修改，离开后会丢失。",
+      "stay": "留在此页",
+      "leave": "放弃修改并离开"
+    }
+  },
+  "system": {
+    "sub": "hub 版本、资源、屏幕守护与日志",
+    "loadFailed": "无法加载系统信息",
+    "readout": {
+      "hub": "hub {{version}}",
+      "uptime": "运行 {{uptime}}"
+    },
+    "version": {
+      "title": "版本",
+      "meta": "pimon-hub",
+      "uptime": "运行时长",
+      "go": "Go",
+      "startedAt": "启动于",
+      "build": "build {{build}}"
+    },
+    "resources": {
+      "title": "资源",
+      "meta": "hub 进程",
+      "memory": "hub 内存",
+      "memoryValue": "{{sys}}（堆 {{heap}}）",
+      "dataDir": "数据目录",
+      "dataUsed": "数据目录占用",
+      "writes24h": "日写入量（近 24 小时）",
+      "writesSince": "自启动以来写入",
+      "writesEstimated": "按启动以来的平均速率折算",
+      "unsupported": "此平台无法读取",
+      "cached": "每 60 秒更新一次"
+    },
+    "screen": {
+      "title": "屏幕",
+      "meta": "M1d",
+      "placeholder": "屏幕在线状态、分辨率与 kiosk 守护进程信息，在 M1d 接入屏幕会话后显示。"
+    },
+    "idle": {
+      "title": "系统空闲息屏检查",
+      "meta": "M1e",
+      "placeholder": "检查系统是否会自己息屏（swayidle 等），在 M1e 的 kiosk 部署里提供。"
+    },
+    "plugins": {
+      "title": "插件",
+      "meta": "已注册 {{total}} · builtin {{builtin}} · exec {{exec}}",
+      "cols": {
+        "plugin": "插件",
+        "kind": "形态",
+        "source": "来源",
+        "status": "状态"
+      },
+      "loaded": "已加载",
+      "error": "加载失败",
+      "conflict": "冲突",
+      "builtinRow": "builtin × {{count}}",
+      "builtinSource": "随 pimon-hub 编译",
+      "dir": "exec 插件目录",
+      "rescan": "重新扫描插件目录",
+      "rescanning": "扫描中…",
+      "rescanned": "扫描完成 · {{total}} 个插件",
+      "scanFailed": "扫描失败",
+      "loadFailed": "无法加载插件列表",
+      "issues": "{{errors}} 个加载失败，{{conflicts}} 个冲突"
+    },
+    "logs": {
+      "title": "最近 hub 日志",
+      "meta": "{{count}} / {{capacity}} 条",
+      "hint": "属性里的 mono 是自启动起的单调时长，排查时钟跳变用",
+      "level": "日志级别",
+      "all": "全部",
+      "info": "info",
+      "warn": "warn",
+      "error": "error",
+      "empty": "没有符合条件的日志",
+      "emptyAll": "暂无日志",
+      "refresh": "刷新日志",
+      "loadFailed": "无法加载日志",
+      "aria": "hub 日志",
+      "maskNote": "日志里的密钥类属性已隐藏"
+    },
+    "backups": {
+      "title": "备份",
+      "meta": "{{count}} 份 · 每日 {{time}} · 保留 {{keep}} 份",
+      "settings": "设置",
+      "cols": {
+        "time": "时间",
+        "file": "文件",
+        "size": "大小",
+        "type": "类型"
+      },
+      "empty": "暂无备份",
+      "backupNow": "立即备份",
+      "backingUp": "备份中…",
+      "created": "已生成备份「{{name}}」",
+      "loadFailed": "无法加载备份列表"
+    }
+  }
+}

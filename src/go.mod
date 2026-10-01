@@ -3,6 +3,7 @@ module github.com/LanceLRQ/PiMon/src
 go 1.27.1
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/shirou/gopsutil/v4 v4.26.8

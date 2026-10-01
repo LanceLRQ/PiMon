@@ -67,9 +67,18 @@ func SetRetryAfter(w http.ResponseWriter, d time.Duration) int {
 }
 
 // WriteLocked 回 429 auth.locked，并设置 Retry-After；秒数向上取整且至少为 1。
-func WriteLocked(w http.ResponseWriter, retryAfter time.Duration) {
+// details 带锁定到期时刻 locked_until（RFC 3339，UTC，与秒数一致）和请求者自己的来源 IP
+// client_ip（按受信任反代规则得出，取自 RequestInfo）。
+func WriteLocked(w http.ResponseWriter, r *http.Request, now time.Time, retryAfter time.Duration) {
 	secs := SetRetryAfter(w, retryAfter)
-	WriteError(w, http.StatusTooManyRequests, CodeAuthLocked, map[string]any{"retry_after_seconds": secs})
+	details := map[string]any{
+		"retry_after_seconds": secs,
+		"locked_until":        now.Add(time.Duration(secs) * time.Second).UTC().Format(time.RFC3339),
+	}
+	if ip := Info(r).ClientIP; ip.IsValid() {
+		details["client_ip"] = ip.String()
+	}
+	WriteError(w, http.StatusTooManyRequests, CodeAuthLocked, details)
 }
 
 // DecodeJSON 解码请求体到 dst：上限 1 MiB，拒绝未知字段和尾随的多余 JSON。
@@ -84,4 +93,16 @@ func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 		return fmt.Errorf("%w: 请求体含有多余内容", ErrInvalidJSON)
 	}
 	return nil
+}
+
+// SecurityHeaders 给所有响应加基础安全头：禁止 MIME 嗅探、禁止被嵌入框架、引荐来源只在同源下带出。
+// 不含 CSP：页面有内联防闪烁脚本，CSP 留待后续统一设计。
+func SecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "same-origin")
+		next.ServeHTTP(w, r)
+	})
 }

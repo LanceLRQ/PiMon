@@ -1,0 +1,27 @@
+# 前端 TS 类型生成配置（Go 模型为单一事实来源）：make generate
+packages:
+  - path: github.com/LanceLRQ/PiMon/src/pkg/model
+    output_path: ../web/src/types/model.generated.ts
+    type_mappings:
+      time.Time: string
+      time.Duration: number # 纳秒
+      report.Report: Report
+    frontmatter: |
+      import type { Report } from './report.generated';
+  - path: github.com/LanceLRQ/PiMon/src/pkg/plugin/report
+    output_path: ../web/src/types/report.generated.ts
+    exclude_files:
+      - event.go
+    type_mappings:
+      time.Time: string
+      time.Duration: number # 纳秒
+  - path: github.com/LanceLRQ/PiMon/src/pkg/protocol/ui
+    output_path: ../web/src/types/protocol.generated.ts
+    exclude_files:
+      - msgtype.go
+    type_mappings:
+      time.Time: string
+      model.Instance: Instance
+      model.Settings: Settings
+    frontmatter: |
+      import type { Instance, Settings } from './model.generated';

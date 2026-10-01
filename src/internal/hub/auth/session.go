@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
@@ -32,6 +33,30 @@ const (
 type Sessions struct {
 	db  *store.DB
 	clk clock.Clock
+
+	cbMu     sync.RWMutex
+	onRevoke func()
+}
+
+// OnRevoke 注册会话被撤销（Delete、DeleteKind）后的回调，用于让已建立的长连接立即复核会话。
+// 回调同步调用、必须非阻塞；重复注册会覆盖前一个。过期会话不触发（靠调用方定期复核）。
+func (s *Sessions) OnRevoke(f func()) {
+	s.cbMu.Lock()
+	s.onRevoke = f
+	s.cbMu.Unlock()
+}
+
+// NotifyRevoked 在事务外触发一次会话复核回调：改密码、令牌轮换等在自己的事务里批量删会话，
+// 无法经 Delete/DeleteKind 触发回调，须在事务提交之后由调用方显式通知（库为单连接，不可在事务内调用）。
+func (s *Sessions) NotifyRevoked() { s.revoked() }
+
+func (s *Sessions) revoked() {
+	s.cbMu.RLock()
+	f := s.onRevoke
+	s.cbMu.RUnlock()
+	if f != nil {
+		f()
+	}
 }
 
 // NewSessions 创建会话服务。
@@ -92,11 +117,17 @@ func (s *Sessions) Lookup(ctx context.Context, token string) (SessionKind, bool,
 // Delete 删除 token 对应的会话，不存在时不报错。
 func (s *Sessions) Delete(ctx context.Context, token string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hashToken(token))
+	if err == nil {
+		s.revoked()
+	}
 	return err
 }
 
 // DeleteKind 删除某一类型的全部会话。
 func (s *Sessions) DeleteKind(ctx context.Context, kind SessionKind) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE kind = ?`, string(kind))
+	if err == nil {
+		s.revoked()
+	}
 	return err
 }

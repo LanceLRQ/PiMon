@@ -34,6 +34,9 @@ func NewLimiter(clk clock.Clock, max int, lock time.Duration) *Limiter {
 	return &Limiter{clk: clk, max: max, lock: lock, entries: make(map[string]*limitEntry)}
 }
 
+// Now 返回限流器使用的当前时间，用于把剩余锁定时长换算成到期时刻。
+func (l *Limiter) Now() time.Time { return l.clk.Now() }
+
 // Locked 返回 key 剩余的锁定时长，未锁定返回 0。锁定期满时清除该 key 的计数。
 func (l *Limiter) Locked(key string) time.Duration {
 	l.mu.Lock()

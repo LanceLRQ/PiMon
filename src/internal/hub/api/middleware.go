@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/httpx"
@@ -74,4 +75,9 @@ func (s *server) issueSession(w http.ResponseWriter, r *http.Request, kind auth.
 
 func limitKey(prefix string, r *http.Request) string {
 	return prefix + httpx.Info(r).ClientIP.String()
+}
+
+// writeLocked 回 auth.locked，锁定到期时刻按限流器的时钟计算。
+func (s *server) writeLocked(w http.ResponseWriter, r *http.Request, d time.Duration) {
+	httpx.WriteLocked(w, r, s.Limiter.Now(), d)
 }

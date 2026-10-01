@@ -44,9 +44,15 @@ func main() {
 	// 日志必须最早创建，mono 才从进程启动时刻算起。
 	// 级别在解析配置后通过 LevelVar 调整，logger 本身不再重建。
 	var lv slog.LevelVar
-	slog.SetDefault(logging.New(os.Stderr, &lv))
+	slog.SetDefault(logging.NewWithRing(os.Stderr, &lv, logRing))
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, os.Getenv, &lv))
 }
+
+// logRingSize 是内存日志缓冲保留的条数，系统页「最近日志」读取它。
+const logRingSize = 500
+
+// logRing 与默认日志同时创建，保证启动阶段的日志也进入缓冲。
+var logRing = logging.NewRing(logRingSize)
 
 // run 分派子命令并返回退出码：0 成功，1 命令失败，2 用法错误。
 // lv 为日志级别变量，解析配置后设置；可为 nil（测试中不触碰全局日志）。
@@ -118,7 +124,7 @@ func dispatch(ctx context.Context, cmd string, cfg config.Config, pos []string,
 		}
 		return app.Restore(cfg, pos[0], stdout)
 	}
-	a, err := app.Open(ctx, cfg, app.WithGetenv(getenv), app.WithStderr(stderr))
+	a, err := app.Open(ctx, cfg, app.WithGetenv(getenv), app.WithStderr(stderr), app.WithLogRing(logRing))
 	if err != nil {
 		return err
 	}

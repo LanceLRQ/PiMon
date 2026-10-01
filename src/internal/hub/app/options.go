@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/tlscert"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/version"
@@ -21,6 +22,7 @@ type options struct {
 	stderr   io.Writer
 	tlsEnv   tlscert.Env
 	onListen func(addr string)
+	logRing  *logging.Ring
 }
 
 func defaultOptions() options {
@@ -53,3 +55,6 @@ func WithTLSEnv(e tlscert.Env) Option { return func(o *options) { o.tlsEnv = e }
 
 // WithOnListen 注入监听成功后的回调，参数为实际监听地址（端口为 0 时用于得知端口）。
 func WithOnListen(f func(addr string)) Option { return func(o *options) { o.onListen = f } }
+
+// WithLogRing 注入内存日志缓冲，系统页的「最近日志」读取它；不注入则日志列表恒为空。
+func WithLogRing(r *logging.Ring) Option { return func(o *options) { o.logRing = r } }

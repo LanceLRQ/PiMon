@@ -122,6 +122,7 @@ func (s *Service) Create(ctx context.Context, in model.InstanceInput) (model.Ins
 	}
 	s.ensureState(id, r.ConfigHash)
 	s.syncRow(ctx, r)
+	s.notify(id)
 	return s.toDetail(r), nil
 }
 
@@ -138,11 +139,16 @@ func (s *Service) Update(ctx context.Context, id string, in model.InstanceInput)
 		return model.InstanceDetail{}, model.FieldErrors{"plugin_id": model.FieldInvalid}
 	}
 	p, existing, iss := s.loadFull(r)
-	if iss != nil {
+	// 配置损坏或密钥无法解密时没有可保留的旧值：请求体就是完整的新配置。
+	refill := iss != nil && iss.refill
+	if iss != nil && !refill {
 		if _, ok := s.reg.Get(r.PluginID); !ok {
 			return model.InstanceDetail{}, ErrPluginNotFound
 		}
 		return model.InstanceDetail{}, errors.New(iss.msg)
+	}
+	if refill {
+		existing = map[string]any{}
 	}
 	errs := model.FieldErrors{}
 	name := validateName(in.Name, errs)
@@ -155,28 +161,37 @@ func (s *Service) Update(ctx context.Context, id string, in model.InstanceInput)
 	if len(errs) > 0 {
 		return model.InstanceDetail{}, errs
 	}
-	old, err := s.decodeSecrets(r.SecretsEnc)
-	if err != nil {
-		return model.InstanceDetail{}, err
+	old := map[string]any{}
+	if !refill {
+		if old, err = s.decodeSecrets(r.SecretsEnc); err != nil {
+			return model.InstanceDetail{}, err
+		}
 	}
 	enc := r.SecretsEnc
-	if len(old)+len(secrets) > 0 && !reflect.DeepEqual(old, secrets) {
+	if refill {
+		if enc, err = s.encodeSecrets(secrets); err != nil {
+			return model.InstanceDetail{}, err
+		}
+	} else if len(old)+len(secrets) > 0 && !reflect.DeepEqual(old, secrets) {
 		if enc, err = s.encodeSecrets(secrets); err != nil {
 			return model.InstanceDetail{}, err
 		}
 	}
 	hash := contentHash(r.PluginID, plain, enc)
-	changed := hash != r.ConfigHash
+	changed := refill || hash != r.ConfigHash
 	r.Name, r.Config, r.SecretsEnc = name, plain, enc
 	r.IntervalSeconds, r.ProxyID, r.ConfigHash = in.IntervalSeconds, proxyOf(fields, plain), hash
 	r.UpdatedAt = s.clk.Now()
 	if err := s.updateRow(ctx, r); err != nil {
 		return model.InstanceDetail{}, err
 	}
+	// 新配置已完整写回，损坏标记随之清除。
+	r.Corrupt = ""
 	if changed {
 		s.resetState(id, hash)
 	}
 	s.syncRow(ctx, r)
+	s.notify(id)
 	return s.toDetail(r), nil
 }
 
@@ -219,6 +234,7 @@ func (s *Service) Copy(ctx context.Context, id, name string) (model.InstanceDeta
 	}
 	s.ensureState(r.ID, r.ConfigHash)
 	s.syncRow(ctx, r)
+	s.notify(r.ID)
 	return s.toDetail(r), nil
 }
 
@@ -245,6 +261,7 @@ func (s *Service) Delete(ctx context.Context, id string) (model.InstanceDeleteRe
 	s.dropTask(id)
 	s.dropState(id)
 	s.setSyncIssue(id, nil)
+	s.notify(id)
 	return model.InstanceDeleteResult{AffectedScreens: []model.ScreenRef{}}, nil
 }
 
@@ -273,6 +290,7 @@ func (s *Service) setPaused(ctx context.Context, id string, paused bool) (model.
 		}
 	}
 	s.syncRow(ctx, r)
+	s.notify(r.ID)
 	return s.toInstance(r), nil
 }
 

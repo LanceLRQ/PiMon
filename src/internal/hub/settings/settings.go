@@ -38,6 +38,26 @@ type Service struct {
 	mu   sync.RWMutex
 	cur  model.Settings
 	nets []netip.Prefix
+
+	cbMu     sync.RWMutex
+	onChange func()
+}
+
+// OnChange 注册设置变化的订阅回调：Update 成功落库并替换缓存之后同步调用（不持锁）。
+// 回调必须非阻塞；重复注册会覆盖前一个。
+func (s *Service) OnChange(f func()) {
+	s.cbMu.Lock()
+	s.onChange = f
+	s.cbMu.Unlock()
+}
+
+func (s *Service) notify() {
+	s.cbMu.RLock()
+	f := s.onChange
+	s.cbMu.RUnlock()
+	if f != nil {
+		f()
+	}
 }
 
 // Load 读取库中的设置；库里没有时使用默认值（不立即写入）。
@@ -87,6 +107,14 @@ func (s *Service) TrustedNets() []netip.Prefix {
 
 // Update 先校验、再落库、最后替换缓存与网段；校验失败返回 model.FieldErrors。
 func (s *Service) Update(ctx context.Context, n model.Settings) error {
+	if err := s.update(ctx, n); err != nil {
+		return err
+	}
+	s.notify()
+	return nil
+}
+
+func (s *Service) update(ctx context.Context, n model.Settings) error {
 	n = clone(n)
 	normalize(&n)
 	if err := Validate(n); err != nil {

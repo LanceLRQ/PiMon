@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
@@ -171,7 +172,14 @@ func TestLogin_WrongPasswordAndLock(t *testing.T) {
 		}
 	}
 	resp, data := e.do(c, "POST", "/api/login", map[string]any{"password": "wrong-password"})
-	e.expectError(resp, data, 429, "auth.locked")
+	er := e.expectError(resp, data, 429, "auth.locked")
+	wantUntil := e.clk.Now().Add(15 * time.Minute).UTC().Format(time.RFC3339)
+	if got := er.Error.Details["locked_until"]; got != wantUntil {
+		t.Fatalf("locked_until = %v，期望 %s", got, wantUntil)
+	}
+	if got, _ := er.Error.Details["client_ip"].(string); got != "127.0.0.1" {
+		t.Fatalf("client_ip = %v", er.Error.Details["client_ip"])
+	}
 	// 锁定期内正确密码也被拒绝。
 	resp, data = e.do(c, "POST", "/api/login", map[string]any{"password": testPassword})
 	e.expectError(resp, data, 429, "auth.locked")
@@ -187,7 +195,10 @@ func TestLogin_TrustedProxyCountsPerClient(t *testing.T) {
 		e.do(c, "POST", "/api/login", map[string]any{"password": "wrong-password"}, xff("203.0.113.1"))
 	}
 	resp, data := e.do(c, "POST", "/api/login", map[string]any{"password": testPassword}, xff("203.0.113.1"))
-	e.expectError(resp, data, 429, "auth.locked")
+	er := e.expectError(resp, data, 429, "auth.locked")
+	if got, _ := er.Error.Details["client_ip"].(string); got != "203.0.113.1" {
+		t.Fatalf("受信任反代下 client_ip = %v，期望 203.0.113.1", er.Error.Details["client_ip"])
+	}
 	// 另一个客户端不受影响。
 	resp, data = e.do(c, "POST", "/api/login", map[string]any{"password": testPassword}, xff("203.0.113.2"))
 	if resp.StatusCode != 200 {
@@ -205,7 +216,10 @@ func TestLogin_DirectForgedXFFIgnored(t *testing.T) {
 	}
 	resp, data := e.do(c, "POST", "/api/login", map[string]any{"password": testPassword},
 		withHeader("X-Forwarded-For", "198.51.100.99"))
-	e.expectError(resp, data, 429, "auth.locked")
+	er := e.expectError(resp, data, 429, "auth.locked")
+	if got, _ := er.Error.Details["client_ip"].(string); got != "127.0.0.1" {
+		t.Fatalf("直连伪造 XFF 时 client_ip = %v，期望仍为 RemoteAddr 127.0.0.1", er.Error.Details["client_ip"])
+	}
 }
 
 func TestOriginCheck(t *testing.T) {

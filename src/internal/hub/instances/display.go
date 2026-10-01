@@ -91,6 +91,9 @@ func (s *Service) toDetail(r row) model.InstanceDetail {
 	}
 	if _, iss := s.resolve(r); iss != nil {
 		d.Problems = iss.problems
+		if iss.refill {
+			d.Problems = model.FieldErrors{RefillKey: model.FieldInvalid}
+		}
 	}
 	return d
 }

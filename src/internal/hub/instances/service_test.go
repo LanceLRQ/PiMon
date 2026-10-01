@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -817,10 +818,19 @@ func TestReferrersAndMissingProxy(t *testing.T) {
 		t.Fatalf("应经代理运行: %v", f.probe.last().Proxy)
 	}
 
+	f.start()
+	if !f.svc.isScheduled(a.ID) {
+		t.Fatal("摘除前应在调度器里")
+	}
+	log := &changeLog{}
+	f.svc.OnChange(log.add)
 	for i := 0; i < 2; i++ { // 幂等
-		if err := f.svc.ResetToDirect(bg, "px1"); err != nil {
+		if err := f.svc.DetachAndPause(bg, "px1"); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if !slices.Contains(log.take(), a.ID) {
+		t.Fatal("摘除并暂停应通知该实例")
 	}
 	if refs, _ = f.svc.ListByProxy(bg, "px1"); len(refs) != 0 {
 		t.Fatalf("改直连后不应再有引用: %v", refs)
@@ -829,6 +839,18 @@ func TestReferrersAndMissingProxy(t *testing.T) {
 	if g.Config["proxy"] != "direct" {
 		t.Fatalf("配置应改为 direct: %v", g.Config["proxy"])
 	}
+	if !g.Paused || f.svc.isScheduled(a.ID) {
+		t.Fatalf("被引用实例应暂停并移出调度器: paused=%v", g.Paused)
+	}
+	others, _ := f.svc.List(bg)
+	for _, o := range others {
+		if o.ID != a.ID && o.Paused {
+			t.Fatal("未引用的实例不应被暂停")
+		}
+	}
+	if _, err := f.svc.Resume(bg, a.ID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := f.svc.Run(bg, a.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -836,6 +858,44 @@ func TestReferrersAndMissingProxy(t *testing.T) {
 		t.Fatal("改直连后应直连运行")
 	}
 	// 指向已不存在代理的实例不再按直连运行，见 TestRemovedProxyFailsRun（Ruling 49）。
+}
+
+// 已暂停的引用实例再被摘除：代理设置照常清除，保持暂停，不会被意外恢复。
+func TestDetachAndPauseKeepsPausedInstancePaused(t *testing.T) {
+	f := newFx(t)
+	px, _ := proxy.Parse("http://127.0.0.1:8080")
+	f.px.known["px1"] = px
+	cfg := probeCfg("a")
+	cfg["proxy"] = "px1"
+	a := f.create("probe", "走代理", cfg)
+	f.start()
+	if _, err := f.svc.Pause(bg, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.DetachAndPause(bg, "px1"); err != nil {
+		t.Fatal(err)
+	}
+	g, _ := f.svc.Get(bg, a.ID)
+	if !g.Paused || g.Config["proxy"] != "direct" || f.svc.isScheduled(a.ID) {
+		t.Fatalf("应保持暂停且代理已清除: paused=%v proxy=%v", g.Paused, g.Config["proxy"])
+	}
+}
+
+// 没有实例引用的代理：DetachAndPause 不改任何实例。
+func TestDetachAndPauseWithoutReferrersIsNoop(t *testing.T) {
+	f := newFx(t)
+	px, _ := proxy.Parse("http://127.0.0.1:8080")
+	f.px.known["px1"] = px
+	a := f.create("probe", "直连", probeCfg("a"))
+	f.start()
+	before, _ := f.svc.Get(bg, a.ID)
+	if err := f.svc.DetachAndPause(bg, "px1"); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := f.svc.Get(bg, a.ID)
+	if after.Paused || !f.svc.isScheduled(a.ID) || after.UpdatedAt != before.UpdatedAt {
+		t.Fatalf("无引用时不应有副作用: %+v", after)
+	}
 }
 
 func TestStreamerUsesStreamManager(t *testing.T) {
@@ -958,5 +1018,148 @@ func TestMinIntervalEnforced(t *testing.T) {
 	// 未声明 min_interval 的插件仍只受全局下限约束。
 	if _, err := f.svc.Create(bg, model.InstanceInput{PluginID: "plain", Name: "p", Config: cfg, IntervalSeconds: 5}); err != nil {
 		t.Fatalf("无 min_interval 的插件 5 秒应通过: %v", err)
+	}
+}
+
+// changeLog 记录 OnChange 回调收到的实例 id。
+type changeLog struct {
+	mu  sync.Mutex
+	ids []string
+}
+
+func (c *changeLog) add(id string) {
+	c.mu.Lock()
+	c.ids = append(c.ids, id)
+	c.mu.Unlock()
+}
+
+func (c *changeLog) take() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := c.ids
+	c.ids = nil
+	return out
+}
+
+func (c *changeLog) only(id string) bool {
+	got := c.take()
+	return len(got) > 0 && slices.Compact(got)[0] == id && len(slices.Compact(got)) == 1
+}
+
+func TestOnChangeNotifiesEveryMutation(t *testing.T) {
+	f := newFx(t)
+	log := &changeLog{}
+	f.svc.OnChange(log.add)
+
+	d := f.create("probe", "a", probeCfg("a"))
+	if !log.only(d.ID) {
+		t.Fatal("新建应通知该实例")
+	}
+	if _, err := f.svc.Update(bg, d.ID, model.InstanceInput{Name: "改名", Config: map[string]any{"host": "a"}}); err != nil {
+		t.Fatal(err)
+	}
+	if !log.only(d.ID) {
+		t.Fatal("更新应通知该实例")
+	}
+	if _, err := f.svc.Pause(bg, d.ID); err != nil || !log.only(d.ID) {
+		t.Fatalf("暂停应通知该实例: %v", err)
+	}
+	if _, err := f.svc.Resume(bg, d.ID); err != nil || !log.only(d.ID) {
+		t.Fatalf("恢复应通知该实例: %v", err)
+	}
+	cp, err := f.svc.Copy(bg, d.ID, "副本")
+	if err != nil || !log.only(cp.ID) {
+		t.Fatalf("复制应通知新实例: %v", err)
+	}
+	log.take()
+	if _, err := f.svc.Run(bg, d.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := log.take(); !slices.Contains(got, d.ID) {
+		t.Fatalf("采集结果写入状态后应通知: %v", got)
+	}
+	if _, err := f.svc.Delete(bg, d.ID); err != nil || !log.only(d.ID) {
+		t.Fatalf("删除应通知该实例: %v", err)
+	}
+	if _, err := f.svc.View(bg, d.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("删除后 View 应返回 ErrNotFound: %v", err)
+	}
+	v, err := f.svc.View(bg, cp.ID)
+	if err != nil || v.ID != cp.ID || v.Name != "副本" {
+		t.Fatalf("View = %+v %v", v, err)
+	}
+}
+
+// corruptRow 模拟库里配置损坏（config_json 不是合法 JSON）或密钥密文无法解密。
+func corruptRow(t *testing.T, f *fx, id, kind string) {
+	t.Helper()
+	switch kind {
+	case "config":
+		_, err := f.db.Exec(`UPDATE plugin_instances SET config_json=? WHERE id=?`, `{not json`, id)
+		must(t, err)
+	case "secrets":
+		_, err := f.db.Exec(`UPDATE plugin_instances SET secrets_enc=? WHERE id=?`, `garbage-ciphertext`, id)
+		must(t, err)
+	}
+}
+
+func TestGetCorruptInstanceReportsRefillProblem(t *testing.T) {
+	for _, kind := range []string{"config", "secrets"} {
+		t.Run(kind, func(t *testing.T) {
+			f := newFx(t)
+			d := f.create("probe", "损坏实例", probeCfg("a.example"))
+			corruptRow(t, f, d.ID, kind)
+			got, err := f.svc.Get(bg, d.ID)
+			if err != nil {
+				t.Fatalf("Get 不应失败: %v", err)
+			}
+			if got.Problems[RefillKey] != model.FieldInvalid {
+				t.Fatalf("应提示需重新填写: %v", got.Problems)
+			}
+		})
+	}
+}
+
+func TestUpdateCorruptInstanceTakesBodyAsFullConfig(t *testing.T) {
+	for _, kind := range []string{"config", "secrets"} {
+		t.Run(kind, func(t *testing.T) {
+			f := newFx(t)
+			f.start()
+			d := f.create("probe", "损坏实例", probeCfg("a.example"))
+			corruptRow(t, f, d.ID, kind)
+
+			// 请求体不带密钥：不能再沿用旧值，按必填缺失返回字段错误而不是 500
+			_, err := f.svc.Update(bg, d.ID, model.InstanceInput{Name: "损坏实例", Config: map[string]any{"host": "b.example"}})
+			var fe model.FieldErrors
+			if !errors.As(err, &fe) || fe["api_key"] != model.FieldRequired {
+				t.Fatalf("缺密钥应返回字段错误: %v", err)
+			}
+
+			// 回显标记也不能当作保留旧值
+			_, err = f.svc.Update(bg, d.ID, model.InstanceInput{Name: "损坏实例",
+				Config: map[string]any{"host": "b.example", "api_key": map[string]any{"set": true}}})
+			if !errors.As(err, &fe) {
+				t.Fatalf("回显标记应被拒绝: %v", err)
+			}
+
+			// 完整重填后成功，问题标记清除，可正常运行
+			got, err := f.svc.Update(bg, d.ID, model.InstanceInput{Name: "损坏实例", Config: probeCfg("b.example")})
+			if err != nil {
+				t.Fatalf("重填应成功: %v", err)
+			}
+			if len(got.Problems) != 0 || got.Issue != "" {
+				t.Fatalf("成功后应清除问题: issue=%q problems=%v", got.Issue, got.Problems)
+			}
+			g2, err := f.svc.Get(bg, d.ID)
+			if err != nil || len(g2.Problems) != 0 {
+				t.Fatalf("再次读取仍有问题: %v %v", err, g2.Problems)
+			}
+			if _, err := f.svc.Run(bg, d.ID); err != nil {
+				t.Fatal(err)
+			}
+			if f.probe.last().Secrets["api_key"] != "s3cret-key" || f.probe.last().Config["host"] != "b.example" {
+				t.Fatalf("重填后的配置未生效: %+v", f.probe.last())
+			}
+		})
 	}
 }

@@ -122,7 +122,7 @@ func (s *server) checkSetupCode(w http.ResponseWriter, r *http.Request, code str
 	defer s.keyLocks.lock(key)()
 
 	if d := s.Limiter.Locked(key); d > 0 {
-		httpx.WriteLocked(w, d)
+		s.writeLocked(w, r, d)
 		return false
 	}
 	ok, err := s.SetupCodes.Verify(r.Context(), code)
@@ -136,7 +136,7 @@ func (s *server) checkSetupCode(w http.ResponseWriter, r *http.Request, code str
 	}
 	remaining := s.Limiter.Fail(key)
 	if remaining == 0 {
-		httpx.WriteLocked(w, s.Limiter.Locked(key))
+		s.writeLocked(w, r, s.Limiter.Locked(key))
 		return false
 	}
 	httpx.WriteError(w, http.StatusUnauthorized, httpx.CodeInvalidSetup, map[string]any{"remaining": remaining})
