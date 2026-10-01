@@ -1,11 +1,10 @@
-import { useCallback, useState, type ReactNode } from 'react'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 import { http } from '@/api/client'
 import { isApiError } from '@/api/errors'
 import { translateErrorValue } from '@/i18n/errors'
-import type { Instance, InstanceRunResult, PluginInfo, ScreenRef } from '@/types/generated'
-import type { InstanceDetailView } from './types'
+import type { Instance, InstanceDetail, InstanceRunResult, PluginInfo, ScreenRef } from '@/types/generated'
 import { Button } from '@/ui/button'
 import { Dialog, DialogContent } from '@/ui/dialog'
 import { useToast } from '@/ui/toast'
@@ -37,35 +36,83 @@ interface Manager {
   dialogs: ReactNode
 }
 
+// 批量请求的并发上限，避免同时触发多个同步采集
+const batchConcurrency = 3
+// 汇总提示里最多点名的失败实例数，其余折成「另 K 个」
+const summaryNames = 3
+
+// 按并发上限依次处理，结果顺序与入参一致
+async function pool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length)
+  let next = 0
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++
+      out[i] = await fn(items[i])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return out
+}
+
+interface Outcome {
+  inst: Instance
+  // 失败时的原始错误；成功为 undefined
+  error?: unknown
+  failed: boolean
+}
+
 export function useInstanceManager(plugins: PluginInfo[] | undefined, onDeleted?: (ids: string[]) => void): Manager {
   const { t, i18n } = useTranslation()
   const toast = useToast()
   const navigate = useNavigate()
   const [running, setRunning] = useState<ReadonlySet<string>>(new Set())
   const [deleting, setDeleting] = useState<Instance[] | null>(null)
+  const copying = useRef(false)
 
-  const failure = useCallback(
+  const describe = useCallback(
     (err: unknown) => {
       let text = translateErrorValue(i18n, err)
       // 采集错误的详情文字已由中枢脱敏，直接附在译文后
       if (isApiError(err) && (err.code === 'run.failed' || err.code === 'run.timeout') && typeof err.details.message === 'string') {
         text += `：${err.details.message}`
       }
-      toast.show(text, 'warn')
+      return text
     },
-    [i18n, toast],
+    [i18n],
   )
 
-  const runOne = useCallback(
-    async (inst: Instance): Promise<boolean> => {
+  // 单个操作的失败提示带实例名；批量操作改用 summarize 只弹一条
+  const failure = useCallback((err: unknown, name: string) => toast.show(`${name}：${describe(err)}`, 'warn'), [describe, toast])
+
+  // 批量结果汇总：全部成功给普通提示，有失败则一条警告列出失败的实例及各自原因
+  const summarize = useCallback(
+    (outcomes: Outcome[], okMessage: (count: number) => string) => {
+      const bad = outcomes.filter((o) => o.failed)
+      const ok = outcomes.length - bad.length
+      if (bad.length === 0) {
+        if (ok > 0) toast.show(okMessage(ok))
+        return
+      }
+      const named = bad.slice(0, summaryNames).map((o) => t('instances.batch.failedItem', { name: o.inst.name, reason: describe(o.error) }))
+      const more = bad.length > summaryNames ? t('instances.batch.more', { count: bad.length - summaryNames }) : ''
+      toast.show(
+        t('instances.batch.summary', { ok, failed: bad.length, list: named.join(t('overview.listSep')) + more }),
+        'warn',
+      )
+    },
+    [describe, t, toast],
+  )
+
+  const runCore = useCallback(
+    async (inst: Instance): Promise<Outcome> => {
       setRunning((s) => new Set(s).add(inst.id))
       try {
         const plugin = plugins?.find((p) => p.id === inst.plugin_id)
         await http.post<InstanceRunResult>(`/api/instances/${inst.id}/run`, undefined, { timeoutMs: runTimeoutMs(plugin) })
-        return true
+        return { inst, failed: false }
       } catch (e) {
-        failure(e)
-        return false
+        return { inst, failed: true, error: e }
       } finally {
         setRunning((s) => {
           const n = new Set(s)
@@ -74,50 +121,57 @@ export function useInstanceManager(plugins: PluginInfo[] | undefined, onDeleted?
         })
       }
     },
-    [plugins, failure],
+    [plugins],
   )
+
+  const pauseCore = useCallback(async (inst: Instance): Promise<Outcome> => {
+    try {
+      await http.post<Instance>(`/api/instances/${inst.id}/pause`)
+      return { inst, failed: false }
+    } catch (e) {
+      return { inst, failed: true, error: e }
+    }
+  }, [])
 
   const actions: InstanceActions = {
     running,
     async run(inst) {
-      if (await runOne(inst)) toast.show(t('instances.toast.ran', { name: inst.name }))
+      const o = await runCore(inst)
+      if (o.failed) failure(o.error, inst.name)
+      else toast.show(t('instances.toast.ran', { name: inst.name }))
     },
     async runMany(list) {
-      const results = await Promise.all(list.map(runOne))
-      const ok = results.filter(Boolean).length
-      if (ok > 0) toast.show(t('instances.toast.ranMany', { count: ok }))
+      const outcomes = await pool(list, batchConcurrency, runCore)
+      summarize(outcomes, (count) => t('instances.toast.ranMany', { count }))
     },
     async setPaused(inst, paused) {
       try {
         await http.post<Instance>(`/api/instances/${inst.id}/${paused ? 'pause' : 'resume'}`)
         toast.show(t(paused ? 'instances.toast.paused' : 'instances.toast.resumed', { name: inst.name }))
       } catch (e) {
-        failure(e)
+        failure(e, inst.name)
       }
     },
     async pauseMany(list) {
-      const targets = list.filter((i) => !i.paused)
-      const results = await Promise.all(
-        targets.map(async (inst) => {
-          try {
-            await http.post<Instance>(`/api/instances/${inst.id}/pause`)
-            return true
-          } catch (e) {
-            failure(e)
-            return false
-          }
-        }),
+      const outcomes = await pool(
+        list.filter((i) => !i.paused),
+        batchConcurrency,
+        pauseCore,
       )
-      const ok = results.filter(Boolean).length
-      if (ok > 0) toast.show(t('instances.toast.pausedMany', { count: ok }))
+      summarize(outcomes, (count) => t('instances.toast.pausedMany', { count }))
     },
     async copy(inst) {
+      // 复制是创建操作，连点会产生多份
+      if (copying.current) return
+      copying.current = true
       try {
-        const created = await http.post<InstanceDetailView>(`/api/instances/${inst.id}/copy`)
+        const created = await http.post<InstanceDetail>(`/api/instances/${inst.id}/copy`)
         toast.show(t('instances.toast.copied', { name: created.name }))
         navigate(`/instances/${created.id}/edit`)
       } catch (e) {
-        failure(e)
+        failure(e, inst.name)
+      } finally {
+        copying.current = false
       }
     },
     edit(inst) {
@@ -182,6 +236,7 @@ function DeleteInstancesDialog({ targets, onClose, onDone }: DeleteDialogProps) 
     setBusy(true)
     const gone: string[] = []
     const stillBlocked: Blocked[] = []
+    const failed: { inst: Instance; error: unknown }[] = []
     for (const inst of list) {
       try {
         await http.delete(`/api/instances/${inst.id}`, confirmed ? { query: { confirm: 1 } } : undefined)
@@ -189,12 +244,16 @@ function DeleteInstancesDialog({ targets, onClose, onDone }: DeleteDialogProps) 
       } catch (e) {
         const screens = screensOf(e)
         if (screens.length > 0) stillBlocked.push({ inst, screens })
-        else toast.show(`${inst.name}：${translateErrorValue(i18n, e)}`, 'warn')
+        else failed.push({ inst, error: e })
       }
     }
     setBusy(false)
     const all = [...deleted, ...gone]
-    if (gone.length > 0) toast.show(t('instances.toast.deleted', { count: gone.length }))
+    if (failed.length > 0) {
+      const named = failed.slice(0, summaryNames).map((f) => t('instances.batch.failedItem', { name: f.inst.name, reason: translateErrorValue(i18n, f.error) }))
+      const more = failed.length > summaryNames ? t('instances.batch.more', { count: failed.length - summaryNames }) : ''
+      toast.show(t('instances.batch.summary', { ok: gone.length, failed: failed.length, list: named.join(t('overview.listSep')) + more }), 'warn')
+    } else if (gone.length > 0) toast.show(t('instances.toast.deleted', { count: gone.length }))
     if (stillBlocked.length > 0) {
       setDeleted(all)
       setBlocked(stillBlocked)

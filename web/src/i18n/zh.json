@@ -347,7 +347,10 @@
     "batch": {
       "label": "批量操作",
       "selected": "已选 {{count}} 项",
-      "clear": "取消选择"
+      "clear": "取消选择",
+      "failedItem": "{{name}}（{{reason}}）",
+      "more": "…另 {{count}} 个",
+      "summary": "成功 {{ok}} 个，失败 {{failed}} 个：{{list}}"
     },
     "execDir": "exec 插件目录",
     "execWatched": "已监视，放入插件后自动出现",

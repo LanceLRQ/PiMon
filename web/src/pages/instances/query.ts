@@ -83,12 +83,19 @@ export interface TableFilter {
 
 export const emptyFilter: TableFilter = { attention: false, location: null, plugin: null, query: '' }
 
+// runs:hub 与 runs:agent 按类别匹配（非 hub 即 agent，与表格徽章一致）；其他值按运行位置（主机标识）包含匹配
+function matchesRuns(runsOn: string, wanted: string): boolean {
+  if (wanted === 'hub') return runsOn === 'hub'
+  if (wanted === 'agent') return runsOn !== 'hub'
+  return runsOn.toLowerCase().includes(wanted)
+}
+
 export function matchesFilter(inst: Instance, filter: TableFilter, parsed: ParsedQuery = parseQuery(filter.query)): boolean {
   if (filter.attention && !isAttention(inst.display_state)) return false
   if (filter.location && inst.runs_on !== filter.location) return false
   if (filter.plugin && inst.plugin_id !== filter.plugin) return false
   if (parsed.status !== undefined && normalizeStatus(parsed.status) !== inst.display_state) return false
-  if (parsed.runs !== undefined && !inst.runs_on.toLowerCase().includes(parsed.runs)) return false
+  if (parsed.runs !== undefined && !matchesRuns(inst.runs_on, parsed.runs)) return false
   if (parsed.plugin !== undefined && !inst.plugin_id.toLowerCase().includes(parsed.plugin)) return false
   if (parsed.text.length === 0) return true
   const hay = `${inst.name} ${inst.plugin_id} ${inst.summary} ${inst.runs_on}`.toLowerCase()

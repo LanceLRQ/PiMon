@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronsUpDown, MoreHorizontal, Pause, Play, RefreshCw, Search, Settings2, SquareArrowOutUpRight, Copy, Trash2 } from 'lucide-react'
-import { Fragment, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/lib/use-mobile'
 import { formatAgo, parseTime } from '@/lib/time'
@@ -103,6 +103,14 @@ export function InstanceTable({
     () => sortInstances(filterInstances(instances, filter), sort.key, sort.dir, i18n.language === 'en' ? 'en' : 'zh'),
     [instances, filter, sort, i18n.language],
   )
+
+  // 筛选后看不到的行不再保留在选择里，避免批量操作静默作用于隐藏的行
+  useEffect(() => {
+    if (!selected || selected.size === 0 || !onSelectedChange) return
+    const shown = new Set(visible.map((i) => i.id))
+    const kept = [...selected].filter((id) => shown.has(id))
+    if (kept.length !== selected.size) onSelectedChange(new Set(kept))
+  }, [visible, selected, onSelectedChange])
 
   const showSelect = !!selectable && !mobile
   const colSpan = columns.length + 1 + (showSelect ? 1 : 0)

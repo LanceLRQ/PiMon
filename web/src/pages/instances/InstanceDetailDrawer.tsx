@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { http } from '@/api/client'
 import { translateErrorValue } from '@/i18n/errors'
 import { formatDateTime, formatAgo, parseTime } from '@/lib/time'
-import type { Instance, PluginOutput } from '@/types/generated'
+import type { Instance, InstanceDetail, PluginOutput } from '@/types/generated'
 import { Button } from '@/ui/button'
 import { NumberTag } from '@/ui/numbered-label'
 import { Note } from '@/ui/note'
@@ -15,7 +15,6 @@ import { StatusLabel, StatusShape } from '@/ui/status-shape'
 import { WordmarkBadge } from '@/ui/wordmark-badge'
 import type { InstanceActions } from './actions'
 import { historyItems } from './history-items'
-import type { InstanceDetailView } from './types'
 
 // 数据项标题：精确匹配插件声明的 key，动态集合（prefix[*]）按前缀匹配其成员
 export function outputTitle(outputs: PluginOutput[] | undefined, key: string): string | undefined {
@@ -55,7 +54,7 @@ interface DrawerProps {
   onClose(): void
 }
 
-type Detail = { kind: 'loading' } | { kind: 'ready'; data: InstanceDetailView } | { kind: 'error'; error: unknown }
+type Detail = { kind: 'loading' } | { kind: 'ready'; data: InstanceDetail } | { kind: 'error'; error: unknown }
 
 // 实例详情抽屉：全部数据项按类型渲染、24 小时历史曲线、最近错误；状态与读数随实时推送更新
 export function InstanceDetailDrawer({ id, instance, synced, now, outputs, pluginName, actions, onClose }: DrawerProps) {
@@ -68,7 +67,7 @@ export function InstanceDetailDrawer({ id, instance, synced, now, outputs, plugi
     if (!id) return
     const controller = new AbortController()
     http
-      .get<InstanceDetailView>(`/api/instances/${id}`, { signal: controller.signal })
+      .get<InstanceDetail>(`/api/instances/${id}`, { signal: controller.signal })
       .then((data) => setDetail({ kind: 'ready', data }))
       .catch((error: unknown) => {
         if (!controller.signal.aborted) setDetail({ kind: 'error', error })

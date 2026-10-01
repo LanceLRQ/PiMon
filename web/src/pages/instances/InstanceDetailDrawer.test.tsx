@@ -2,10 +2,9 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { liveStore } from '@/store/live-store'
-import type { Report } from '@/types/generated'
+import type { InstanceDetail, Report } from '@/types/generated'
 import { fixtureNow, makeInstance } from './fixtures'
 import { InstancesPage } from './InstancesPage'
-import type { InstanceDetailView } from './types'
 import { apiError, json, mockApi, patchInstance, renderWithApp, seedStore } from './test-utils'
 
 beforeEach(() => {
@@ -28,7 +27,7 @@ const report: Report = {
   ],
 }
 
-function detailOf(over: Partial<InstanceDetailView> = {}): InstanceDetailView {
+function detailOf(over: Partial<InstanceDetail> = {}): InstanceDetail {
   return { ...makeInstance({ id: 'a1', name: '树莓派', summary: 'CPU 37%', display_state: 'warning' }), config: {}, report, ...over }
 }
 
@@ -47,7 +46,7 @@ const history = {
   ],
 }
 
-async function openDrawer(detail: InstanceDetailView, extra?: Parameters<typeof mockApi>[0]) {
+async function openDrawer(detail: InstanceDetail, extra?: Parameters<typeof mockApi>[0]) {
   const user = userEvent.setup()
   const api = mockApi((req) => {
     const custom = extra?.(req)
@@ -170,7 +169,7 @@ describe('实例详情抽屉', () => {
   it('抽屉里的立即采集与删除走同一套确认流程', async () => {
     const { dlg, user, api } = await openDrawer(detailOf(), (req) => (req.url === '/api/instances/a1/run' ? apiError(409, 'run.busy') : undefined))
     await user.click(within(dlg).getByRole('button', { name: '立即采集' }))
-    expect(await screen.findByText('该实例正在运行，请稍后再试')).toBeInTheDocument()
+    expect(await screen.findByText('树莓派：该实例正在运行，请稍后再试')).toBeInTheDocument()
     await user.click(within(dlg).getByRole('button', { name: '删除实例' }))
     expect(await screen.findByText('删除所选的 1 个实例？')).toBeInTheDocument()
     expect(api.calls.some((c) => c.method === 'DELETE')).toBe(false)

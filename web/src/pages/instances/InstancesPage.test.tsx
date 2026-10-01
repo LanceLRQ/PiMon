@@ -138,7 +138,7 @@ describe('实例列表页', () => {
   })
 
   it('从未成功的实例显示「从未成功」而不是刚刚', async () => {
-    await mount([makeInstance({ id: 'x', name: 'x', display_state: 'error', last_success_at: undefined, last_error: '连接被拒绝' })])
+    await mount([makeInstance({ id: 'x', name: 'x', display_state: 'error', last_success_at: null, last_error: '连接被拒绝' })])
     const row = bodyRows()[0]
     expect(within(row).getByText('从未成功')).toBeInTheDocument()
     expect(within(row).getByText('连接被拒绝')).toBeInTheDocument()
@@ -195,7 +195,7 @@ describe('实例操作', () => {
     )
     await user.click(within(rowOf('树莓派本机')).getByRole('button', { name: /更多操作/ }))
     await user.click(await screen.findByRole('menuitem', { name: /立即采集/ }))
-    expect(await screen.findByText('该实例正在运行，请稍后再试')).toBeInTheDocument()
+    expect(await screen.findByText('树莓派本机：该实例正在运行，请稍后再试')).toBeInTheDocument()
     expect(calls.some((c) => c.method === 'POST' && c.url === '/api/instances/i05/run')).toBe(true)
 
     await user.click(within(rowOf('飞牛 NAS')).getByRole('button', { name: /更多操作/ }))
@@ -210,7 +210,7 @@ describe('实例操作', () => {
     )
     await user.click(within(rowOf('树莓派本机')).getByRole('button', { name: /更多操作/ }))
     await user.click(await screen.findByRole('menuitem', { name: /立即采集/ }))
-    expect(await screen.findByText('采集失败：exit status 1: boom')).toBeInTheDocument()
+    expect(await screen.findByText('树莓派本机：采集失败：exit status 1: boom')).toBeInTheDocument()
   })
 
   it('暂停与恢复按当前状态切换菜单项', async () => {
@@ -272,6 +272,92 @@ describe('实例操作', () => {
     await user.click(within(dlg).getByRole('button', { name: '仍然删除' }))
     await waitFor(() => expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.url)).toEqual(['/api/instances/i14', '/api/instances/i14?confirm=1']))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+})
+
+describe('批量操作的失败汇总', () => {
+  async function selectMany(user: ReturnType<typeof userEvent.setup>, names: string[]) {
+    for (const n of names) await user.click(screen.getByLabelText(`选择 ${n}`))
+  }
+
+  it('批量采集部分失败只弹一条汇总，点名失败的实例与原因，超出的折成「另 K 个」', async () => {
+    const user = userEvent.setup()
+    const bad = new Set(['i14', 'i12', 'i15', 'i17'])
+    const { calls } = await mount(prototypeInstances, (req) => {
+      const m = /^\/api\/instances\/(\w+)\/run$/.exec(req.url)
+      if (!m) return undefined
+      return bad.has(m[1]) ? apiError(409, 'run.busy') : json(200, {})
+    })
+    await selectMany(user, ['路由器', '天气', 'ubuntu-srv SSH', '系统', '个人博客'])
+    await user.click(within(screen.getByRole('toolbar')).getByRole('button', { name: '立即采集' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('成功 1 个，失败 4 个')
+    expect(alert).toHaveTextContent('该实例正在运行，请稍后再试')
+    expect(alert).toHaveTextContent('…另 1 个')
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    expect(calls.filter((c) => c.url.endsWith('/run'))).toHaveLength(5)
+  })
+
+  it('批量采集并发不超过 3', async () => {
+    const user = userEvent.setup()
+    let active = 0
+    let peak = 0
+    await mount(prototypeInstances, async (req) => {
+      if (!req.url.endsWith('/run')) return undefined
+      active++
+      peak = Math.max(peak, active)
+      await new Promise((r) => setTimeout(r, 20))
+      active--
+      return json(200, {})
+    })
+    await selectMany(user, ['路由器', '天气', 'ubuntu-srv SSH', '系统', '个人博客', 'GLM'])
+    await user.click(within(screen.getByRole('toolbar')).getByRole('button', { name: '立即采集' }))
+    expect(await screen.findByText('已完成 6 个实例的采集')).toBeInTheDocument()
+    expect(peak).toBe(3)
+  })
+
+  it('批量暂停部分失败同样汇总', async () => {
+    const user = userEvent.setup()
+    await mount(prototypeInstances, (req) => (req.url === '/api/instances/i14/pause' ? apiError(404, 'instance.not_found') : req.method === 'POST' ? json(200, {}) : undefined))
+    await selectMany(user, ['路由器', '天气'])
+    await user.click(within(screen.getByRole('toolbar')).getByRole('button', { name: '暂停采集' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('成功 1 个，失败 1 个：路由器（实例不存在）')
+  })
+
+  it('批量删除部分失败汇总，成功的照常移除', async () => {
+    const user = userEvent.setup()
+    await mount(prototypeInstances, (req) => (req.method !== 'DELETE' ? undefined : req.url === '/api/instances/i14' ? apiError(500, 'internal') : json(200, { affected_screens: [] })))
+    await selectMany(user, ['路由器', '天气'])
+    await user.click(within(screen.getByRole('toolbar')).getByRole('button', { name: '删除实例' }))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: '删除' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('成功 1 个，失败 1 个：路由器（中枢内部错误）')
+  })
+
+  it('筛选后看不到的行会从选择里剔除，批量操作只作用于可见行', async () => {
+    const user = userEvent.setup()
+    const { calls } = await mount(prototypeInstances, (req) => (req.method === 'POST' ? json(200, {}) : undefined))
+    await selectMany(user, ['路由器', '天气'])
+    expect(screen.getByRole('toolbar')).toHaveTextContent('已选 2 项')
+    await user.type(screen.getByLabelText('搜索实例，支持查询语法'), '天气')
+    await waitFor(() => expect(screen.getByRole('toolbar')).toHaveTextContent('已选 1 项'))
+    await user.click(within(screen.getByRole('toolbar')).getByRole('button', { name: '暂停采集' }))
+    await waitFor(() => expect(calls.filter((c) => c.url.endsWith('/pause')).map((c) => c.url)).toEqual(['/api/instances/i12/pause']))
+  })
+
+  it('复制连点只发一次请求', async () => {
+    const user = userEvent.setup()
+    const { calls } = await mount(prototypeInstances, async (req) => {
+      if (!req.url.endsWith('/copy')) return undefined
+      await new Promise((r) => setTimeout(r, 400))
+      return json(201, { ...prototypeInstances[4], id: 'copy1', name: '副本' })
+    })
+    await user.click(within(rowOf('树莓派本机')).getByRole('button', { name: /更多操作/ }))
+    const item = await screen.findByRole('menuitem', { name: /复制为新实例/ })
+    await user.click(item)
+    await user.click(within(rowOf('飞牛 NAS')).getByRole('button', { name: /更多操作/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /复制为新实例/ }))
+    await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('/instances/copy1/edit'))
+    expect(calls.filter((c) => c.url.endsWith('/copy'))).toHaveLength(1)
   })
 })
 

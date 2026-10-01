@@ -347,7 +347,10 @@
     "batch": {
       "label": "Batch actions",
       "selected": "{{count}} selected",
-      "clear": "Clear selection"
+      "clear": "Clear selection",
+      "failedItem": "{{name}} ({{reason}})",
+      "more": ", and {{count}} more",
+      "summary": "{{ok}} succeeded, {{failed}} failed: {{list}}"
     },
     "execDir": "exec plugin directory",
     "execWatched": "is watched; plugins dropped in appear automatically",

@@ -46,12 +46,15 @@ export function makeInstance(over: Partial<Instance> & { id: string }): Instance
   }
 }
 
+// agent 实例的 runs_on 是主机标识，不是字面量 agent
+const agentHosts: Record<string, string> = { 'ubuntu-srv': 'ubuntu-srv', Claude: '开发机', '飞牛 NAS': 'fnos', 'vps-xray': 'vps-xray', Codex: '开发机' }
+
 export const prototypeInstances: Instance[] = rows.map(([state, name, plugin, runsOn, summary, age], i) =>
   makeInstance({
     id: `i${String(i + 1).padStart(2, '0')}`,
     name,
     plugin_id: plugin,
-    runs_on: runsOn,
+    runs_on: runsOn === 'agent' ? agentHosts[name] : runsOn,
     summary,
     display_state: state,
     report_status: state === 'error' ? '' : state === 'ok' || state === 'warning' || state === 'critical' ? state : 'unknown',

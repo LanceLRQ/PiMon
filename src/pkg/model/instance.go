@@ -34,7 +34,7 @@ type Instance struct {
 	Summary       string     `json:"summary"`
 	ReportStatus  string     `json:"report_status"`
 	ReportStale   bool       `json:"report_stale"`
-	LastSuccessAt *time.Time `json:"last_success_at"`
+	LastSuccessAt *time.Time `json:"last_success_at" tstype:"string | null,required"`
 	// LastError 是最近一次失败的（已脱敏）文字，最近一次成功后为空。
 	LastError string `json:"last_error,omitempty"`
 	Failures  int    `json:"failures"`
@@ -46,19 +46,19 @@ type Instance struct {
 
 // InstanceDetail 是单个实例的详情。
 type InstanceDetail struct {
-	Instance
+	Instance `tstype:",extends"`
 	// Config 已脱敏：已设置的密钥显示为 {"set":true}。
 	Config map[string]any `json:"config"`
 	// Problems 是配置与当前插件 schema 不符的字段（按路径）。
 	Problems FieldErrors `json:"problems,omitempty"`
 	// Report 是当前报告，采集失败时为保留的旧值（已标记过期）；从未成功时为 null。
-	Report *report.Report `json:"report"`
+	Report *report.Report `json:"report" tstype:"Report | null,required"`
 }
 
 // InstanceRunResult 是「保存并测试」的响应：同步运行一次的报告与运行后的实例状态。
 type InstanceRunResult struct {
 	Instance Instance       `json:"instance"`
-	Report   *report.Report `json:"report"`
+	Report   *report.Report `json:"report" tstype:"Report | null,required"`
 }
 
 // ScreenRef 是引用某实例的 screen。

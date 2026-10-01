@@ -154,7 +154,7 @@ export interface Instance {
   summary: string;
   report_status: string;
   report_stale: boolean;
-  last_success_at?: string;
+  last_success_at: string | null;
   /**
    * LastError 是最近一次失败的（已脱敏）文字，最近一次成功后为空。
    */
@@ -170,8 +170,7 @@ export interface Instance {
 /**
  * InstanceDetail 是单个实例的详情。
  */
-export interface InstanceDetail {
-  Instance: Instance;
+export interface InstanceDetail extends Instance {
   /**
    * Config 已脱敏：已设置的密钥显示为 {"set":true}。
    */
@@ -183,14 +182,14 @@ export interface InstanceDetail {
   /**
    * Report 是当前报告，采集失败时为保留的旧值（已标记过期）；从未成功时为 null。
    */
-  report?: Report;
+  report: Report | null;
 }
 /**
  * InstanceRunResult 是「保存并测试」的响应：同步运行一次的报告与运行后的实例状态。
  */
 export interface InstanceRunResult {
   instance: Instance;
-  report?: Report;
+  report: Report | null;
 }
 /**
  * ScreenRef 是引用某实例的 screen。

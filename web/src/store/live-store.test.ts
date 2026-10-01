@@ -16,6 +16,7 @@ function inst(id: string, extra: Partial<Instance> = {}): Instance {
     summary: '',
     report_status: 'ok',
     report_stale: false,
+    last_success_at: null,
     failures: 0,
     created_at: '2026-10-01T00:00:00Z',
     updated_at: '2026-10-01T00:00:00Z',

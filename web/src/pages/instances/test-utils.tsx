@@ -15,7 +15,7 @@ export interface Req {
   body: unknown
 }
 
-export type ApiHandler = (req: Req) => Response | Promise<Response> | undefined
+export type ApiHandler = (req: Req) => Response | undefined | Promise<Response | undefined>
 
 export function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })

@@ -66,6 +66,11 @@ describe('与原型一致的 6 个示例查询', () => {
     expect(run('status:fail')).toEqual(['家里 NAS 网页'])
     expect(run('status:bogus')).toEqual([])
   })
+  it('runs:hub 与 runs:agent 按类别匹配，其他值按主机标识包含匹配', () => {
+    expect(run('runs:hub')).toHaveLength(12)
+    expect(run('runs:开发机')).toEqual(['Claude', 'Codex'])
+    expect(run('runs:fnos')).toEqual(['飞牛 NAS'])
+  })
   it('runs:agent 取运行位置', () => {
     expect(run('runs:agent')).toEqual(['ubuntu-srv', 'Claude', '飞牛 NAS', 'vps-xray', 'Codex'])
   })
@@ -83,7 +88,7 @@ describe('筛选组合', () => {
   })
 
   it('运行位置、插件与查询叠加', () => {
-    expect(run('', { location: 'agent' })).toEqual(['ubuntu-srv', 'Claude', '飞牛 NAS', 'vps-xray', 'Codex'])
+    expect(run('', { location: '开发机' })).toEqual(['Claude', 'Codex'])
     expect(run('', { plugin: 'host-metrics', location: 'hub' })).toEqual(['树莓派本机'])
     expect(run('status:ok', { plugin: 'http-check' })).toEqual(['个人博客'])
     expect(run('', { attention: true, plugin: 'http-check' })).toEqual(['家里 NAS 网页'])
@@ -129,7 +134,7 @@ describe('排序', () => {
   it('按更新时间：升序为最近更新在前，从未成功的排最旧', () => {
     const list = [
       makeInstance({ id: 'a', name: 'a', last_success_at: '2026-10-01T11:00:00Z' }),
-      makeInstance({ id: 'b', name: 'b', last_success_at: undefined }),
+      makeInstance({ id: 'b', name: 'b', last_success_at: null }),
       makeInstance({ id: 'c', name: 'c', last_success_at: '2026-10-01T11:59:00Z' }),
     ]
     expect(names(sortInstances(list, 'ago', 'asc'))).toEqual(['c', 'a', 'b'])
@@ -137,8 +142,9 @@ describe('排序', () => {
   })
 
   it('按运行位置', () => {
-    const list = sorted('run', 'asc')
-    expect(list.slice(0, 5).sort()).toEqual(['Claude', 'Codex', 'vps-xray', 'ubuntu-srv', '飞牛 NAS'].sort())
+    const list = sortInstances(prototypeInstances, 'run', 'asc')
+    const hosts = list.map((i) => i.runs_on)
+    expect(hosts).toEqual([...hosts].sort((a, b) => a.localeCompare(b, 'zh')))
   })
 
   it('不修改入参', () => {
