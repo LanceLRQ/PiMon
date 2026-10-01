@@ -40,13 +40,15 @@ describe('fitList / listCapacity', () => {
   it('放得下全部时不显示 +N', () => {
     expect(fitList(3, 5)).toEqual({ shown: 3, more: 0 })
   })
-  it('放不下时留一行给「+N」', () => {
+  it('容量不小于 2 且放不下时，最后一位让给「+N」', () => {
     expect(fitList(50, 4)).toEqual({ shown: 3, more: 47 })
+    expect(fitList(3, 2)).toEqual({ shown: 1, more: 2 })
   })
-  it('容量为 0 或 1 的边界', () => {
-    expect(fitList(5, 0)).toEqual({ shown: 0, more: 5 })
-    expect(fitList(5, 1)).toEqual({ shown: 0, more: 5 })
+  it('容量为 0 或 1 时至少显示 1 条，不出现孤立的「+N」（Ruling 45）', () => {
+    expect(fitList(5, 0)).toEqual({ shown: 1, more: 0 })
+    expect(fitList(5, 1)).toEqual({ shown: 1, more: 0 })
     expect(fitList(1, 1)).toEqual({ shown: 1, more: 0 })
+    expect(fitList(0, 0)).toEqual({ shown: 0, more: 0 })
   })
   it('按高度换算容量', () => {
     expect(listCapacity(100, 24)).toBe(4)

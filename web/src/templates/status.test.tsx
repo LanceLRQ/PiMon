@@ -1,5 +1,5 @@
 import { screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readThemeRuntime } from '@/themes/runtime'
 import { StatusMarker, resolveStatus } from './status'
 import { WidgetFrame } from './frame'
@@ -108,6 +108,8 @@ describe('WidgetFrame：每种展示状态都有形状或图标', () => {
 })
 
 describe('WidgetFrame：展示状态运行时切换', () => {
+  afterEach(() => vi.restoreAllMocks())
+
   it('ok 与 unconfigured 之间来回切换不产生 console error', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     const mk = (ds: string) => (
@@ -119,6 +121,5 @@ describe('WidgetFrame：展示状态运行时切换', () => {
       expect(container.querySelector('[data-widget-frame]')!.getAttribute('data-display-state')).toBe(ds)
     }
     expect(err).not.toHaveBeenCalled()
-    err.mockRestore()
   })
 })

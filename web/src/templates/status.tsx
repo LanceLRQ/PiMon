@@ -59,13 +59,6 @@ export const levelStroke: Record<StatusLevel, string> = {
   unknown: 'stroke-s-unknown',
   error: 'stroke-s-error',
 }
-export const levelBorder: Record<StatusLevel, string> = {
-  ok: 'border-s-ok',
-  warning: 'border-s-warning',
-  critical: 'border-s-critical',
-  unknown: 'border-s-unknown',
-  error: 'border-s-error',
-}
 export const levelSurface: Partial<Record<StatusLevel, string>> = {
   warning: 'bg-s-warning-bg',
   critical: 'bg-s-critical-bg',

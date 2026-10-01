@@ -59,10 +59,14 @@ export interface ListFit {
   more: number
 }
 
-/** 列表容量 capacity 行放 total 条：放不下时留一行给「+N」 */
+/**
+ * 列表容量 capacity 行放 total 条。
+ * 容量不小于 2 且放不下时，最后一位让给「+N」；容量不超过 1 时至少显示 1 条，不出现孤立的「+N」。
+ */
 export function fitList(total: number, capacity: number): ListFit {
   if (total <= capacity) return { shown: total, more: 0 }
-  const shown = Math.max(0, capacity - 1)
+  if (capacity <= 1) return { shown: 1, more: 0 }
+  const shown = capacity - 1
   return { shown, more: total - shown }
 }
 
