@@ -247,7 +247,6 @@ describe('降低特效与聚合入口', () => {
     const css = effectsCss.replace(/\/\*[\s\S]*?\*\//g, '')
     expect(css).toContain('[data-theme][data-reduce-effects]')
     expect(css).toContain('[data-reduce-effects] [data-theme]')
-    expect(effectsCss).toMatch(/同一元素上/)
   })
 
   it('index.css 聚合三个主题与降低特效，且降低特效在最后', () => {

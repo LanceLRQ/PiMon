@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { readFileSync } from 'node:fs'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getTemplateDef, isImplemented, templateNames } from './registry'
 import { WidgetView } from './widget-view'
 import { makeWidget, renderIn } from './test-utils'
@@ -40,6 +40,8 @@ describe('尺寸表与 Go 侧对照', () => {
 })
 
 describe('未实现的模板（Ruling 16）', () => {
+  afterEach(() => vi.restoreAllMocks())
+
   it('quota-multi 渲染中性占位且不报 console error', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -49,8 +51,6 @@ describe('未实现的模板（Ruling 16）', () => {
     expect(container.querySelector('[data-template-pending="quota-multi"]')).not.toBeNull()
     expect(err).not.toHaveBeenCalled()
     expect(warn).not.toHaveBeenCalled()
-    err.mockRestore()
-    warn.mockRestore()
     expect(isImplemented('quota-multi')).toBe(false)
   })
 

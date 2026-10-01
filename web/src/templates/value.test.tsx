@@ -139,3 +139,23 @@ describe('小组件图标（options.icon）', () => {
     expect(r2.container.querySelector('header svg.lucide')).toBeNull()
   })
 })
+
+describe('value 模板：修复项', () => {
+  it('读数不带截断，只允许不换行（不会被省略号改写成另一个数）', async () => {
+    const { widget, data } = bound('value', { cols: 1, rows: 1 }, [{ key: 'n', type: 'number', value: 1234567.89, unit: 'GB' }], 'n', {
+      options: { threshold: { enabled: true, critical: 10, direction: 'above' } },
+    })
+    const { container } = await renderIn(<WidgetView widget={widget} data={data} />)
+    const num = container.querySelector('.tpl-value__number')!
+    expect(num.className).not.toContain('truncate')
+    expect(num.className).toContain('whitespace-nowrap')
+  })
+
+  it('绑定 state 项且没有 text 时显示级别名，与 state 模板一致', async () => {
+    const { widget, data } = bound('value', { cols: 1, rows: 1 }, [{ key: 's', type: 'state', state: 'ok' }], 's')
+    const { container } = await renderIn(<WidgetView widget={widget} data={data} />)
+    expect(container.querySelector('.tpl-value__number')!.textContent).toBe('正常')
+    expect(container.querySelector('[data-value-level]')!.getAttribute('data-value-level')).toBe('ok')
+    expect(container.textContent).not.toContain('未知')
+  })
+})

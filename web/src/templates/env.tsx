@@ -19,13 +19,20 @@ export function useScreenEnv(): ScreenEnv {
   return useContext(ScreenEnvContext)
 }
 
-/** 按间隔重渲染并返回服务器「现在」（毫秒） */
+/** 按间隔重渲染并返回服务器「现在」（毫秒）；刷新对齐到间隔的整点（如整秒），避免秒数显示拖后 */
 export function useScreenNow(intervalMs = 1000): number {
   const { now } = useScreenEnv()
   const [, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick((n) => n + 1), intervalMs)
-    return () => clearInterval(id)
-  }, [intervalMs])
+    let timer: ReturnType<typeof setTimeout>
+    const schedule = () => {
+      timer = setTimeout(() => {
+        setTick((n) => n + 1)
+        schedule()
+      }, intervalMs - (now() % intervalMs))
+    }
+    schedule()
+    return () => clearTimeout(timer)
+  }, [intervalMs, now])
   return now()
 }

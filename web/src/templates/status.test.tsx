@@ -1,5 +1,5 @@
 import { screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { readThemeRuntime } from '@/themes/runtime'
 import { StatusMarker, resolveStatus } from './status'
 import { WidgetFrame } from './frame'
@@ -104,5 +104,21 @@ describe('WidgetFrame：每种展示状态都有形状或图标', () => {
     const { container } = await renderIn(<WidgetFrame widget={widget} data={{}} statusMode="static">x</WidgetFrame>)
     expect(container.querySelector('[data-marker]')).toBeNull()
     expect(container.querySelector('[data-widget-frame]')!.getAttribute('data-dimmed')).toBe('false')
+  })
+})
+
+describe('WidgetFrame：展示状态运行时切换', () => {
+  it('ok 与 unconfigured 之间来回切换不产生 console error', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const mk = (ds: string) => (
+      <WidgetFrame widget={makeWidget({ template: 'value', display_state: ds })} data={{}}>x</WidgetFrame>
+    )
+    const { rerender, container } = await renderIn(mk('ok'))
+    for (const ds of ['unconfigured', 'critical', 'broken', 'ok']) {
+      rerender(mk(ds))
+      expect(container.querySelector('[data-widget-frame]')!.getAttribute('data-display-state')).toBe(ds)
+    }
+    expect(err).not.toHaveBeenCalled()
+    err.mockRestore()
   })
 })

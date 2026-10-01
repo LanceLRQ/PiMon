@@ -7,7 +7,7 @@ import { formatStamp } from './format'
 import { WidgetIcon } from './icons'
 import { layoutVariant, sizeKey } from './size'
 import {
-  DimIcon, LevelIcon, StatusIcon, StatusMarker, levelBorder, levelSurface, placeholderIcons, resolveStatus,
+  DimIcon, LevelIcon, StatusIcon, StatusMarker, levelSurface, placeholderIcons, resolveStatus,
   type DisplayStatus,
 } from './status'
 import { useThemeRuntime } from './theme-context'
@@ -75,19 +75,16 @@ export function WidgetFrame({ widget, data, statusMode = 'full', hideHeader = fa
   const dimmed = status?.kind === 'dim'
   const placeholder = status?.kind === 'placeholder' ? status.reason : null
 
+  // 边框只用 border 简写：占位态与普通态之间切换时，不混用简写与展开写法，避免 React 报样式冲突
+  const accent = level && level !== 'ok' && weight !== 'normal' ? `var(--status-${level}-color)` : 'var(--border)'
+  const borderWidth = weight === 'strong' && level !== 'ok' ? '2px' : 'var(--border-card-width)'
   const style: CSSProperties = {
-    borderWidth: weight === 'strong' && level !== 'ok' ? '2px' : 'var(--border-card-width)',
-    borderStyle: 'var(--border-card-style)',
+    border: placeholder ? 'var(--state-placeholder-border)' : `${borderWidth} var(--border-card-style) ${accent}`,
     borderRadius: 'var(--radius-card)',
     padding: variant === 'compact' ? 'calc(var(--card-pad) * 0.6)' : 'var(--card-pad)',
-    boxShadow: 'var(--effect-card-shadow)',
+    boxShadow: placeholder ? 'none' : 'var(--effect-card-shadow)',
     fontFamily: 'var(--font-body)',
   }
-  if (placeholder) {
-    style.border = 'var(--state-placeholder-border)'
-    style.boxShadow = 'none'
-  }
-  const border = level && level !== 'ok' && weight !== 'normal' ? levelBorder[level] : 'border-s-border'
   const surface = level ? (levelSurface[level] ?? 'bg-s-card') : 'bg-s-card'
 
   return (
@@ -101,7 +98,7 @@ export function WidgetFrame({ widget, data, statusMode = 'full', hideHeader = fa
       data-weight={weight ?? 'none'}
       data-dimmed={dimmed ? 'true' : 'false'}
       data-placeholder={placeholder ?? undefined}
-      className={`${placeholder ? 'bg-s-card' : `${surface} ${border}`} text-s-card-fg flex h-full w-full min-w-0 flex-col overflow-hidden ${className}`}
+      className={`${placeholder ? 'bg-s-card' : surface} text-s-card-fg flex h-full w-full min-w-0 flex-col overflow-hidden ${className}`}
       style={style}
     >
       {!hideHeader && (

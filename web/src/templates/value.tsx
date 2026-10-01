@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import type { Item } from '@/types/generated'
-import { findItem, parseThreshold, readNumber, resolveValueLevel, slotRef } from './data'
+import type { StatusLevel } from '@/themes/types'
+import { findItem, levelOfValue, parseThreshold, readNumber, resolveValueLevel, slotRef } from './data'
 import { useScreenEnv } from './env'
 import { WidgetFrame } from './frame'
 import { formatMoney, formatNumber } from './format'
@@ -23,9 +24,16 @@ export interface Reading {
 }
 
 /** 把数据项换成读数；缺失（含数值字段缺失）返回 null，由调用方显示「未知」 */
-export function readItem(item: Item, field: string | undefined, lang: Lang, pluginText: (s: string) => string): Reading | null {
+export function readItem(
+  item: Item,
+  field: string | undefined,
+  lang: Lang,
+  pluginText: (s: string) => string,
+  levelLabel: (level: StatusLevel) => string,
+): Reading | null {
   if (item.type === 'text') return item.text ? { text: pluginText(item.text) } : null
-  if (item.type === 'state') return item.text ? { text: pluginText(item.text) } : null
+  // state 项没有文字时回退为级别名，与 state 模板一致
+  if (item.type === 'state') return { text: item.text ? pluginText(item.text) : levelLabel(levelOfValue(item.state)) }
   if (item.type === 'money' && !field) {
     return typeof item.amount === 'number' && Number.isFinite(item.amount)
       ? { text: formatMoney(item.amount, item.currency, lang) }
@@ -51,12 +59,13 @@ export function ValueTemplate({ widget, data, defaultThreshold }: TemplateProps)
   const variant = layoutVariant(widget.size)
   const ref = slotRef(widget, 'value')
   const item = findItem(ref, data)
-  const reading = item ? readItem(item, ref?.field, lang, pluginText) : null
+  const reading = item ? readItem(item, ref?.field, lang, pluginText, (l) => t(`screenWidget.level.${l}`)) : null
   const level = item && reading ? resolveValueLevel(item, ref?.field, parseThreshold(widget.options.threshold), defaultThreshold) : null
   const summary = variant !== 'compact' ? data[ref?.instance_id ?? '']?.summary : undefined
-  const [fitRef, fitPx] = useFitText<HTMLDivElement>(reading ? reading.text + (reading.unit ?? '') : '', {
+  const [fitRef, fitPx] = useFitText<HTMLDivElement>(reading ? reading.text : '', {
     max: fitCap[variant],
-    min: 12,
+    min: 9,
+    reservePx: (level ? (variant === 'compact' ? 12 : 18) + 6 : 0) + (reading?.unit ? reading.unit.length * 8 + 6 : 0),
     heightRatio: variant === 'large' ? 0.6 : 1,
   })
 
@@ -70,7 +79,7 @@ export function ValueTemplate({ widget, data, defaultThreshold }: TemplateProps)
           >
             {level && <StatusMarker level={level} size={variant === 'compact' ? 12 : 18} className="tpl-value__marker self-center" />}
             <span
-              className="tpl-value__number truncate font-[family-name:var(--font-numeric)] leading-none font-semibold tabular-nums"
+              className="tpl-value__number whitespace-nowrap font-[family-name:var(--font-numeric)] leading-none font-semibold tabular-nums"
               style={{ fontSize: `var(${numberSize[variant]})`, ...fitStyle(numberSize[variant], fitPx) }}
             >
               {reading.text}

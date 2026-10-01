@@ -8,7 +8,7 @@ import type { TemplateProps } from './types'
 // clock 模板：服务器时间 + 全局时区（Ruling 33，不用浏览器本地时区）。结构契约：
 //   .tpl-clock[data-variant] > .tpl-clock__time（等宽数字）> .tpl-clock__hour : .tpl-clock__minute [: .tpl-clock__second] [.tpl-clock__period]
 //   .tpl-clock__date（wide/large 且 show_date 不为 false）
-// 选项：format 24h|12h（默认 24h）、show_seconds（默认 false，1x1 忽略）、show_date（默认 true，1x1 忽略）。
+// 选项：format 24h|12h（默认 24h）、show_seconds（默认 false，只在 4x2 生效）、show_date（默认 true，1x1 忽略）。
 // 尺寸：1x1 只有时分；2x1 时分 + 月日周；4x2 时分（可含秒）+ 年月日周。
 // 冒号不闪烁（设计 10.4：去掉呼吸与闪烁动画）。statusMode=static，无状态标记与灰显。
 
@@ -24,7 +24,7 @@ export function ClockTemplate({ widget, data }: TemplateProps) {
   const variant = layoutVariant(widget.size)
   const opts = widget.options
   const h12 = opts.format === '12h'
-  const seconds = variant !== 'compact' && opts.show_seconds === true
+  const seconds = variant === 'large' && opts.show_seconds === true
   const showDate = variant !== 'compact' && opts.show_date !== false
   const zone = safeTimeZone(timezone)
   const locale = localeFor(lang)

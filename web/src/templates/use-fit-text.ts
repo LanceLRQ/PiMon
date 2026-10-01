@@ -7,6 +7,8 @@ interface FitOptions {
   maxLines?: number
   /** 容器里还有别的内容占高度时，只让文字用其中一部分，默认 1 */
   heightRatio?: number
+  /** 同一行里别的元素（标记、单位、间距）占用的宽度，从适配宽度里扣掉 */
+  reservePx?: number
 }
 
 /**
@@ -28,7 +30,7 @@ export function useFitText<T extends HTMLElement>(text: string, opts: FitOptions
     return () => ro.disconnect()
   }, [])
   const px = box
-    ? fitFontSize(text, { ...box, height: box.height * (opts.heightRatio ?? 1), max: opts.max, min: opts.min, maxLines: opts.maxLines })
+    ? fitFontSize(text, { ...box, width: Math.max(1, box.width - (opts.reservePx ?? 0)), height: box.height * (opts.heightRatio ?? 1), max: opts.max, min: opts.min, maxLines: opts.maxLines })
     : undefined
   return [ref, px] as const
 }

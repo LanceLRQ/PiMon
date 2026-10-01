@@ -57,6 +57,10 @@ describe('clock 模板：各尺寸的内容取舍', () => {
     const c = await has({ cols: 1, rows: 1 }, {}, { timezone: 'Not/AZone' })
     expect(c.querySelector('.tpl-clock__hour')!.textContent).toBe('06')
   })
+  it('2x1 忽略 show_seconds，只有 4x2 才显示秒', async () => {
+    const c = await has({ cols: 2, rows: 1 }, { show_seconds: true })
+    expect(c.querySelector('.tpl-clock__second')).toBeNull()
+  })
   it('时钟不画状态标记，也不随实例状态灰显', async () => {
     const widget = makeWidget({ template: 'clock', size: { cols: 1, rows: 1 }, display_state: 'stale' })
     const { container } = await renderIn(<WidgetView widget={widget} data={{}} />)
@@ -77,5 +81,29 @@ describe('clock 模板：走注入的时间提供者', () => {
       vi.advanceTimersByTime(1500)
     })
     expect(container.querySelector('.tpl-clock__minute')!.textContent).toBe('07')
+  })
+})
+
+describe('clock 模板：刷新对齐与清理', () => {
+  it('对齐到整秒刷新：起始偏移 250ms 时只等 750ms 就刷新', async () => {
+    vi.useFakeTimers()
+    let now = FIXED_NOW + 250
+    const widget = makeWidget({ template: 'clock', size: { cols: 4, rows: 2 }, options: { show_seconds: true } })
+    const { container } = await renderIn(<WidgetView widget={widget} data={{}} />, { now: () => now })
+    expect(container.querySelector('.tpl-clock__second')!.textContent).toBe('09')
+    now += 750
+    await act(async () => {
+      vi.advanceTimersByTime(750)
+    })
+    expect(container.querySelector('.tpl-clock__second')!.textContent).toBe('10')
+  })
+
+  it('卸载后定时器清零', async () => {
+    vi.useFakeTimers()
+    const widget = makeWidget({ template: 'clock', size: { cols: 2, rows: 1 } })
+    const { unmount } = await renderIn(<WidgetView widget={widget} data={{}} />)
+    expect(vi.getTimerCount()).toBeGreaterThan(0)
+    unmount()
+    expect(vi.getTimerCount()).toBe(0)
   })
 })
