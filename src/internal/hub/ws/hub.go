@@ -66,6 +66,10 @@ type Config struct {
 	Sink ScreenSink
 	// QueueSize 是每连接发送队列容量，缺省 64。
 	QueueSize int
+
+	// afterFlush 仅供测试：每次合并窗口的 flush 执行完毕后调用，
+	// 让测试在假时钟推进后确定性地等待异步 flush 结束。
+	afterFlush func()
 }
 
 var errClosed = errors.New("hub 已关闭")
@@ -346,6 +350,9 @@ type outMsg struct {
 
 // flush 把合并窗口内登记的变化推给订阅者。
 func (h *Hub) flush() {
+	if h.cfg.afterFlush != nil {
+		defer h.cfg.afterFlush()
+	}
 	h.mu.Lock()
 	ids := make([]string, 0, len(h.pendInst))
 	for id := range h.pendInst {

@@ -138,6 +138,19 @@ type screenHarness struct {
 	state   *fakeScreenState
 	data    *fakeScreenData
 	sink    *fakeSink
+	flushed chan struct{}
+}
+
+// advanceFlush 推进一个合并窗口，并等到由此触发的异步 flush 执行完毕，
+// 之后的 NotifyInstance 一定属于新窗口。
+func (h *screenHarness) advanceFlush(t *testing.T) {
+	t.Helper()
+	h.clk.Advance(flushInterval)
+	select {
+	case <-h.flushed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("flush 未在预期内执行")
+	}
 }
 
 func newScreenHarness(t *testing.T, list ...model.Instance) *screenHarness {
@@ -147,12 +160,14 @@ func newScreenHarness(t *testing.T, list ...model.Instance) *screenHarness {
 		state:   &fakeScreenState{st: model.ScreenState{Mode: model.ScreenModeOn, ThemeID: model.ThemeAmbient, Reason: model.ScreenReasonSchedule}},
 		data:    &fakeScreenData{byID: map[string]model.ScreenInstanceData{}},
 		sink:    &fakeSink{},
+		flushed: make(chan struct{}, 16),
 	}
 	sh.layouts.set(1, "ok", "a")
 	sh.data.set("a", "A")
 	sh.data.set("b", "B")
 	sh.harness = newHarnessFull(t, 0, nil, func(c *Config) {
 		c.Layouts, c.ScreenState, c.ScreenData, c.Sink = sh.layouts, sh.state, sh.data, sh.sink
+		c.afterFlush = func() { sh.flushed <- struct{}{} }
 	}, list...)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -338,8 +353,8 @@ func TestScreenDataPatchOnlyForReferencedInstancesAndCoalesced(t *testing.T) {
 
 	h.data.set("b", "B2") // 未被布局引用
 	h.hub.NotifyInstance("b")
-	h.clk.Advance(time.Second)
-	ping(t, screen) // 没有 screen_data patch
+	h.advanceFlush(t) // 等第一个窗口的 flush 结束，避免它吞掉下面属于新窗口的通知
+	ping(t, screen)   // 没有 screen_data patch
 
 	for _, s := range []string{"A1", "A2"} {
 		h.data.set("a", s)
