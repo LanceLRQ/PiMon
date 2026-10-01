@@ -690,7 +690,7 @@
     },
     "edit": "Edit {{name}}",
     "delete": "Delete {{name}}",
-    "note": "\"Direct\" is not a proxy entry: leave a plugin's proxy field empty to connect directly. Deleting a proxy that is in use switches the instances using it to direct connections.",
+    "note": "\"Direct\" is not a proxy entry: leave a plugin's proxy field empty to connect directly. Deleting a proxy that is in use pauses the instances using it and clears their proxy setting; choose a new proxy before resuming them.",
     "legend": {
       "title": "Available on",
       "meta": "Decides which run locations can pick it",
@@ -729,9 +729,9 @@
     },
     "deleteDialog": {
       "title": "Delete proxy \"{{name}}\"?",
-      "bodyRefs": "{{count}} instance(s) use it. After deleting, their proxy is switched to \"direct\" and traffic no longer goes through a proxy:",
+      "bodyRefs": "{{count}} instance(s) use it. These instances will be paused and their proxy setting cleared; choose a new proxy for them before resuming:",
       "bodyNone": "No instance uses it, so it can be deleted right away.",
-      "ack": "I understand these instances will connect directly",
+      "ack": "I understand these instances will be paused",
       "confirm": "Delete proxy",
       "deleted": "Deleted proxy \"{{name}}\"",
       "inUse": "An instance just started using this proxy; please review the affected instances."

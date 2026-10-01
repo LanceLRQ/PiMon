@@ -57,15 +57,16 @@ export function parseQuery(q: string): ParsedQuery {
   return out
 }
 
-// 「需关注」：与总览「需要处理」同一口径
-export const attentionStates = ['critical', 'warning', 'error', 'stale'] as const
+// 「需关注」：与总览「需要处理」同一口径，按严重度由高到低；
+// unknown、maintenance、ok 与已暂停的实例不列入
+export const attentionStates = ['critical', 'broken', 'error', 'warning', 'stale', 'offline', 'unconfigured'] as const
 
-export function isAttention(state: string): boolean {
-  return (attentionStates as readonly string[]).includes(state)
+export function isAttention(inst: Pick<Instance, 'display_state' | 'paused'>): boolean {
+  return !inst.paused && (attentionStates as readonly string[]).includes(inst.display_state)
 }
 
-// 严重度：数值越大越靠前（状态列默认降序）
-const ranks: Record<string, number> = { critical: 5, error: 4, warning: 3, stale: 2 }
+// 严重度：数值越大越靠前（状态列默认降序）；未列入需关注的 unknown、maintenance 居中，ok 最低
+const ranks: Record<string, number> = Object.fromEntries(attentionStates.map((s, i) => [s, attentionStates.length + 1 - i]))
 
 export function statusRank(state: string): number {
   if (state in ranks) return ranks[state]
@@ -91,7 +92,7 @@ function matchesRuns(runsOn: string, wanted: string): boolean {
 }
 
 export function matchesFilter(inst: Instance, filter: TableFilter, parsed: ParsedQuery = parseQuery(filter.query)): boolean {
-  if (filter.attention && !isAttention(inst.display_state)) return false
+  if (filter.attention && !isAttention(inst)) return false
   if (filter.location && inst.runs_on !== filter.location) return false
   if (filter.plugin && inst.plugin_id !== filter.plugin) return false
   if (parsed.status !== undefined && normalizeStatus(parsed.status) !== inst.display_state) return false

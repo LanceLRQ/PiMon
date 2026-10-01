@@ -22,7 +22,7 @@ function referrersOf(err: unknown): ProxyReferrer[] | null {
   return Array.isArray(raw) ? (raw as ProxyReferrer[]) : []
 }
 
-// 删除代理：被引用时先列出受影响的实例，勾选「我已了解」后才带 force 删除（引用它的实例改为直连）。
+// 删除代理：被引用时先列出受影响的实例，勾选「我已了解」后才带 force 删除（引用它的实例被清除代理设置并暂停）。
 // 列表里没有引用但服务端回 409（刚被引用）时，转入同样的二次确认。
 export function DeleteProxyDialog({ proxy, onClose, onDeleted }: Props) {
   return (

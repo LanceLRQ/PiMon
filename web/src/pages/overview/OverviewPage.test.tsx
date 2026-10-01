@@ -81,6 +81,22 @@ describe('总览页', () => {
     await waitFor(() => expect(calls.some((c) => c.url === '/api/instances/i04/run' && c.method === 'POST')).toBe(true))
   })
 
+  it('需要处理纳入 broken、offline、unconfigured 并按严重度排序，排除暂停、维护与未知', async () => {
+    mockApi()
+    seedStore([
+      makeInstance({ id: 'u', name: 'u', display_state: 'unconfigured' }),
+      makeInstance({ id: 'o', name: 'o', display_state: 'offline' }),
+      makeInstance({ id: 'b', name: 'b', display_state: 'broken' }),
+      makeInstance({ id: 'p', name: 'p', display_state: 'critical', paused: true }),
+      makeInstance({ id: 'm', name: 'm', display_state: 'maintenance' }),
+      makeInstance({ id: 'k', name: 'k', display_state: 'unknown' }),
+    ])
+    await renderWithApp(<OverviewPage />)
+    const todo = cell('需要处理')
+    expect(within(todo).getByText('3 项 · 按严重度')).toBeInTheDocument()
+    expect(within(todo).getAllByRole('listitem').map((li) => li.getAttribute('data-state-row'))).toEqual(['broken', 'offline', 'unconfigured'])
+  })
+
   it('查看实例打开详情抽屉', async () => {
     const user = userEvent.setup()
     mockApi((req) => (req.url === '/api/instances/i01' ? json(200, { ...prototypeInstances[0], config: {}, report: null }) : undefined))

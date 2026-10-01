@@ -80,11 +80,29 @@ describe('与原型一致的 6 个示例查询', () => {
 })
 
 describe('筛选组合', () => {
-  it('需关注只留 critical、warning、error、stale', () => {
+  it('需关注只留 critical、broken、error、warning、stale、offline、unconfigured', () => {
     expect(run('', { attention: true })).toEqual(['ubuntu-srv', 'Claude', '网络连通', '家里 NAS 网页'])
-    expect([...attentionStates].sort()).toEqual(['critical', 'error', 'stale', 'warning'])
-    expect(isAttention('ok')).toBe(false)
-    expect(isAttention('stale')).toBe(true)
+    expect([...attentionStates].sort()).toEqual(['broken', 'critical', 'error', 'offline', 'stale', 'unconfigured', 'warning'])
+  })
+
+  it('每个展示状态是否列入需关注，已暂停的实例一律排除', () => {
+    const listed = ['critical', 'broken', 'error', 'warning', 'stale', 'offline', 'unconfigured']
+    for (const state of listed) {
+      expect(isAttention(makeInstance({ id: state, display_state: state }))).toBe(true)
+      expect(isAttention(makeInstance({ id: state, display_state: state, paused: true }))).toBe(false)
+    }
+    for (const state of ['unknown', 'maintenance', 'ok']) {
+      expect(isAttention(makeInstance({ id: state, display_state: state }))).toBe(false)
+    }
+  })
+
+  it('需关注筛选与 isAttention 同口径，排除暂停实例', () => {
+    const list = [
+      makeInstance({ id: 'a', display_state: 'offline' }),
+      makeInstance({ id: 'b', display_state: 'broken', paused: true }),
+      makeInstance({ id: 'c', display_state: 'maintenance' }),
+    ]
+    expect(filterInstances(list, { ...none, attention: true }).map((i) => i.id)).toEqual(['a'])
   })
 
   it('运行位置、插件与查询叠加', () => {
@@ -111,10 +129,11 @@ describe('排序', () => {
     expect(list.slice(2, 4)).toEqual(['Claude', '网络连通'].sort((a, b) => a.localeCompare(b, 'zh')))
     const tail = list.slice(4)
     expect(tail).toEqual([...tail].sort((a, b) => a.localeCompare(b, 'zh')))
-    expect(statusRank('critical')).toBeGreaterThan(statusRank('error'))
-    expect(statusRank('error')).toBeGreaterThan(statusRank('warning'))
-    expect(statusRank('warning')).toBeGreaterThan(statusRank('stale'))
-    expect(statusRank('stale')).toBeGreaterThan(statusRank('unknown'))
+    const order = ['critical', 'broken', 'error', 'warning', 'stale', 'offline', 'unconfigured', 'unknown', 'ok']
+    for (let k = 0; k < order.length - 1; k++) {
+      expect(statusRank(order[k])).toBeGreaterThan(statusRank(order[k + 1]))
+    }
+    expect(statusRank('maintenance')).toBe(statusRank('unknown'))
     expect(statusRank('unknown')).toBeGreaterThan(statusRank('ok'))
   })
 

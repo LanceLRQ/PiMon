@@ -228,7 +228,7 @@ function Attention({ instances, now, onOpen, onRetry, synced }: { instances: Ins
   const list = useMemo(
     () =>
       instances
-        .filter((i) => isAttention(i.display_state))
+        .filter((i) => isAttention(i))
         .sort((a, b) => statusRank(b.display_state) - statusRank(a.display_state) || a.name.localeCompare(b.name)),
     [instances],
   )
@@ -342,7 +342,7 @@ export function OverviewPage() {
   const closeDrawer = useCallback(() => setOpenId(null), [])
   const opened = openId ? instances.find((i) => i.id === openId) : undefined
   const openedPlugin = opened ? plugins.list?.plugins.find((p) => p.id === opened.plugin_id) : undefined
-  const attentionCount = instances.filter((i) => isAttention(i.display_state)).length
+  const attentionCount = instances.filter((i) => isAttention(i)).length
 
   return (
     <>

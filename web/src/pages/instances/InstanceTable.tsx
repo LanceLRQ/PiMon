@@ -98,7 +98,7 @@ export function InstanceTable({
 
   const locations = useMemo(() => [...new Set(instances.map((i) => i.runs_on))].sort(), [instances])
   const plugins = useMemo(() => [...new Set(instances.map((i) => i.plugin_id))].sort(), [instances])
-  const attentionCount = useMemo(() => instances.filter((i) => isAttention(i.display_state)).length, [instances])
+  const attentionCount = useMemo(() => instances.filter((i) => isAttention(i)).length, [instances])
   const visible = useMemo(
     () => sortInstances(filterInstances(instances, filter), sort.key, sort.dir, i18n.language === 'en' ? 'en' : 'zh'),
     [instances, filter, sort, i18n.language],

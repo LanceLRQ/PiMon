@@ -135,6 +135,8 @@ describe('删除代理确认流程', () => {
     const dlg = await screen.findByRole('dialog')
     expect(within(dlg).getByText('网络连通')).toBeInTheDocument()
     expect(within(dlg).getByText('Claude')).toBeInTheDocument()
+    expect(within(dlg).getByText(/这些实例将被暂停，并清除代理设置；请为它们重新选择代理后再恢复/)).toBeInTheDocument()
+    expect(within(dlg).getByText('我已了解，这些实例将被暂停')).toBeInTheDocument()
     const del = within(dlg).getByRole('button', { name: '删除代理' })
     expect(del).toBeDisabled()
     await userEvent.click(within(dlg).getByRole('checkbox'))
