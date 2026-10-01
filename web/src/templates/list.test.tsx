@@ -156,3 +156,44 @@ describe('list 模板使用服务端解析的数据项标题（Ruling 46）', ()
     expect(labels).toEqual(['检测结果', '延迟（实测）', 'code'])
   })
 })
+
+describe('list 模板：通配引用与时长（Ruling 48、49）', () => {
+  const wild = (items: Item[]) => ({
+    widget: makeWidget({ template: 'list', size: { cols: 2, rows: 2 }, source: 'plugin', slots: { items: [{ instance_id: 'i1', item: 'disk[*]', title: '磁盘' }] } }),
+    data: { i1: makeData(items) },
+  })
+
+  it('disk[*] 展开为全部成员，名称取方括号里的名字，不再显示通配本身', async () => {
+    const items: Item[] = [
+      { key: 'disk[/]', type: 'quota', remaining_pct: 40 },
+      { key: 'disk[/mnt]', type: 'quota', remaining_pct: 80, label: '数据盘' },
+      { key: 'cpu', type: 'number', value: 1 },
+    ]
+    const { widget, data } = wild(items)
+    const { container } = await renderIn(<WidgetView widget={widget} data={data} />)
+    const labels = [...container.querySelectorAll('.tpl-list__label')].map((e) => e.textContent)
+    expect(labels).toEqual(['/', '数据盘'])
+  })
+
+  it('没有任何成员时显示空态而不是一格「未知」', async () => {
+    const { widget, data } = wild([{ key: 'cpu', type: 'number', value: 1 }])
+    const { container } = await renderIn(<WidgetView widget={widget} data={data} />)
+    expect(container.querySelector('.tpl-list__row')).toBeNull()
+    expect(container.querySelector('.tpl-list__empty')!.textContent).toBe('暂无数据项')
+  })
+
+  it('实例数据还没到达时仍显示「未知」', async () => {
+    const { widget } = wild([])
+    const { container } = await renderIn(<WidgetView widget={widget} data={{}} />)
+    expect(container.querySelector('.tpl-list__empty')).toBeNull()
+    expect(container.textContent).toContain('未知')
+  })
+
+  it('单位为 s 的数值按时长显示', async () => {
+    const items: Item[] = [{ key: 'uptime', type: 'number', value: 3_003_654, unit: 's' }]
+    const widget = makeWidget({ template: 'list', size: { cols: 2, rows: 2 }, source: 'plugin', slots: { items: [{ instance_id: 'i1', item: 'uptime' }] } })
+    const { container } = await renderIn(<WidgetView widget={widget} data={{ i1: makeData(items) }} />)
+    expect(container.querySelector('.tpl-list__value')!.textContent).toBe('34 天 18 小时')
+    expect(container.querySelector('.tpl-list__unit')).toBeNull()
+  })
+})

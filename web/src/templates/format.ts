@@ -41,3 +41,28 @@ export function formatStamp(ms: number, nowMs: number, tz: string, lang: Lang): 
   const date = new Intl.DateTimeFormat(locale, { timeZone: zone, month: 'numeric', day: 'numeric' }).format(ms)
   return `${date} ${time}`
 }
+
+const durationUnits: { seconds: number; zh: string; en: string }[] = [
+  { seconds: 86400, zh: '天', en: 'd' },
+  { seconds: 3600, zh: '小时', en: 'h' },
+  { seconds: 60, zh: '分', en: 'm' },
+  { seconds: 1, zh: '秒', en: 's' },
+]
+
+/**
+ * 秒数按时长显示，取最大两级（34 天 17 小时、5 分 12 秒；英文 34d 17h、5m 12s）；次级为 0 时只显示最大一级。
+ * 负数与非有限值返回 null，由调用方回退为普通数值。
+ */
+export function formatDuration(totalSeconds: number, lang: Lang): string | null {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return null
+  let rest = Math.floor(totalSeconds)
+  const parts: string[] = []
+  const first = durationUnits.findIndex((u) => rest >= u.seconds)
+  const start = first < 0 ? durationUnits.length - 1 : first
+  for (const u of durationUnits.slice(start, start + 2)) {
+    const n = Math.floor(rest / u.seconds)
+    rest -= n * u.seconds
+    if (n > 0 || parts.length === 0) parts.push(lang === 'zh' ? `${n} ${u.zh}` : `${n}${u.en}`)
+  }
+  return parts.join(' ')
+}

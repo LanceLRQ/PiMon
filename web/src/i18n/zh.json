@@ -1077,7 +1077,8 @@
       "critical": "严重",
       "unknown": "未知",
       "error": "采集失败"
-    }
+    },
+    "noItems": "暂无数据项"
   },
   "screenApp": {
     "detail": {

@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { expandRefs, hasWildcardWithData } from './data'
 import { WidgetFrame } from './frame'
 import { fitList } from './fit'
 import { pairedLatency, useItemDescriber } from './item-view'
@@ -21,7 +22,8 @@ export function StatusGridTemplate({ widget, data, defaultThreshold }: TemplateP
   const { t } = useTranslation()
   const d = useItemDescriber(widget, defaultThreshold)
   const [boxRef, box] = useBoxSize<HTMLDivElement>()
-  const refs = widget.slots.items ?? []
+  const rawRefs = widget.slots.items ?? []
+  const refs = expandRefs(rawRefs, data)
   const columns = Math.max(1, widget.size.cols)
   const cellRows = box ? Math.floor(box.height / CELL_PX) : widget.size.rows * 2 - 1
   const { shown, more } = fitList(refs.length, capacityOf(null, CELL_PX, columns * cellRows))
@@ -29,7 +31,9 @@ export function StatusGridTemplate({ widget, data, defaultThreshold }: TemplateP
   return (
     <WidgetFrame widget={widget} data={data}>
       <div ref={boxRef} className="tpl-grid-box h-full min-h-0 overflow-hidden">
-        {refs.length === 0 ? (
+        {refs.length === 0 && hasWildcardWithData(rawRefs, data) ? (
+          <span className="tpl-grid__empty text-s-muted-fg text-[length:var(--size-value-sm)]">{t('screenWidget.noItems')}</span>
+        ) : refs.length === 0 ? (
           <span className="tpl-grid__unknown text-s-muted-fg text-[length:var(--size-value-sm)]">{t('screenWidget.unknown')}</span>
         ) : (
           <div className="tpl-grid grid gap-x-3 gap-y-1" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>

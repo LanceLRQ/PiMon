@@ -159,3 +159,25 @@ describe('value 模板：修复项', () => {
     expect(container.textContent).not.toContain('未知')
   })
 })
+
+describe('value 模板：时长（Ruling 49）', () => {
+  it('单位为 s 的数值按最大两级显示，英文用缩写', async () => {
+    const items: Item[] = [{ key: 'uptime', type: 'number', value: 5 * 60 + 12, unit: 's' }]
+    const { widget, data } = bound('value', { cols: 2, rows: 1 }, items)
+    const zh = await renderIn(<WidgetView widget={widget} data={data} />)
+    expect(zh.container.querySelector('.tpl-value__number')!.textContent).toBe('5 分 12 秒')
+    expect(zh.container.querySelector('.tpl-value__unit')).toBeNull()
+    zh.unmount()
+    const en = await renderIn(<WidgetView widget={widget} data={data} />, { lang: 'en' })
+    expect(en.container.querySelector('.tpl-value__number')!.textContent).toBe('5m 12s')
+  })
+})
+
+describe('value 模板：quota 的默认读数是百分比', () => {
+  it('quota 带字节单位时读数仍以 % 为单位', async () => {
+    const items: Item[] = [{ key: 'disk[/]', type: 'quota', remaining_pct: 42.5, used: 100, total: 200, unit: 'B' }]
+    const { widget, data } = bound('value', { cols: 2, rows: 1 }, items)
+    const { container } = await renderIn(<WidgetView widget={widget} data={data} />)
+    expect(container.querySelector('.tpl-value__unit')!.textContent).toBe('%')
+  })
+})

@@ -92,3 +92,15 @@ describe('table 模板细节', () => {
     expect(container.textContent).toContain('未知')
   })
 })
+
+describe('table 模板：通配引用（Ruling 48）', () => {
+  it('通配引用展开后取第一个 table 成员；没有成员时显示空态', async () => {
+    const items: Item[] = [{ key: 'tasks[a]', type: 'table', columns: ['名称', '状态'], rows: [['编译', '完成']] }]
+    const widget = makeWidget({ template: 'table', size: { cols: 2, rows: 2 }, source: 'plugin', slots: { table: [{ instance_id: 'i1', item: 'tasks[*]' }] } })
+    const a = await renderIn(<WidgetView widget={widget} data={{ i1: makeData(items) }} />)
+    expect(a.container.querySelector('.tpl-table__row')!.textContent).toContain('编译')
+    a.unmount()
+    const b = await renderIn(<WidgetView widget={widget} data={{ i1: makeData([]) }} />)
+    expect(b.container.querySelector('.tpl-table__empty')!.textContent).toBe('暂无数据项')
+  })
+})

@@ -1077,7 +1077,8 @@
       "critical": "Critical",
       "unknown": "Unknown",
       "error": "Collection failed"
-    }
+    },
+    "noItems": "No items"
   },
   "screenApp": {
     "detail": {

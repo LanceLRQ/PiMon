@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { findItem, slotRef } from './data'
+import { expandRefs, findItem, hasWildcardWithData, slotRef } from './data'
 import { useScreenEnv } from './env'
 import { WidgetFrame } from './frame'
 import { fitList } from './fit'
@@ -23,8 +23,12 @@ export function TableTemplate({ widget, data }: TemplateProps) {
   const { lang } = useScreenEnv()
   const pluginText = usePluginText(widget.plugin_id)
   const [boxRef, box] = useBoxSize<HTMLDivElement>()
-  const item = findItem(slotRef(widget, 'table', 'value'), data)
+  const ref = slotRef(widget, 'table', 'value')
+  // 通配引用取展开后的第一个 table 成员
+  const members = ref ? expandRefs([ref], data) : []
+  const item = findItem(members[0], data)
   const table = item?.type === 'table' ? item : undefined
+  const empty = ref !== undefined && members.length === 0 && hasWildcardWithData([ref], data)
   const rows = table?.rows ?? []
   const widthColumns = Math.max(2, widget.size.cols)
   const natural = table?.columns?.length ?? rows.reduce((m, r) => Math.max(m, r.length), 0)
@@ -43,7 +47,9 @@ export function TableTemplate({ widget, data }: TemplateProps) {
   return (
     <WidgetFrame widget={widget} data={data}>
       <div ref={boxRef} className="tpl-table h-full min-h-0 overflow-hidden">
-        {!table || rows.length === 0 ? (
+        {empty ? (
+          <span className="tpl-table__empty text-s-muted-fg text-[length:var(--size-value-sm)]">{t('screenWidget.noItems')}</span>
+        ) : !table || rows.length === 0 ? (
           <span className="tpl-table__unknown text-s-muted-fg text-[length:var(--size-value-sm)]">{t('screenWidget.unknown')}</span>
         ) : (
           <>

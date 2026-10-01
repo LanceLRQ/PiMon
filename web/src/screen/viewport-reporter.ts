@@ -18,8 +18,10 @@ export interface ViewportReporterDeps {
   onResize: (fn: () => void) => () => void
   /** 尺寸变化防抖时长 */
   debounceMs?: number
-  /** 亮屏后补报延迟 */
+  /** 亮屏与连接建立后的补报延迟 */
   wakeReportMs?: number
+  /** 亮屏后冻结窗口：期间的窗口变化不上报（设计 5.5a） */
+  wakeFreezeMs?: number
 }
 
 export function readWindowViewport(): ViewportReading {
@@ -34,16 +36,20 @@ export class ViewportReporter {
   private off: (() => void) | null = null
   private debounce: ReturnType<typeof setTimeout> | null = null
   private wake: ReturnType<typeof setTimeout> | null = null
+  private connectReport: ReturnType<typeof setTimeout> | null = null
+  private freeze: ReturnType<typeof setTimeout> | null = null
   private mode: 'on' | 'off' | null = null
   private currentScreen: string | null = null
   private readonly debounceMs: number
   private readonly wakeReportMs: number
+  private readonly wakeFreezeMs: number
   private readonly deps: ViewportReporterDeps
 
   constructor(deps: ViewportReporterDeps) {
     this.deps = deps
     this.debounceMs = deps.debounceMs ?? 1000
     this.wakeReportMs = deps.wakeReportMs ?? 6000
+    this.wakeFreezeMs = deps.wakeFreezeMs ?? 5000
   }
 
   start() {
@@ -56,11 +62,21 @@ export class ViewportReporter {
     this.off = null
     this.clearDebounce()
     this.clearWake()
+    this.clearConnect()
+    this.clearFreeze()
   }
 
-  /** 连接建立：立即上报视口、触摸能力与当前 screen */
+  /**
+   * 连接建立（含重连）：立即上报视口、触摸能力与当前 screen；
+   * 6 秒后再补报一次，因为服务端会忽略唤醒后 5 秒内的上报（页面重载紧跟唤醒时会撞上）。
+   */
   reportNow() {
     this.send(true)
+    this.clearConnect()
+    this.connectReport = setTimeout(() => {
+      this.connectReport = null
+      if (this.mode !== 'off') this.send(false)
+    }, this.wakeReportMs)
   }
 
   /** 屏幕开关状态：由关转开 6 秒后补报，关屏期间的尺寸变化不上报 */
@@ -68,11 +84,16 @@ export class ViewportReporter {
     const prev = this.mode
     this.mode = mode
     this.clearWake()
+    this.clearFreeze()
     if (mode === 'off') {
       this.clearDebounce()
       return
     }
     if (prev === 'off') {
+      // 唤醒后 5 秒内冻结：窗口变化不排防抖上报，到期由下面的补报统一读取最新尺寸
+      this.freeze = setTimeout(() => {
+        this.freeze = null
+      }, this.wakeFreezeMs)
       this.wake = setTimeout(() => {
         this.wake = null
         this.send(false)
@@ -88,7 +109,7 @@ export class ViewportReporter {
   }
 
   private scheduleResize() {
-    if (this.mode === 'off') return
+    if (this.mode === 'off' || this.freeze) return
     this.clearDebounce()
     this.debounce = setTimeout(() => {
       this.debounce = null
@@ -110,6 +131,16 @@ export class ViewportReporter {
   private clearDebounce() {
     if (this.debounce) clearTimeout(this.debounce)
     this.debounce = null
+  }
+
+  private clearConnect() {
+    if (this.connectReport) clearTimeout(this.connectReport)
+    this.connectReport = null
+  }
+
+  private clearFreeze() {
+    if (this.freeze) clearTimeout(this.freeze)
+    this.freeze = null
   }
 
   private clearWake() {

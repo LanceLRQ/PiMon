@@ -83,18 +83,26 @@ describe('自动轮播', () => {
 })
 
 describe('远程命令', () => {
-  it('远程切换立即生效，保持到该屏的停留时长后继续轮播', () => {
+  it('远程切换立即生效，保持一个停留时长后直接推进（不是两倍）', () => {
     const nav = make()
     expect(nav.remoteSwitch('s3')).toBe(true)
     expect(nav.getState().screenId).toBe('s3')
     // s3 用默认 15 秒；保持期内轮播不动
     sec(14)
     expect(nav.getState().screenId).toBe('s3')
-    // 保持期结束后重新计时一个停留时长，再切到下一个参与轮播的（首页）
+    // 保持期结束即推进到下一个参与轮播的（首页），再过一个停留时长继续
     sec(1)
-    expect(nav.getState().screenId).toBe('s3')
-    sec(15)
     expect(nav.getState().screenId).toBe(HOME_ID)
+    sec(15)
+    expect(nav.getState().screenId).toBe('s1')
+    nav.dispose()
+  })
+
+  it('只显示首页模式下保持结束不推进', () => {
+    const nav = make({ carouselMode: 'home_only' })
+    nav.remoteSwitch('s1')
+    sec(16)
+    expect(nav.getState().screenId).toBe('s1')
     nav.dispose()
   })
 
@@ -186,9 +194,11 @@ describe('优先级：远程命令 > 严重告警 > 触摸 > 轮播', () => {
     nav.openDetail('w3')
     expect(nav.getState().screenId).toBe('s1')
     expect(nav.getState().detail).toBeNull()
+    // 远程保持结束时直接推进到 s2，之后触摸恢复可用
     sec(15)
-    nav.swipe(1)
     expect(nav.getState().screenId).toBe('s2')
+    nav.swipe(1)
+    expect(nav.getState().screenId).toBe('s3')
     nav.dispose()
   })
 
@@ -333,6 +343,16 @@ describe('暂停（关屏期间）', () => {
     expect(nav.getState().screenId).toBe(HOME_ID)
     sec(1)
     expect(nav.getState().screenId).toBe('s1')
+    nav.dispose()
+  })
+
+  it('关屏时关闭详情层，亮屏后不再重现', () => {
+    const nav = make({ touch: true })
+    nav.openDetail('w1')
+    nav.setActive(false)
+    expect(nav.getState().detail).toBeNull()
+    nav.setActive(true)
+    expect(nav.getState().detail).toBeNull()
     nav.dispose()
   })
 

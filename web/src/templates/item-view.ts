@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import type { Item, ResolvedRef, ResolvedWidget, WidgetRef } from '@/types/generated'
 import type { StatusLevel } from '@/themes/types'
-import { findItem, levelOfValue, parseThreshold, readNumber, resolveValueLevel } from './data'
+import { findItem, isReach, levelOfValue, parseThreshold, reachLevel, readNumber, resolveValueLevel } from './data'
 import { useScreenEnv } from './env'
 import { formatNumber } from './format'
 import { usePluginText } from './plugin-text'
@@ -29,15 +29,6 @@ const bracket = /\[(.*)\]$/
  */
 export function itemName(key: string, label?: string, title?: string): string {
   return label || title || bracket.exec(key)?.[1] || key
-}
-
-/** net-reach 的 target[*] 是成功率：100 正常、0 严重、其余警告（成功率本身没有手动阈值时的约定） */
-function reachLevel(value: number): StatusLevel {
-  return value >= 100 ? 'ok' : value <= 0 ? 'critical' : 'warning'
-}
-
-function isReach(item: Item): boolean {
-  return item.type === 'gauge' && item.key.startsWith('target[')
 }
 
 /** target[X] 对应的延迟项 latency[X]，同一实例内配对 */

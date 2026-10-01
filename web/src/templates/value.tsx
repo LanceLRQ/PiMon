@@ -4,7 +4,7 @@ import type { StatusLevel } from '@/themes/types'
 import { findItem, levelOfValue, parseThreshold, readNumber, resolveValueLevel, slotRef } from './data'
 import { useScreenEnv } from './env'
 import { WidgetFrame } from './frame'
-import { formatMoney, formatNumber } from './format'
+import { formatDuration, formatMoney, formatNumber } from './format'
 import { usePluginText } from './plugin-text'
 import { layoutVariant, type LayoutVariant } from './size'
 import { StatusMarker, levelText } from './status'
@@ -41,7 +41,13 @@ export function readItem(
   }
   const v = readNumber(item, field)
   if (v === null) return null
-  const unit = item.unit ?? (item.type === 'quota' && !field ? '%' : undefined)
+  // 单位为 s 的数值（如运行时长）按时长显示，不带单位（Ruling 49）
+  if (item.unit === 's' && item.type === 'number' && !field) {
+    const d = formatDuration(v, lang)
+    if (d !== null) return { text: d }
+  }
+  // quota 默认读数是剩余百分比，item.unit 是用量字段（字节等）的单位，不能套在百分比上
+  const unit = item.type === 'quota' && !field ? '%' : item.unit
   return { text: formatNumber(v, lang), unit }
 }
 

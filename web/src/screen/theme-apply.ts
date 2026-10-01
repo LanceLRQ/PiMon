@@ -29,3 +29,9 @@ export function applyScreenTheme(themeId: string, reduceEffects: boolean, root: 
   if (reduceEffects) root.setAttribute('data-reduce-effects', '')
   else root.removeAttribute('data-reduce-effects')
 }
+
+/** 撤掉根元素上的屏幕主题属性 */
+export function clearScreenTheme(root: HTMLElement = document.documentElement) {
+  root.removeAttribute('data-theme')
+  root.removeAttribute('data-reduce-effects')
+}

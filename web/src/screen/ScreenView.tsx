@@ -16,11 +16,12 @@ import type { ResolvedLayout } from '@/types/generated'
 import { DetailLayer, refTitleKey } from './DetailLayer'
 import { GridView } from './GridView'
 import { screenHistoryProvider } from './history-provider'
-import { screenNow, type ScreenStore } from './screen-store'
+import { screenNow, useScreenStore, type ScreenStore } from './screen-store'
 import { ScreenNavigator, type NavConfig } from './state-machine'
-import { applyScreenTheme, persistScreenTheme, readStoredScreenTheme } from './theme-apply'
+import { initTheme } from '@/admin-theme/theme'
+import { applyScreenTheme, clearScreenTheme, persistScreenTheme, readStoredScreenTheme } from './theme-apply'
 import { useHasTouch } from './touch-capability'
-import { useViewportSize } from './use-viewport-size'
+import { useViewportSize, useWakeFrozenSize } from './use-viewport-size'
 import { WakeTouchGuard } from './wake-guard'
 
 /** 屏幕向中枢上报的最小接口（ViewportReporter 满足） */
@@ -79,11 +80,15 @@ function titlesOf(layout: ResolvedLayout | null): Map<string, string> {
  */
 export function ScreenView({ store, nav, reporter }: ScreenViewProps) {
   const { i18n } = useTranslation()
-  const { layout, settings, screenState, data } = useSyncExternalStore(store.subscribe, store.getState)
-  const { width, height } = useViewportSize()
+  // 按切片订阅：时钟校正、连接状态等无关变化不触发整棵网格重渲
+  const layout = useScreenStore((s) => s.layout, store)
+  const settings = useScreenStore((s) => s.settings, store)
+  const screenState = useScreenStore((s) => s.screenState, store)
+  const data = useScreenStore((s) => s.data, store)
+  const mode = screenState?.mode === 'off' ? 'off' : 'on'
+  const { width, height } = useWakeFrozenSize(useViewportSize(), mode)
   const screenSettings = settings?.screen ?? defaultScreenSettings
   const touch = useHasTouch(screenSettings.input_mode)
-  const mode = screenState?.mode === 'off' ? 'off' : 'on'
   const themeId = getTheme(screenState?.theme_id ?? readStoredScreenTheme()).id
   const reduceEffects = settings?.reduce_effects ?? false
   const lang = settings?.language === 'en' ? 'en' : 'zh'
@@ -104,6 +109,14 @@ export function ScreenView({ store, nav, reporter }: ScreenViewProps) {
   useLayoutEffect(() => {
     applyScreenTheme(themeId, reduceEffects)
   }, [themeId, reduceEffects])
+  // 离开屏幕端时撤掉根元素上的屏幕主题，并恢复管理端主题（管理员预览 /screen 后返回管理页不能串色）
+  useLayoutEffect(
+    () => () => {
+      clearScreenTheme()
+      initTheme()
+    },
+    [],
+  )
   const hasScreenState = screenState !== null
   useEffect(() => {
     if (hasScreenState) persistScreenTheme(themeId)
@@ -123,7 +136,8 @@ export function ScreenView({ store, nav, reporter }: ScreenViewProps) {
     }
   }, [])
 
-  const [wakeGuard] = useState(() => new WakeTouchGuard())
+  const [wakeGuard] = useState(() => new WakeTouchGuard(now))
+  const onWidgetClick = useCallback((id: string) => nav.openDetail(id), [nav])
   useEffect(() => {
     wakeGuard.setMode(mode)
     nav.setActive(mode === 'on')
@@ -201,7 +215,7 @@ export function ScreenView({ store, nav, reporter }: ScreenViewProps) {
                     width={width}
                     height={height}
                     data={dataMap}
-                    onWidgetClick={touch ? (id) => nav.openDetail(id) : undefined}
+                    onWidgetClick={touch ? onWidgetClick : undefined}
                   />
                 )}
                 {detailWidget && (

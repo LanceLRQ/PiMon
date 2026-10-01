@@ -1,6 +1,11 @@
-import { act, fireEvent, screen as dom } from '@testing-library/react'
+import { act, fireEvent, render, screen as dom } from '@testing-library/react'
+import { Profiler } from 'react'
+import { I18nextProvider } from 'react-i18next'
+import { createI18n } from '@/i18n'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Patch } from '@/types/protocol.generated'
+import { ScreenNavigator } from './state-machine'
+import { ScreenView } from './ScreenView'
 import { screenThemeStorageKey } from './theme-apply'
 import {
   defaultScreens,
@@ -319,5 +324,95 @@ describe('屏幕根：数据更新', () => {
   it('snapshot 中无 screen_data 时小组件不报错', async () => {
     const { container } = await renderScreen(storeWith({ screen_data: undefined }))
     expect(widgetEl(container, 'w2')).not.toBeNull()
+  })
+})
+
+describe('屏幕根：唤醒保护只在 10 秒内有效（Ruling 51）', () => {
+  const touchStore = () => storeWith({ screen_settings: touchSettings() })
+  const offOn = (store: ReturnType<typeof touchStore>) => {
+    act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'off', theme_id: 'ambient', reason: 'schedule' } })))
+    act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'on', theme_id: 'ambient', reason: 'schedule' } })))
+  }
+
+  it('亮屏很久之后的第一次触摸正常点击', async () => {
+    const store = touchStore()
+    const { container } = await renderScreen(store)
+    offOn(store)
+    act(() => void vi.advanceTimersByTime(10_000))
+    tap(widgetEl(container, 'w2'))
+    expect(container.querySelector('[data-detail-layer]')).not.toBeNull()
+  })
+
+  it('10 秒内的第一次触摸只点亮', async () => {
+    const store = touchStore()
+    const { container } = await renderScreen(store)
+    offOn(store)
+    act(() => void vi.advanceTimersByTime(9_000))
+    tap(widgetEl(container, 'w2'))
+    expect(container.querySelector('[data-detail-layer]')).toBeNull()
+  })
+})
+
+describe('屏幕根：唤醒后 5 秒内冻结 viewport（设计 5.5a）', () => {
+  it('网格沿用唤醒前尺寸，5 秒后才按新尺寸重算', async () => {
+    const store = storeWith()
+    const { container } = await renderScreen(store)
+    expect(widgetEl(container, 'w1').style.width).toBe('256px')
+    act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'off', theme_id: 'ambient', reason: 'schedule' } })))
+    act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'on', theme_id: 'ambient', reason: 'schedule' } })))
+    act(() => {
+      setViewport(1920, 1080)
+      window.dispatchEvent(new Event('resize'))
+    })
+    expect(widgetEl(container, 'w1').style.width).toBe('256px')
+    act(() => void vi.advanceTimersByTime(4999))
+    expect(widgetEl(container, 'w1').style.width).toBe('256px')
+    act(() => void vi.advanceTimersByTime(1))
+    expect(widgetEl(container, 'w1').style.width).toBe('480px')
+  })
+
+  it('平时窗口变化立即重算', async () => {
+    const { container } = await renderScreen(storeWith())
+    act(() => {
+      setViewport(1280, 720)
+      window.dispatchEvent(new Event('resize'))
+    })
+    expect(widgetEl(container, 'w1').style.width).toBe('320px')
+  })
+})
+
+describe('屏幕根：卸载清理', () => {
+  it('卸载后移除根元素上的屏幕主题属性，并恢复管理端主题', async () => {
+    localStorage.setItem('pimon.admin.theme', 'dark')
+    const { unmount } = await renderScreen(storeWith({ screen_settings: settingsOf({}, { reduce_effects: true }) }))
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(true)
+    unmount()
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
+    expect(document.documentElement.hasAttribute('data-reduce-effects')).toBe(false)
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    document.documentElement.classList.remove('dark')
+  })
+})
+
+describe('屏幕根：渲染开销', () => {
+  it('时钟校正（pong）与连接状态变化不触发整棵网格重渲', async () => {
+    const store = storeWith()
+    const i18n = await createI18n('zh')
+    let commits = 0
+    render(
+      <I18nextProvider i18n={i18n}>
+        <Profiler id="screen" onRender={() => commits++}>
+          <ScreenView store={store} nav={new ScreenNavigator()} />
+        </Profiler>
+      </I18nextProvider>,
+    )
+    const base = commits
+    act(() => store.applyServerTime(new Date(Date.now() + 3000).toISOString()))
+    act(() => store.setConnected(false))
+    act(() => store.setConnected(true))
+    expect(commits).toBe(base)
+    // 真正的数据变化仍会更新
+    act(() => store.applyPatch(patchOf('screen_data', { screen_data: [makeData([{ ...temp, value: 99 }, humidity])] })))
+    expect(commits).toBeGreaterThan(base)
   })
 })

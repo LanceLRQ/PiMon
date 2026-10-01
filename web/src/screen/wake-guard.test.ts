@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest'
-import { WakeTouchGuard } from './wake-guard'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { WAKE_TOUCH_WINDOW_MS, WakeTouchGuard } from './wake-guard'
+
+beforeEach(() => vi.useFakeTimers())
+afterEach(() => vi.useRealTimers())
 
 describe('唤醒后首次触摸只点亮不点击（Ruling 33）', () => {
   it('一直亮着时触摸不被吞掉', () => {
@@ -42,5 +45,22 @@ describe('唤醒后首次触摸只点亮不点击（Ruling 33）', () => {
     g.setMode('off')
     g.setMode('on')
     expect(g.consume()).toBe(true)
+  })
+
+  it('唤醒 10 秒内的第一次触摸只点亮', () => {
+    const g = new WakeTouchGuard()
+    g.setMode('off')
+    g.setMode('on')
+    vi.advanceTimersByTime(WAKE_TOUCH_WINDOW_MS - 1)
+    expect(g.consume()).toBe(true)
+  })
+
+  it('亮屏很久之后的第一次触摸正常点击，保护已过期', () => {
+    const g = new WakeTouchGuard()
+    g.setMode('off')
+    g.setMode('on')
+    vi.advanceTimersByTime(WAKE_TOUCH_WINDOW_MS)
+    expect(g.consume()).toBe(false)
+    expect(g.consume()).toBe(false)
   })
 })

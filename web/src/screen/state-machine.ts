@@ -102,6 +102,8 @@ export class ScreenNavigator {
     if (this.active === active) return
     this.active = active
     if (!active) {
+      // 关屏期间不保留详情层，亮屏后不应再冒出来
+      this.closeDetailQuiet()
       if (this.timer !== null) this.deps.clearTimer(this.timer)
       this.timer = null
       return
@@ -286,8 +288,14 @@ export class ScreenNavigator {
       this.applyHold('touch', TOUCH_HOLD_MS)
     }
     if (this.holdUntil !== null && now >= this.holdUntil) {
+      const wasRemote = this.state.holdBy === 'remote'
       this.holdUntil = null
       this.setState({ holdBy: null })
+      // 远程切屏的保持时长已经等于目标屏的停留时长，保持结束直接推进，避免实际停留变成两倍
+      if (wasRemote && this.cfg.carouselMode === 'auto' && !this.state.detail) {
+        const next = nextInRotation(this.cfg.screens, this.state.screenId)
+        if (next) this.setState({ screenId: next })
+      }
       this.rearmCarousel()
     }
     if (this.carouselAt !== null && now >= this.carouselAt) {

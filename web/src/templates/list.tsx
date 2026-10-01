@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import type { Item, ResolvedRef, ResolvedWidget } from '@/types/generated'
-import { findItem } from './data'
+import { expandRefs, findItem, hasWildcardWithData } from './data'
 import { useScreenEnv } from './env'
 import { WidgetFrame } from './frame'
 import { fitList } from './fit'
@@ -36,7 +36,7 @@ function tableRows(item: Item, lang: 'zh' | 'en', pluginText: (s: string) => str
 }
 
 function rowsOf(widget: ResolvedWidget, data: TemplateProps['data'], describe: (ref: ResolvedRef) => ItemView, lang: 'zh' | 'en', pluginText: (s: string) => string): Row[] {
-  const refs = widget.slots.items ?? []
+  const refs = expandRefs(widget.slots.items ?? [], data)
   if (refs.length > 0) return refs.map((ref, i) => ({ key: `${ref.instance_id}/${ref.item}/${i}`, view: describe(ref) }))
   const single = widget.slots.value?.[0]
   if (!single) return []
@@ -51,13 +51,17 @@ export function ListTemplate({ widget, data, defaultThreshold }: TemplateProps) 
   const d = useItemDescriber(widget, defaultThreshold)
   const [boxRef, box] = useBoxSize<HTMLDivElement>()
   const rows = rowsOf(widget, data, (ref) => d.describe(ref, data), lang, d.pluginText)
+  // 通配引用在实例数据已到达却没有成员：显示空态而不是「未知」
+  const empty = rows.length === 0 && hasWildcardWithData(widget.slots.items ?? [], data)
   const nominal = layoutVariant(widget.size) === 'wide' ? 2 : widget.size.rows * 2
   const { shown, more } = fitList(rows.length, capacityOf(box, ROW_PX, nominal))
 
   return (
     <WidgetFrame widget={widget} data={data}>
       <div ref={boxRef} className="tpl-list h-full min-h-0 overflow-hidden">
-        {rows.length === 0 ? (
+        {empty ? (
+          <span className="tpl-list__empty text-s-muted-fg text-[length:var(--size-value-sm)]">{t('screenWidget.noItems')}</span>
+        ) : rows.length === 0 ? (
           <span className="tpl-list__unknown text-s-muted-fg text-[length:var(--size-value-sm)]">{t('screenWidget.unknown')}</span>
         ) : (
           <ul className="tpl-list__rows m-0 flex list-none flex-col p-0">

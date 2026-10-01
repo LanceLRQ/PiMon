@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ResolvedWidget } from '@/types/generated'
-import { primaryData } from './data'
+import { parseThreshold, primaryData, widgetOwnLevel } from './data'
 import { useScreenEnv, useScreenNow } from './env'
 import { formatStamp } from './format'
 import { WidgetIcon } from './icons'
@@ -70,7 +70,12 @@ export function WidgetFrame({ widget, data, statusMode = 'full', hideHeader = fa
   const inst = primaryData(widget, data)
   const status = resolveFrameStatus(widget, inst?.report_status, statusMode)
   const variant = layoutVariant(widget.size)
-  const level = status && status.kind !== 'placeholder' ? status.level : null
+  // 标题栏状态标记取实例整体状态；外框的强调色与底色只取该小组件自身绑定数据项的最高级别（Ruling 47）
+  const badgeLevel = status && status.kind !== 'placeholder' ? status.level : null
+  const level =
+    status && status.kind !== 'placeholder' && statusMode === 'full'
+      ? widgetOwnLevel(widget, data, parseThreshold(widget.options?.threshold), undefined)
+      : null
   const weight = level ? channels[level].weight : null
   const dimmed = status?.kind === 'dim'
   const placeholder = status?.kind === 'placeholder' ? status.reason : null
@@ -94,7 +99,8 @@ export function WidgetFrame({ widget, data, statusMode = 'full', hideHeader = fa
       data-template={widget.template}
       data-size={sizeKey(widget.size)}
       data-display-state={widget.display_state}
-      data-status-level={level ?? 'none'}
+      data-status-level={badgeLevel ?? 'none'}
+      data-accent-level={level ?? 'none'}
       data-weight={weight ?? 'none'}
       data-dimmed={dimmed ? 'true' : 'false'}
       data-placeholder={placeholder ?? undefined}

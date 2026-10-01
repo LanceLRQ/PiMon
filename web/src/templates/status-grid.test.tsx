@@ -121,3 +121,21 @@ describe('status-grid 模板使用服务端解析的数据项标题（Ruling 46�
     expect(names).toEqual(['检测结果', 'home'])
   })
 })
+
+describe('status-grid 模板：通配引用（Ruling 48）', () => {
+  const wide = (keys: string[]) =>
+    makeWidget({ template: 'status-grid', source: 'aggregate', size: { cols: 4, rows: 2 }, slots: { items: keys.map((item) => ({ instance_id: 'i1', item, title: '目标成功率' })) } })
+
+  it('target[*] 展开为全部目标，名称是目标名，延迟配对仍然生效', async () => {
+    const { container } = await renderIn(<WidgetView widget={wide(['target[*]'])} data={{ i1: makeData(reach) }} />)
+    const names = [...container.querySelectorAll('.tpl-grid__name')].map((e) => e.textContent)
+    expect(names).toEqual(['Google', 'GitHub', '百度'])
+    expect(container.querySelector('.tpl-grid__sub')!.textContent).toContain('123')
+  })
+
+  it('没有成员时显示空态', async () => {
+    const { container } = await renderIn(<WidgetView widget={wide(['target[*]'])} data={{ i1: makeData([]) }} />)
+    expect(container.querySelector('.tpl-grid__cell')).toBeNull()
+    expect(container.querySelector('.tpl-grid__empty')!.textContent).toBe('暂无数据项')
+  })
+})

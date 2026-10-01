@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import type { Grid, ResolvedScreen } from '@/types/generated'
 import { WidgetView, type InstanceDataMap } from '@/templates'
 import { computeGrid, widgetRect } from './grid'
@@ -21,7 +22,7 @@ export interface GridViewProps {
  * 单元格尺寸由容器尺寸与列行数算出，小组件按位置绝对定位并渲染 D5 的 WidgetView。
  * 小组件间距取主题的 --grid-gap，每侧各收一半。需要放在 data-theme 子树内。
  */
-export function GridView({ screen, grid, width, height, data, onWidgetClick, highlightId, className }: GridViewProps) {
+function GridViewImpl({ screen, grid, width, height, data, onWidgetClick, highlightId, className }: GridViewProps) {
   const metrics = computeGrid(width, height, grid)
   return (
     <div
@@ -58,3 +59,6 @@ export function GridView({ screen, grid, width, height, data, onWidgetClick, hig
     </div>
   )
 }
+
+/** props 没变时不重渲：树莓派上时钟校正等无关变化不应带动整棵网格 */
+export const GridView = memo(GridViewImpl)

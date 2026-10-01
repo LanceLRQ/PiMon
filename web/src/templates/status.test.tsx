@@ -90,7 +90,7 @@ describe('WidgetFrame：每种展示状态都有形状或图标', () => {
 
   it('strong/invert 强调进入属性，超长标题被截断且保留 title 全文', async () => {
     const long = '很长很长的标题'.repeat(20)
-    const { widget, data } = bound('value', { cols: 1, rows: 1 }, [], 'x', { title: long, display_state: 'critical' })
+    const { widget, data } = bound('value', { cols: 1, rows: 1 }, [{ key: 'x', type: 'state', state: 'critical' }], 'x', { title: long, display_state: 'critical' })
     const { container } = await renderIn(<WidgetFrame widget={widget} data={data}>x</WidgetFrame>)
     const frame = container.querySelector('[data-widget-frame]')!
     expect(['strong', 'invert']).toContain(frame.getAttribute('data-weight'))
