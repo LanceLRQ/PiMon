@@ -6,7 +6,8 @@ import { http } from '@/api/client'
 import { formatAgo, formatDateTime, parseTime, useNow } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { selectConnected, selectInstances, useLiveStore, type LiveState } from '@/store/live-store'
-import type { BackupInfo, Instance } from '@/types/generated'
+import { formatUptime } from '@/lib/format'
+import type { BackupInfo, Instance, SystemInfo } from '@/types/generated'
 import { useInstanceManager } from '@/pages/instances/actions'
 import { InstanceDetailDrawer } from '@/pages/instances/InstanceDetailDrawer'
 import { InstanceTable } from '@/pages/instances/InstanceTable'
@@ -158,9 +159,20 @@ function HubSummary({ instanceCount }: { instanceCount: number }) {
   const settings = useLiveStore(selectSettings)
   // undefined 表示还没取到；null 表示取到了但没有备份
   const [lastBackup, setLastBackup] = useState<number | null | undefined>(undefined)
+  // 中枢启动时刻（毫秒）；取不到时为 undefined，运行时长显示未知
+  const [startedAt, setStartedAt] = useState<number | undefined>(undefined)
+  const now = useNow(10_000)
 
   useEffect(() => {
     let cancelled = false
+    http
+      .get<SystemInfo>('/api/system')
+      .then((info) => {
+        if (!cancelled) setStartedAt(parseTime(info.started_at) ?? undefined)
+      })
+      .catch(() => {
+        if (!cancelled) setStartedAt(undefined)
+      })
     http
       .get<BackupInfo[]>('/api/backups')
       .then((list) => {
@@ -179,6 +191,7 @@ function HubSummary({ instanceCount }: { instanceCount: number }) {
   const unknown = <span className="text-muted-foreground">{t('items.unknown')}</span>
   const rows: { k: string; v: React.ReactNode }[] = [
     { k: t('overview.hub.version'), v: build && build !== '__PIMON_BUILD__' ? build : unknown },
+    { k: t('overview.hub.uptime'), v: startedAt === undefined ? unknown : formatUptime(t, (now - startedAt) / 1000) },
     {
       k: t('overview.hub.connection'),
       v: (
@@ -198,8 +211,9 @@ function HubSummary({ instanceCount }: { instanceCount: number }) {
   ]
   return (
     <dl className="grid grid-cols-2 gap-px bg-border">
-      {rows.map((r) => (
-        <div key={r.k} className="bg-card px-4 py-3">
+      {rows.map((r, i) => (
+        // 项数为奇数时最后一格撑满整行，避免露出分隔线底色
+        <div key={r.k} className={cn('bg-card px-4 py-3', i === rows.length - 1 && rows.length % 2 === 1 && 'col-span-2')}>
           <dt className="text-xs text-muted-foreground">{r.k}</dt>
           <dd className="mt-0.5 font-mono text-[17px] break-words">{r.v}</dd>
         </div>

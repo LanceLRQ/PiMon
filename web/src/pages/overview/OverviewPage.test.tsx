@@ -128,6 +128,23 @@ describe('总览页', () => {
     expect(await within(hub).findByText(/9\/30/)).toBeInTheDocument()
   })
 
+  it('hub 概况：运行时长取自 /api/system，取不到时显示未知', async () => {
+    const started = new Date(Date.now() - (2 * 86400 + 5 * 3600 + 60) * 1000).toISOString()
+    mockApi((req) => (req.url === '/api/system' ? json(200, { version: 'v', started_at: started, uptime_seconds: 0 }) : undefined))
+    seedStore(prototypeInstances)
+    await renderWithApp(<OverviewPage />)
+    const hub = cell('hub 概况')
+    await waitFor(() => expect(within(hub).getByText('运行时长').nextElementSibling).toHaveTextContent('2 天 5 小时'))
+  })
+
+  it('hub 概况：/api/system 失败时运行时长显示未知，不当作 0', async () => {
+    mockApi((req) => (req.url === '/api/system' ? new Response('boom', { status: 500 }) : undefined))
+    seedStore(prototypeInstances)
+    await renderWithApp(<OverviewPage />)
+    const hub = cell('hub 概况')
+    await waitFor(() => expect(within(hub).getByText('运行时长').nextElementSibling).toHaveTextContent('未知'))
+  })
+
   it('备份接口失败时最近备份显示未知，而不是「暂无备份」', async () => {
     mockApi((req) => (req.url === '/api/backups' ? new Response('boom', { status: 500 }) : undefined))
     seedStore(prototypeInstances)
