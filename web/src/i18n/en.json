@@ -1510,5 +1510,212 @@
       "restart": "Saving only stores the setting; it takes effect after the kiosk restarts Chromium."
     },
     "settingsFailedAfterLayout": "The layout was saved (v{{version}}), but saving the settings failed: {{error}}"
+  },
+  "remote": {
+    "sub": "Without touching the screen: refresh, switch, power",
+    "offlineHint": "The display is offline: refresh and switch screen are unavailable. Power on, power off and wake apply once the display reconnects.",
+    "nextNone": "No further changes",
+    "next": "Next change {{at}} ({{in}})",
+    "status": {
+      "title": "Current screen state",
+      "meta": "refreshes every 10 s",
+      "detail": "Screen picture and details"
+    },
+    "state": {
+      "on": "Showing",
+      "off": "Screen off",
+      "offline": "Display offline"
+    },
+    "reason": {
+      "schedule": "Following the schedule.",
+      "remote_on": "Turned on remotely until {{until}} (the next period boundary), then back to the schedule.",
+      "remote_off": "Turned off remotely until {{until}} (the next period boundary), then back to the schedule.",
+      "wake": "Temporarily lit; back to the schedule when it ends at {{until}}."
+    },
+    "kv": {
+      "display": "Display",
+      "screen": "Current screen",
+      "theme": "Theme",
+      "next": "Next change",
+      "wake": "Temporary wake",
+      "input": "Input",
+      "online": "Online",
+      "onlineVp": "Online · {{w}}×{{h}}",
+      "offline": "Offline",
+      "never": "Never connected",
+      "wakeUntil": "until {{time}}"
+    },
+    "keys": {
+      "title": "Keys",
+      "meta": "k1–k6 · sent to the kiosk right away",
+      "refresh": {
+        "label": "Refresh",
+        "desc": "Reload the screen page; layout and data update immediately."
+      },
+      "switch": {
+        "label": "Switch screen",
+        "desc": "Go to the target screen; back to the home screen after {{n}} s idle.",
+        "target": "Target screen",
+        "go": "Switch"
+      },
+      "on": {
+        "label": "Power on",
+        "desc": "Light the screen until the next schedule boundary, then follow the schedule again."
+      },
+      "off": {
+        "label": "Power off",
+        "desc": "Turn the display off until the next schedule boundary, then follow the schedule again."
+      },
+      "wake": {
+        "label": "Temporary wake",
+        "desc": "Light the screen during an off period; it returns to the schedule when time is up.",
+        "minutes": "Wake duration",
+        "unit": "min",
+        "go": "Wake"
+      },
+      "token": {
+        "label": "Reset screen token",
+        "desc": "The old token stops working at once; the kiosk must sign in again with the new token link."
+      }
+    },
+    "ops": {
+      "title": "Operation log",
+      "meta": "last {{n}}",
+      "empty": "No operations yet",
+      "from": "from {{ip}}",
+      "toScreen": "→ {{id}}",
+      "minutes": "{{n}} min",
+      "delivered": "sent",
+      "undelivered": "display offline, not delivered",
+      "action": {
+        "refresh": "Refresh",
+        "switch": "Switch screen",
+        "on": "Power on",
+        "off": "Power off",
+        "wake": "Temporary wake",
+        "token_reset": "Reset screen token"
+      }
+    },
+    "token": {
+      "title": "Reset the screen token?",
+      "warn": "The old token stops working at once; the screen is disconnected and shows \"Screen token invalid\".",
+      "consequence": "The kiosk must sign in again with the new token link. Until then the screen stays on its last frame and does not update.",
+      "cancel": "Cancel",
+      "confirm": "Reset token",
+      "close": "Done",
+      "doneTitle": "Token reset",
+      "doneBody": "The new token was written to the screen.token file in the hub data directory. Open this link in the kiosk browser to sign in again:",
+      "doneHint": "Replace <token> with the contents of screen.token (a single line of text)."
+    }
+  },
+  "schedule": {
+    "sub": "The screen switches theme or turns off by period, in the global time zone",
+    "loading": "Loading the schedule…",
+    "loadFailed": "Could not load the schedule: {{error}}",
+    "retry": "Retry",
+    "readoutTz": "Time zone {{tz}}",
+    "readoutNow": "Now {{time}}",
+    "save": "Save and push",
+    "saving": "Saving…",
+    "discard": "Discard changes",
+    "saved": "Schedule saved and pushed",
+    "dirty": "{{n}} unsaved changes",
+    "leave": {
+      "title": "Leave the schedule?",
+      "body": "The schedule or Reduce effects has unsaved changes that will be lost.",
+      "stay": "Keep editing",
+      "leave": "Discard and leave"
+    },
+    "override": "A remote action currently controls the screen; the schedule takes over again when it ends.",
+    "overrideLink": "Go to Remote",
+    "tl": {
+      "title": "24-hour timeline",
+      "meta": "click a block to select · drag or use arrow keys to move boundaries · pick a theme below",
+      "now": "Now {{time}}",
+      "seg": "{{from}}–{{to}} {{theme}}",
+      "off": "Off",
+      "handle": "Adjust the boundary at {{time}} (arrow keys ±5 min, Shift+arrow ±1 h)",
+      "current": "Current {{theme}} · {{from}}–{{to}}",
+      "next": "Next change {{at}} {{theme}} ({{in}})",
+      "none": "No further changes",
+      "tz": "Global time zone {{tz}}"
+    },
+    "list": {
+      "title": "Periods",
+      "meta": "covers 24 h · no overlap",
+      "colNo": "#",
+      "colRange": "Range",
+      "colLen": "Length",
+      "colTheme": "Theme / off",
+      "overnight": "overnight",
+      "current": "current",
+      "edit": "Edit",
+      "delete": "Delete period {{n}}",
+      "deleted": "Period deleted; the previous one now ends at {{time}}",
+      "hours": "{{h}} h",
+      "hoursMinutes": "{{h}} h {{m}} min",
+      "minutes": "{{m}} min",
+      "add": "Add period",
+      "addHint": "A new period is cut out of the one it falls in, so the timeline always covers 24 hours.",
+      "tooShort": "This period is too short to split",
+      "full": "Reached the limit of {{max}} periods"
+    },
+    "edit": {
+      "title": "Edit period {{n}}",
+      "start": "Start",
+      "end": "End",
+      "startAria": "Start time HH:MM",
+      "endAria": "End time HH:MM",
+      "kind": "Period type",
+      "kindTheme": "Theme",
+      "kindOff": "Off",
+      "hintTheme": "Pick a theme in 02.3 below",
+      "hintOff": "Off periods have no theme; see 02.5 for wake rules",
+      "invalidTime": "Use the HH:MM format",
+      "linked": "Changing a start or end time moves the neighbouring boundary too, so periods stay edge to edge."
+    },
+    "problems": {
+      "title": "The schedule is invalid and must be fixed before saving",
+      "backend": "Rejected by the server",
+      "format": "Bad time format",
+      "theme": "Theme is not a built-in theme or off",
+      "empty": "At least one period is required",
+      "gap": "{{from}}–{{to}} is not covered by any period",
+      "overlap": "{{from}}–{{to}} is covered by several periods",
+      "period": "Period {{n}}: {{msg}}"
+    },
+    "themes": {
+      "title": "Themes",
+      "metaOff": "The selected period is off",
+      "metaPick": "Picking a theme for {{from}}–{{to}}",
+      "dark": "dark",
+      "light": "light",
+      "default": "default",
+      "picked": "Selected",
+      "usedBy": "Used {{ranges}}",
+      "unused": "Unused",
+      "card": "{{name}} ({{id}})",
+      "preview": "{{name}} theme preview"
+    },
+    "reduce": {
+      "title": "Reduce effects",
+      "help": "Turns off glow and motion; good for always-on use or weak hardware. Same switch as Settings · Display.",
+      "settingsFailedAfterPlan": "The schedule was saved but Reduce effects could not be saved: {{error}}"
+    },
+    "wake": {
+      "title": "Wake rules",
+      "meta": "read-only · during off periods",
+      "crit": "Wake on critical alert",
+      "critTag": "from M4",
+      "critSub": "Lights for 10 minutes, then off again",
+      "remote": "Remote power on",
+      "remoteTag": "available",
+      "remoteSub": "Remote page keys k3 / k5",
+      "touch": "Touch wake",
+      "touchNo": "no touch now",
+      "touchYes": "touch available",
+      "touchUnknown": "not reported yet",
+      "touchSub": "Tap the screen to light it when touch is present"
+    }
   }
 }

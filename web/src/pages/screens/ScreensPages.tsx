@@ -1,5 +1,6 @@
 import { LayoutEditor } from '@/editor/LayoutEditor'
-import { PlaceholderPage } from '@/ui/placeholder-page'
+import { RemotePage as RemoteView } from '@/pages/remote/RemotePage'
+import { SchedulePage as ScheduleView } from '@/pages/schedule/SchedulePage'
 import { ScreenManager } from './ScreenManager'
 
 export function ScreensPage() {
@@ -11,9 +12,9 @@ export function LayoutEditorPage() {
 }
 
 export function SchedulePage() {
-  return <PlaceholderPage no="02" titleKey="pages.schedule" milestone="M1d" />
+  return <ScheduleView />
 }
 
 export function RemotePage() {
-  return <PlaceholderPage no="02" titleKey="pages.remote" milestone="M1d" />
+  return <RemoteView />
 }

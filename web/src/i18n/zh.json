@@ -1510,5 +1510,212 @@
       "restart": "保存只写入设置，需由 kiosk 重启 Chromium 后生效。"
     },
     "settingsFailedAfterLayout": "布局已保存（v{{version}}），但设置保存失败：{{error}}"
+  },
+  "remote": {
+    "sub": "不用碰屏幕：刷新、切换、开关屏",
+    "offlineHint": "显示器离线：刷新与切换 screen 暂时不可用，开屏、关屏、临时亮屏会在显示器重新连上后生效。",
+    "nextNone": "之后不再变化",
+    "next": "下一次变化 {{at}}（{{in}}）",
+    "status": {
+      "title": "屏幕当前状态",
+      "meta": "每 10 秒刷新",
+      "detail": "屏幕画面与参数"
+    },
+    "state": {
+      "on": "显示中",
+      "off": "已关屏",
+      "offline": "显示器离线"
+    },
+    "reason": {
+      "schedule": "按时段计划运行。",
+      "remote_on": "远程开屏中，持续到 {{until}}（下一个时段边界），之后回到时段计划。",
+      "remote_off": "远程关屏中，持续到 {{until}}（下一个时段边界），之后回到时段计划。",
+      "wake": "临时亮屏中，{{until}} 到期后回到时段计划。"
+    },
+    "kv": {
+      "display": "显示器",
+      "screen": "当前 screen",
+      "theme": "主题",
+      "next": "下一次变化",
+      "wake": "临时亮屏",
+      "input": "输入方式",
+      "online": "在线",
+      "onlineVp": "在线 · {{w}}×{{h}}",
+      "offline": "离线",
+      "never": "从未连接",
+      "wakeUntil": "至 {{time}}"
+    },
+    "keys": {
+      "title": "操作按键",
+      "meta": "k1–k6 · 立即下发到 kiosk",
+      "refresh": {
+        "label": "刷新",
+        "desc": "重新加载屏幕页面，布局与数据立即更新。"
+      },
+      "switch": {
+        "label": "切换 screen",
+        "desc": "切到目标 screen；空闲 {{n}} 秒后回首页。",
+        "target": "目标 screen",
+        "go": "切换"
+      },
+      "on": {
+        "label": "开屏",
+        "desc": "点亮屏幕，直到时段计划的下一个边界，之后回到计划。"
+      },
+      "off": {
+        "label": "关屏",
+        "desc": "关闭显示，直到时段计划的下一个边界，之后回到计划。"
+      },
+      "wake": {
+        "label": "临时亮屏",
+        "desc": "关屏时段里临时点亮，到点后自动回到时段计划。",
+        "minutes": "亮屏时长",
+        "unit": "分钟",
+        "go": "亮屏"
+      },
+      "token": {
+        "label": "重置屏幕令牌",
+        "desc": "旧令牌立即失效，kiosk 需用新令牌链接重新登录。"
+      }
+    },
+    "ops": {
+      "title": "操作记录",
+      "meta": "最近 {{n}} 条",
+      "empty": "暂无操作记录",
+      "from": "来自 {{ip}}",
+      "toScreen": "→ {{id}}",
+      "minutes": "{{n}} 分钟",
+      "delivered": "已下发",
+      "undelivered": "屏幕离线，未送达",
+      "action": {
+        "refresh": "刷新",
+        "switch": "切换 screen",
+        "on": "开屏",
+        "off": "关屏",
+        "wake": "临时亮屏",
+        "token_reset": "重置屏幕令牌"
+      }
+    },
+    "token": {
+      "title": "重置屏幕令牌？",
+      "warn": "旧令牌立即失效，屏幕会被断开并显示「屏幕令牌失效」。",
+      "consequence": "kiosk 需要用新令牌链接重新登录；重新登录之前屏幕停在最后一帧，不再更新。",
+      "cancel": "取消",
+      "confirm": "重置令牌",
+      "close": "完成",
+      "doneTitle": "令牌已重置",
+      "doneBody": "新令牌已写入中枢数据目录下的 screen.token 文件。在 kiosk 的浏览器里打开下面的链接即可重新登录：",
+      "doneHint": "把 <token> 换成 screen.token 文件里的内容（一行文本）。"
+    }
+  },
+  "schedule": {
+    "sub": "屏幕按时段换主题或关屏，按全局时区执行",
+    "loading": "正在读取时段计划…",
+    "loadFailed": "无法加载时段计划：{{error}}",
+    "retry": "重试",
+    "readoutTz": "时区 {{tz}}",
+    "readoutNow": "现在 {{time}}",
+    "save": "保存并推送",
+    "saving": "保存中…",
+    "discard": "放弃修改",
+    "saved": "时段计划已保存并推送",
+    "dirty": "{{n}} 项未保存的修改",
+    "leave": {
+      "title": "离开时段计划？",
+      "body": "时段计划或「降低特效」有未保存的修改，离开后会丢失。",
+      "stay": "继续编辑",
+      "leave": "放弃并离开"
+    },
+    "override": "屏幕当前由远程操作接管，计划到时才会重新生效。",
+    "overrideLink": "去远程操作",
+    "tl": {
+      "title": "24 小时时间轴",
+      "meta": "点色段选中 · 拖动或用方向键调整边界 · 下方主题卡片改主题",
+      "now": "现在 {{time}}",
+      "seg": "{{from}}–{{to}} {{theme}}",
+      "off": "关屏",
+      "handle": "调整 {{time}} 处的边界（方向键 ±5 分钟，Shift 加方向键 ±1 小时）",
+      "current": "当前 {{theme}} · {{from}}–{{to}}",
+      "next": "下一次变化 {{at}} {{theme}}（{{in}}）",
+      "none": "之后不再变化",
+      "tz": "按全局时区 {{tz}}"
+    },
+    "list": {
+      "title": "时段",
+      "meta": "覆盖 24 小时 · 无重叠",
+      "colNo": "#",
+      "colRange": "起止",
+      "colLen": "时长",
+      "colTheme": "主题 / 关屏",
+      "overnight": "跨日",
+      "current": "当前",
+      "edit": "编辑",
+      "delete": "删除时段 {{n}}",
+      "deleted": "已删除时段，前一段延长到 {{time}}",
+      "hours": "{{h}} 小时",
+      "hoursMinutes": "{{h}} 小时 {{m}} 分",
+      "minutes": "{{m}} 分钟",
+      "add": "添加时段",
+      "addHint": "新时段会从所在段里切出，时间轴始终覆盖 24 小时。",
+      "tooShort": "时段太短，无法再切分",
+      "full": "时段数已达 {{max}} 个上限"
+    },
+    "edit": {
+      "title": "编辑时段 {{n}}",
+      "start": "开始",
+      "end": "结束",
+      "startAria": "开始时间 HH:MM",
+      "endAria": "结束时间 HH:MM",
+      "kind": "时段类型",
+      "kindTheme": "主题",
+      "kindOff": "关屏",
+      "hintTheme": "在下方 02.3 选主题",
+      "hintOff": "关屏时段不选主题；唤醒规则见 02.5",
+      "invalidTime": "时间格式应为 HH:MM",
+      "linked": "改起止时间时，相邻时段的边界会一起移动，保持首尾相接。"
+    },
+    "problems": {
+      "title": "时段计划不合法，保存前需要修正",
+      "backend": "服务端校验未通过",
+      "format": "时间格式不对",
+      "theme": "主题不在内置主题或关屏之内",
+      "empty": "至少需要一个时段",
+      "gap": "{{from}}–{{to}} 没有被任何时段覆盖",
+      "overlap": "{{from}}–{{to}} 被多个时段重叠",
+      "period": "第 {{n}} 个时段：{{msg}}"
+    },
+    "themes": {
+      "title": "主题",
+      "metaOff": "所选时段为关屏",
+      "metaPick": "正在为 {{from}}–{{to}} 选主题",
+      "dark": "深色",
+      "light": "浅色",
+      "default": "默认",
+      "picked": "已选",
+      "usedBy": "用于 {{ranges}}",
+      "unused": "未使用",
+      "card": "{{name}}（{{id}}）",
+      "preview": "{{name}} 主题预览"
+    },
+    "reduce": {
+      "title": "降低特效",
+      "help": "关闭光晕与动效，适合长时间常亮或性能不足。与「设置 · 显示」是同一开关。",
+      "settingsFailedAfterPlan": "时段计划已保存，但「降低特效」未能保存：{{error}}"
+    },
+    "wake": {
+      "title": "唤醒规则",
+      "meta": "只读 · 关屏时段内",
+      "crit": "严重告警唤醒",
+      "critTag": "M4 起",
+      "critSub": "亮屏 10 分钟后恢复关屏",
+      "remote": "远程开屏",
+      "remoteTag": "可用",
+      "remoteSub": "「远程操作」k3 / k5",
+      "touch": "触摸唤醒",
+      "touchNo": "当前无触摸",
+      "touchYes": "有触摸",
+      "touchUnknown": "尚未上报",
+      "touchSub": "有触摸时点屏幕即亮"
+    }
   }
 }

@@ -64,3 +64,19 @@ export function formatMoney(amount: number, currency: string | undefined, locale
   }
   return currency ? `${formatNumber(amount, locale)} ${currency}` : formatNumber(amount, locale)
 }
+
+// 设置时区里的时刻：同一天只显示 HH:MM，不同天前面加「月/日」。与浏览器本地时区无关；时区名非法时回退 UTC。
+export function formatClockInZone(ms: number, nowMs: number, timeZone: string, locale: string): string {
+  const fmt = (zone: string, opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(locale, { timeZone: zone, ...opts })
+  const build = (zone: string) => {
+    const day = (t: number) => fmt(zone, { year: 'numeric', month: 'numeric', day: 'numeric' }).format(t)
+    const clock = fmt(zone, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ms)
+    if (day(ms) === day(nowMs)) return clock
+    return `${fmt(zone, { month: 'numeric', day: 'numeric' }).format(ms)} ${clock}`
+  }
+  try {
+    return build(timeZone)
+  } catch {
+    return build('UTC')
+  }
+}
