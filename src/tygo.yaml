@@ -5,10 +5,14 @@ packages:
     output_path: ../web/src/types/model.generated.ts
     type_mappings:
       time.Time: string
+      time.Duration: number # 纳秒
       report.Report: Report
     frontmatter: |
       import type { Report } from './report.generated';
   - path: github.com/LanceLRQ/PiMon/src/pkg/plugin/report
     output_path: ../web/src/types/report.generated.ts
+    exclude_files:
+      - event.go
     type_mappings:
       time.Time: string
+      time.Duration: number # 纳秒

@@ -67,8 +67,8 @@ export interface DisplayInput {
   /**
    * Interval 是刷新间隔；StaleAfter > 0 时（Streamer 按 manifest 声明）以它为过期阈值，忽略 Interval。
    */
-  Interval: any /* time.Duration */;
-  StaleAfter: any /* time.Duration */;
+  Interval: number;
+  StaleAfter: number;
   /**
    * ReportStatus 是最近一份成功报告的 status；空或非法按 unknown 处理。
    */
@@ -209,13 +209,4 @@ export interface Report {
    */
   stale?: boolean;
 }
-/**
- * Event 是报告中的事件。本期只校验通用字段 id、type、at，不解释 type；
- * 其余字段（seq 等）原样保存在 Extra 中。
- */
-export interface Event {
-  ID: string;
-  Type: string;
-  At: number /* int64 */;
-  Extra: { [key: string]: any /* json.RawMessage */};
-}
+export interface Event { id: string; type: string; at: number; [key: string]: unknown }
