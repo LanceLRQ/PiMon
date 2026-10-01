@@ -197,3 +197,13 @@ describe('list 模板：通配引用与时长（Ruling 48、49）', () => {
     expect(container.querySelector('.tpl-list__unit')).toBeNull()
   })
 })
+
+describe('list 模板：字节单位自动换算（Ruling 52）', () => {
+  it('B 的数值显示为 GB', async () => {
+    const items: Item[] = [{ key: 'mem', type: 'number', value: 3.5 * 1024 ** 3, unit: 'B' }]
+    const widget = makeWidget({ template: 'list', size: { cols: 2, rows: 2 }, source: 'plugin', slots: { items: [{ instance_id: 'i1', item: 'mem' }] } })
+    const { container } = await renderIn(<WidgetView widget={widget} data={{ i1: makeData(items) }} />)
+    expect(container.querySelector('.tpl-list__value')!.textContent).toBe('3.5GB')
+    expect(container.querySelector('.tpl-list__unit')!.textContent).toBe('GB')
+  })
+})

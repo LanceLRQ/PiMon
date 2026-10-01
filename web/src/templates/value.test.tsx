@@ -173,6 +173,16 @@ describe('value 模板：时长（Ruling 49）', () => {
   })
 })
 
+describe('value 模板：字节单位自动换算（Ruling 52）', () => {
+  it('B/s 的数值显示为 KB/s，读数与单位分开', async () => {
+    const items: Item[] = [{ key: 'rx', type: 'number', value: 12_646.96, unit: 'B/s' }]
+    const { widget, data } = bound('value', { cols: 2, rows: 1 }, items)
+    const { container } = await renderIn(<WidgetView widget={widget} data={data} />)
+    expect(container.querySelector('.tpl-value__number')!.textContent).toBe('12.4')
+    expect(container.querySelector('.tpl-value__unit')!.textContent).toBe('KB/s')
+  })
+})
+
 describe('value 模板：quota 的默认读数是百分比', () => {
   it('quota 带字节单位时读数仍以 % 为单位', async () => {
     const items: Item[] = [{ key: 'disk[/]', type: 'quota', remaining_pct: 42.5, used: 100, total: 200, unit: 'B' }]

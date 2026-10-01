@@ -66,3 +66,24 @@ export function formatDuration(totalSeconds: number, lang: Lang): string | null 
   }
   return parts.join(' ')
 }
+
+const byteUnits = ['B', 'KB', 'MB', 'GB', 'TB']
+
+/**
+ * 单位为 B 或 B/s 的数值按 1024 进制换算到合适量级（KB、MB、GB、TB，保留 /s 形式），至多 3 位有效数字。
+ * 其它单位与非有限值返回 null，由调用方按普通数值显示。
+ */
+export function formatBytes(value: number, unit: string, lang: Lang): { text: string; unit: string } | null {
+  if (unit !== 'B' && unit !== 'B/s') return null
+  if (!Number.isFinite(value)) return null
+  const suffix = unit === 'B/s' ? '/s' : ''
+  let scaled = Math.abs(value)
+  let level = 0
+  while (scaled >= 1024 && level < byteUnits.length - 1) {
+    scaled /= 1024
+    level++
+  }
+  const rounded = Number(scaled.toPrecision(3))
+  const signed = value < 0 ? -rounded : rounded
+  return { text: formatNumber(signed, lang, 2), unit: `${byteUnits[level]}${suffix}` }
+}
