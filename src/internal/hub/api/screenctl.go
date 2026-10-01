@@ -8,6 +8,7 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/httpx"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/screens"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/screenstate"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 )
@@ -44,7 +45,12 @@ func (s *server) putSchedule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) getScreenStatus(w http.ResponseWriter, _ *http.Request) {
-	httpx.WriteJSON(w, http.StatusOK, s.ScreenState.Status())
+	st := s.ScreenState.Status()
+	if st.Viewport != nil {
+		g := screens.RecommendGrid(*st.Viewport)
+		st.RecommendedGrid = &g
+	}
+	httpx.WriteJSON(w, http.StatusOK, st)
 }
 
 func (s *server) screenControl(w http.ResponseWriter, r *http.Request) {
@@ -94,6 +100,8 @@ func (s *server) listScreenOps(w http.ResponseWriter, r *http.Request) {
 // revealSetupCode 向屏幕会话显示明文设置码，让没有键盘的显示器也能完成首次设置；
 // 仅屏幕会话可调：已有管理员 409 setup.already_done，没有有效且可显示的设置码 404。
 func (s *server) revealSetupCode(w http.ResponseWriter, r *http.Request) {
+	// 响应含明文设置码，不允许任何缓存。
+	w.Header().Set("Cache-Control", "no-store")
 	_, kind, ok, err := s.currentSession(r)
 	if err != nil {
 		internalError(w, r, err)

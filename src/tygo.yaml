@@ -6,8 +6,9 @@ packages:
       time.Time: string
       time.Duration: number # 纳秒
       report.Report: Report
+      report.Item: Item
     frontmatter: |
-      import type { Report } from './report.generated';
+      import type { Item, Report } from './report.generated';
   - path: github.com/LanceLRQ/PiMon/src/pkg/plugin/report
     output_path: ../web/src/types/report.generated.ts
     exclude_files:
@@ -23,5 +24,20 @@ packages:
       time.Time: string
       model.Instance: Instance
       model.Settings: Settings
+      model.ScreenDisplaySettings: ScreenDisplaySettings
+      model.LayoutState: LayoutState
+      model.ResolvedLayout: ResolvedLayout
+      model.ScreenState: ScreenState
+      model.ScreenInstanceData: ScreenInstanceData
+      model.Viewport: Viewport
     frontmatter: |
-      import type { Instance, Settings } from './model.generated';
+      import type {
+        Instance,
+        LayoutState,
+        ResolvedLayout,
+        ScreenDisplaySettings,
+        ScreenInstanceData,
+        ScreenState,
+        Settings,
+        Viewport,
+      } from './model.generated';

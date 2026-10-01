@@ -4,7 +4,9 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
+	"github.com/LanceLRQ/PiMon/src/internal/hub/screenstate"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 )
 
@@ -88,6 +90,29 @@ func TestSchedulePutInvalid(t *testing.T) {
 	e.expectError(resp, data, http.StatusBadRequest, "schedule.invalid")
 	resp, data = e.do(admin, "PUT", "/api/schedule", nil)
 	e.expectError(resp, data, http.StatusBadRequest, "request.invalid_json")
+}
+
+func TestScreenStatusRecommendsGridFromAdoptedViewport(t *testing.T) {
+	e := newEnv(t)
+	admin := e.setup()
+	e.deps.ScreenState.ReportViewport(model.Viewport{W: 1280, H: 720, DPR: 1})
+	e.deps.ScreenState.SetScreenOnline(true)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		e.clk.Advance(screenstate.ViewportStableFor)
+		_, data := e.do(admin, "GET", "/api/screen/status", nil)
+		st := decode[model.ScreenStatus](t, data)
+		if st.Viewport != nil {
+			if st.RecommendedGrid == nil || *st.RecommendedGrid != (model.Grid{Cols: 10, Rows: 6}) || !st.Online {
+				t.Fatalf("status = %s", data)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("viewport 应在稳定 2 秒后被采信")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func TestScreenControlFlow(t *testing.T) {
@@ -195,6 +220,9 @@ func TestSetupCodeReveal(t *testing.T) {
 	got := decode[model.SetupCodeReveal](t, data)
 	if resp.StatusCode != 200 || got.Code != code || !got.ExpiresAt.Equal(exp) {
 		t.Fatalf("reveal = %d %s", resp.StatusCode, data)
+	}
+	if cc := resp.Header.Get("Cache-Control"); cc != "no-store" {
+		t.Fatalf("明文设置码响应必须 no-store，得到 %q", cc)
 	}
 
 	// 未登录与管理员会话都不能取

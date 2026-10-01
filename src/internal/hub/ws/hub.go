@@ -58,6 +58,12 @@ type Config struct {
 	Instances InstanceSource
 	Settings  SettingsSource
 	Sessions  SessionLookup
+	// 以下四项接入屏幕相关主题；为空时对应主题不下发内容。
+	Layouts     LayoutSource
+	ScreenState ScreenStateSource
+	ScreenData  ScreenDataSource
+	// Sink 接收屏幕会话的上报与在线状态。
+	Sink ScreenSink
 	// QueueSize 是每连接发送队列容量，缺省 64。
 	QueueSize int
 }
@@ -77,6 +83,12 @@ type Hub struct {
 	last    map[string]model.Instance // 最近一次广播给客户端的实例状态，对账与去重用
 	changed chan struct{}             // 连接集合变化时关闭并换新，测试等待用
 	closed  bool
+
+	// 屏幕相关状态，只在持有 bmu 时读写。
+	layoutVer    int                                 // 最近一次广播给管理员的布局版本，丢弃较旧的回调
+	lastResolved []byte                              // 最近一次广播给屏幕的解析后布局（JSON）
+	lastData     map[string]model.ScreenInstanceData // 最近一次广播的引用实例数据
+	screenConns  int                                 // 在线的屏幕会话数
 
 	// mu 保护待推送集合，只做内存操作，供业务路径上的回调调用。
 	mu           sync.Mutex
@@ -147,6 +159,14 @@ func (h *Hub) Start(ctx context.Context) <-chan struct{} {
 		for _, in := range list {
 			h.last[in.ID] = in
 		}
+	}
+	if h.cfg.Layouts != nil {
+		if cur, err := h.cfg.Layouts.Current(ctx); err != nil {
+			slog.Warn("读取当前布局失败，布局版本基线为空", "err", err)
+		} else {
+			h.layoutVer = cur.Version
+		}
+		h.screenRefreshLocked(ctx) // 建立推送去重基线，此时尚无连接
 	}
 	h.bmu.Unlock()
 
@@ -231,6 +251,9 @@ func (h *Hub) attach(ctx context.Context, s sink, kind auth.SessionKind, token s
 		return nil, err
 	}
 	h.conns[c] = struct{}{}
+	if kind == auth.KindScreen {
+		h.screenJoinedLocked()
+	}
 	h.touchConnsLocked()
 	h.bmu.Unlock()
 	go c.writeLoop()
@@ -241,6 +264,9 @@ func (h *Hub) detach(c *client) {
 	h.bmu.Lock()
 	if _, ok := h.conns[c]; ok {
 		delete(h.conns, c)
+		if c.kind == auth.KindScreen {
+			h.screenLeftLocked()
+		}
 		h.touchConnsLocked()
 	}
 	h.bmu.Unlock()
@@ -252,7 +278,7 @@ func (h *Hub) subscribe(ctx context.Context, c *client, topics []string) {
 	var denied, unknown []string
 	for _, t := range topics {
 		switch {
-		case t != ui.TopicInstances && t != ui.TopicSettings:
+		case !knownTopic(t):
 			unknown = append(unknown, t)
 		case !slices.Contains(allowed, t):
 			denied = append(denied, t)
@@ -301,6 +327,9 @@ func (h *Hub) resubscribeLocked(ctx context.Context, c *client, topics []string)
 			snap.ScreenSettings = &ss
 		}
 	}
+	if err := h.screenSnapshotLocked(ctx, c, set, &snap); err != nil {
+		return err
+	}
 	raw, err := json.Marshal(snap)
 	if err != nil {
 		return err
@@ -310,7 +339,8 @@ func (h *Hub) resubscribeLocked(ctx context.Context, c *client, topics []string)
 	return nil
 }
 
-// outMsg 是一条待广播的 patch：admin 与 screen 两种会话各自的序列化结果（相同时共用）。
+// outMsg 是一条待广播的 patch：admin 与 screen 两种会话各自的序列化结果（相同时共用）；
+// 某一方为 nil 表示该角色不收这条消息。
 type outMsg struct {
 	topic         string
 	admin, screen []byte
@@ -352,6 +382,10 @@ func (h *Hub) flush() {
 	if settingsChanged {
 		msgs = appendMsg(msgs, h.settingsMsgLocked())
 	}
+	// 实例变化可能影响屏幕引用的数据与解析后布局的展示状态；设置变化可能改变语言。
+	if len(ids) > 0 || settingsChanged {
+		msgs = append(msgs, h.screenRefreshLocked(ctx)...)
+	}
 	h.deliverLocked(ctx, msgs)
 }
 
@@ -378,7 +412,15 @@ func (h *Hub) reconcile(ctx context.Context) {
 			msgs = appendMsg(msgs, h.removedMsgLocked(id))
 		}
 	}
+	msgs = append(msgs, h.screenRefreshLocked(ctx)...)
 	h.deliverLocked(ctx, msgs)
+}
+
+func (m outMsg) payload(kind auth.SessionKind) []byte {
+	if kind == auth.KindAdmin {
+		return m.admin
+	}
+	return m.screen
 }
 
 func appendMsg(msgs []outMsg, m *outMsg) []outMsg {
@@ -445,7 +487,7 @@ func (h *Hub) deliverLocked(ctx context.Context, msgs []outMsg) {
 	for c := range h.conns {
 		var rel []outMsg
 		for _, m := range msgs {
-			if c.topics[m.topic] {
+			if c.topics[m.topic] && m.payload(c.kind) != nil {
 				rel = append(rel, m)
 			}
 		}
@@ -457,11 +499,7 @@ func (h *Hub) deliverLocked(ctx context.Context, msgs []outMsg) {
 			}
 		}
 		for _, m := range rel {
-			if c.kind == auth.KindAdmin {
-				c.enqueue(m.admin)
-			} else {
-				c.enqueue(m.screen)
-			}
+			c.enqueue(m.payload(c.kind))
 		}
 	}
 }
@@ -497,14 +535,22 @@ func (h *Hub) recheck(c *client) {
 	}
 }
 
+// defaultTopics 是会话建立时的默认订阅：管理员看实例、设置、原始布局与屏幕状态；
+// 屏幕会话只看设置、解析后布局、屏幕状态与布局引用实例的数据。
 func defaultTopics(kind auth.SessionKind) []string {
 	if kind == auth.KindAdmin {
-		return []string{ui.TopicInstances, ui.TopicSettings}
+		return []string{ui.TopicInstances, ui.TopicSettings, ui.TopicLayout, ui.TopicScreenState}
 	}
-	return []string{ui.TopicSettings}
+	return []string{ui.TopicSettings, ui.TopicLayout, ui.TopicScreenState, ui.TopicScreenData}
 }
 
-func allowedTopics(kind auth.SessionKind) []string { return defaultTopics(kind) }
+// allowedTopics 是会话可订阅的主题：管理员在默认之外可订阅 screen_data 做预览；屏幕会话不能订阅 instances。
+func allowedTopics(kind auth.SessionKind) []string {
+	if kind == auth.KindAdmin {
+		return append(defaultTopics(kind), ui.TopicScreenData)
+	}
+	return defaultTopics(kind)
+}
 
 func roleOf(kind auth.SessionKind) string {
 	if kind == auth.KindAdmin {
@@ -523,5 +569,5 @@ func sortedTopics(set map[string]bool) []string {
 }
 
 func screenSettings(s model.Settings) ui.ScreenSettings {
-	return ui.ScreenSettings{Language: s.Language, Timezone: s.Timezone, ReduceEffects: s.ReduceEffects}
+	return ui.ScreenSettings{Language: s.Language, Timezone: s.Timezone, ReduceEffects: s.ReduceEffects, Screen: s.Screen}
 }

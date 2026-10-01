@@ -165,15 +165,28 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		return fmt.Errorf("加载屏幕时段计划: %w", err)
 	}
 	// hub-self 的统计来源在 instances 与 history 就绪后才能绑定，先于 Load 以便首次采集就有数据。
-	hubself.Bind(hubStats{inst: a.instances, hist: a.history, started: o.clk.Now(), dataDir: a.cfg.DataDir})
+	hubself.Bind(hubStats{
+		inst: a.instances, hist: a.history, started: o.clk.Now(), dataDir: a.cfg.DataDir,
+		// 有屏幕会话的 WebSocket 连着即在线；来源已接入，未连过也是离线而非未知。
+		screenOnline: func() (bool, bool) {
+			online, _ := a.screenState.Online()
+			return online, true
+		},
+	})
 	if err := a.instances.Load(ctx); err != nil {
 		return fmt.Errorf("恢复实例状态: %w", err)
 	}
 	// 实例与设置的变化经广播中心合并后推给 UI WebSocket 的订阅者。
 	a.ws = ws.New(ws.Config{
 		Clock: o.clk, Build: o.version, Instances: a.instances, Settings: st, Sessions: a.sessions,
+		Layouts: a.screens, ScreenState: a.screenState, ScreenData: a.instances, Sink: a.screenState,
 	})
 	a.instances.OnChange(a.ws.NotifyInstance)
+	// 屏幕布局、状态、一次性指令不进合并窗口，变化时立即推送。
+	a.screens.OnChange(a.ws.NotifyLayout)
+	a.screenState.OnChange(a.ws.NotifyScreenState)
+	a.screenState.OnCommand(a.deliverScreenCommand)
+	a.screenState.OnViewport(a.onViewportAdopted)
 	a.sessions.OnRevoke(a.ws.RecheckSessions)
 	st.OnChange(func() {
 		a.ws.NotifySettings()
@@ -202,6 +215,29 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		WS:           a.ws.Handler(),
 	})
 	return nil
+}
+
+// deliverScreenCommand 把一次性屏幕指令（refresh、switch）发给在线的屏幕会话；
+// 至少一个屏幕收到即记为已送达，没有屏幕在线则保持未送达。
+func (a *App) deliverScreenCommand(cmd screenstate.Command) {
+	if a.ws.SendScreenControl(cmd.OpID, cmd.Action, cmd.ScreenID) == 0 {
+		return
+	}
+	if err := a.screenState.MarkDelivered(context.Background(), cmd.OpID); err != nil {
+		slog.Warn("标记屏幕指令已送达失败", "op", cmd.OpID, "err", err)
+	}
+}
+
+// onViewportAdopted 在显示器 viewport 被采信后调用：布局仍是种子原版时按推荐网格自动换成对应的种子布局。
+func (a *App) onViewportAdopted(v model.Viewport) {
+	applied, err := a.screens.AutoSelectGrid(context.Background(), v)
+	if err != nil {
+		slog.Warn("按显示器自动选择网格失败", "err", err)
+		return
+	}
+	if applied {
+		slog.Info("已按显示器自动选择网格", "viewport", fmt.Sprintf("%dx%d", v.W, v.H))
+	}
 }
 
 // Handler 返回完整的 HTTP 处理器，测试用 httptest 直接挂载。

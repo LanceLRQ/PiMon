@@ -86,3 +86,38 @@ func TestInstanceHistoryQuery(t *testing.T) {
 	resp, data = e.do(admin, "GET", historyPath("nope", "item", "temp", "range", "1h"), nil)
 	e.expectError(resp, data, http.StatusNotFound, "instance.not_found")
 }
+
+func TestInstanceHistoryScreenSessionLimitedToReferencedInstances(t *testing.T) {
+	e, admin := newInstEnv(t)
+	used := createInst(t, e, admin, "a")
+	unused := createInst(t, e, admin, "b")
+	for _, id := range []string{used.ID, unused.ID} {
+		if resp, data := e.do(admin, "POST", "/api/instances/"+id+"/run", nil); resp.StatusCode != http.StatusOK {
+			t.Fatalf("run = %d %s", resp.StatusCode, data)
+		}
+	}
+	if err := e.deps.History.Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if resp, data := putLayout(e, admin, 0, apiLayout(apiGenericValue("w", 0, used.ID))); resp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT layout = %d %s", resp.StatusCode, data)
+	}
+
+	sc := e.screenClient()
+	resp, data := e.do(sc, "GET", historyPath(used.ID, "item", "temp", "range", "1h"), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("屏幕会话查被引用实例 = %d %s", resp.StatusCode, data)
+	}
+	if res := decode[model.HistoryResult](t, data); len(res.Points) != 1 {
+		t.Fatalf("结果 = %+v", res)
+	}
+	resp, data = e.do(sc, "GET", historyPath(unused.ID, "item", "temp", "range", "1h"), nil)
+	e.expectError(resp, data, http.StatusForbidden, "auth.forbidden")
+	resp, data = e.do(sc, "GET", historyPath("no-such-instance", "item", "temp", "range", "1h"), nil)
+	e.expectError(resp, data, http.StatusForbidden, "auth.forbidden")
+
+	// 管理员仍可查任意实例
+	if resp, data = e.do(admin, "GET", historyPath(unused.ID, "item", "temp", "range", "1h"), nil); resp.StatusCode != http.StatusOK {
+		t.Fatalf("管理员查未引用实例 = %d %s", resp.StatusCode, data)
+	}
+}
