@@ -50,5 +50,7 @@ func (s *server) resetScreenToken(w http.ResponseWriter, r *http.Request) {
 		internalError(w, r, err)
 		return
 	}
+	// 事务已提交，旧屏幕会话已不存在：让屏幕端的 WebSocket 立即复核并断开。
+	s.Sessions.NotifyRevoked()
 	w.WriteHeader(http.StatusNoContent)
 }

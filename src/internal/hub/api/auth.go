@@ -141,6 +141,8 @@ func (s *server) changePassword(w http.ResponseWriter, r *http.Request) {
 		internalError(w, r, err)
 		return
 	}
+	// 事务已提交，旧管理员会话已不存在：让已建立的 WebSocket 立即复核并断开。
+	s.Sessions.NotifyRevoked()
 	if err := s.issueSession(w, r, auth.KindAdmin); err != nil {
 		internalError(w, r, err)
 		return

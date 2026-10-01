@@ -81,7 +81,8 @@ func New(d Deps) http.Handler {
 	}
 
 	h := httpx.RequireSameOrigin(mux)
-	return httpx.WithRequestInfo(d.Settings.TrustedNets)(h)
+	h = httpx.WithRequestInfo(d.Settings.TrustedNets)(h)
+	return httpx.SecurityHeaders(h)
 }
 
 func (s *server) healthz(w http.ResponseWriter, _ *http.Request) {

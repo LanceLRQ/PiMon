@@ -94,3 +94,15 @@ func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 	}
 	return nil
 }
+
+// SecurityHeaders 给所有响应加基础安全头：禁止 MIME 嗅探、禁止被嵌入框架、引荐来源只在同源下带出。
+// 不含 CSP：页面有内联防闪烁脚本，CSP 留待后续统一设计。
+func SecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "same-origin")
+		next.ServeHTTP(w, r)
+	})
+}

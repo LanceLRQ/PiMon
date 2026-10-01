@@ -46,6 +46,10 @@ func (s *Sessions) OnRevoke(f func()) {
 	s.cbMu.Unlock()
 }
 
+// NotifyRevoked 在事务外触发一次会话复核回调：改密码、令牌轮换等在自己的事务里批量删会话，
+// 无法经 Delete/DeleteKind 触发回调，须在事务提交之后由调用方显式通知（库为单连接，不可在事务内调用）。
+func (s *Sessions) NotifyRevoked() { s.revoked() }
+
 func (s *Sessions) revoked() {
 	s.cbMu.RLock()
 	f := s.onRevoke
