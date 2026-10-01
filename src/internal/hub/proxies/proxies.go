@@ -119,7 +119,29 @@ func (s *Store) List(ctx context.Context) ([]model.Proxy, error) {
 		}
 		out = append(out, p)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if err := s.fillReferrers(ctx, &out[i]); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// fillReferrers 填入引用该代理的实例，没有引用时为空数组。
+func (s *Store) fillReferrers(ctx context.Context, p *model.Proxy) error {
+	p.Referrers = []model.ProxyReferrer{}
+	if s.refs == nil {
+		return nil
+	}
+	refs, err := s.refs.ListByProxy(ctx, p.ID)
+	if err != nil {
+		return err
+	}
+	p.Referrers = append(p.Referrers, refs...)
+	return nil
 }
 
 func (s *Store) get(ctx context.Context, id string) (model.Proxy, string, error) {
@@ -130,10 +152,13 @@ func (s *Store) get(ctx context.Context, id string) (model.Proxy, string, error)
 	return p, enc, err
 }
 
-// Get 返回单个代理（认证只给"已设置"标记）。
+// Get 返回单个代理（认证只给"已设置"标记），含引用它的实例。
 func (s *Store) Get(ctx context.Context, id string) (model.Proxy, error) {
 	p, _, err := s.get(ctx, id)
-	return p, err
+	if err != nil {
+		return p, err
+	}
+	return p, s.fillReferrers(ctx, &p)
 }
 
 // normalized 是校验并规整后的输入。

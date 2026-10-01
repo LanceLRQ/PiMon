@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -17,6 +18,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
@@ -581,5 +583,35 @@ func TestWebUIServedWithFallbackAndJSON404(t *testing.T) {
 	}
 	if resp, _ = call(t, c, srv.URL, "GET", "/healthz", nil); resp.StatusCode != 200 {
 		t.Fatalf("/healthz = %d", resp.StatusCode)
+	}
+}
+
+// 系统页的版本与前端 build 同源（o.version），日志来自注入的环形缓冲。
+func TestSystemEndpointsWired(t *testing.T) {
+	ring := logging.NewRing(10)
+	a := openApp(t, testConfig(t), WithLogRing(ring))
+	srv := httptest.NewServer(a.Handler())
+	t.Cleanup(srv.Close)
+	c := newClient()
+	code, _, err := a.SetupCode(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp, data := call(t, c, srv.URL, "POST", "/api/setup", map[string]any{
+		"setup_code": code, "password": testPassword, "language": "zh", "timezone": "UTC",
+	}); resp.StatusCode != 200 {
+		t.Fatalf("setup = %d %s", resp.StatusCode, data)
+	}
+	slog.New(ring.Handler(slog.LevelDebug)).Warn("系统页测试日志")
+
+	resp, data := call(t, c, srv.URL, "GET", "/api/system", nil)
+	var info model.SystemInfo
+	if resp.StatusCode != 200 || json.Unmarshal(data, &info) != nil || info.Version != "1.0.0" || info.Plugins.Total == 0 {
+		t.Fatalf("system = %d %s", resp.StatusCode, data)
+	}
+	resp, data = call(t, c, srv.URL, "GET", "/api/system/logs?level=warn", nil)
+	var logs model.LogList
+	if resp.StatusCode != 200 || json.Unmarshal(data, &logs) != nil || len(logs.Entries) != 1 || logs.Entries[0].Message != "系统页测试日志" {
+		t.Fatalf("logs = %d %s", resp.StatusCode, data)
 	}
 }

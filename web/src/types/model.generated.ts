@@ -462,6 +462,10 @@ export interface Proxy {
    * Auth 只表示是否设置了认证。
    */
   auth: ProxyAuthState;
+  /**
+   * Referrers 是引用该代理的监控实例；没有引用时为空数组。
+   */
+  referrers: ProxyReferrer[];
   created_at: string;
   updated_at: string;
 }
@@ -604,4 +608,107 @@ export interface BackupSettings {
    * Keep 保留份数（1–30）。
    */
   keep: number /* int */;
+}
+
+//////////
+// source: system.go
+
+/**
+ * SystemInfo 是 GET /api/system 的响应：中枢版本、运行时长、资源占用与插件统计。
+ * 取不到的数据用 null 表示未知，不当作零。
+ */
+export interface SystemInfo {
+  /**
+   * Version 是构建版本，与前端 snapshot 下发的 build 同源。
+   */
+  version: string;
+  go_version: string;
+  os: string;
+  arch: string;
+  /**
+   * StartedAt 是本次启动时刻；UptimeSeconds 是已运行秒数。
+   */
+  started_at: string;
+  uptime_seconds: number /* int64 */;
+  memory: SystemMemory;
+  data_dir: SystemDataDir;
+  disk_writes: SystemDiskWrites | null;
+  plugins: SystemPlugins;
+}
+/**
+ * SystemMemory 是中枢进程的内存占用（Go 运行时统计），单位字节。
+ */
+export interface SystemMemory {
+  /**
+   * SysBytes 是向操作系统申请的内存总量（runtime.MemStats.Sys）。
+   */
+  sys_bytes: number /* int64 */;
+  /**
+   * HeapBytes 是已分配的堆内存（runtime.MemStats.HeapAlloc）。
+   */
+  heap_bytes: number /* int64 */;
+}
+/**
+ * SystemDataDir 是数据目录及其占用。
+ */
+export interface SystemDataDir {
+  path: string;
+  /**
+   * UsedBytes 是目录下全部文件大小之和（缓存 60 秒）；遍历失败时为 null。
+   */
+  used_bytes: number | null;
+}
+/**
+ * SystemDiskWrites 是中枢进程的磁盘写入量，只在能读取进程 IO 统计的平台（Linux）提供。
+ */
+export interface SystemDiskWrites {
+  /**
+   * SinceStartBytes 是自启动以来的写入字节数。
+   */
+  since_start_bytes: number /* int64 */;
+  /**
+   * Last24hBytes 是近 24 小时写入字节数；运行不足 24 小时等于 SinceStartBytes，
+   * 超过 24 小时按启动以来的平均速率折算（Last24hEstimated 为 true）。
+   */
+  last_24h_bytes: number /* int64 */;
+  last_24h_estimated: boolean;
+}
+/**
+ * SystemPlugins 是插件统计。
+ */
+export interface SystemPlugins {
+  total: number /* int */;
+  builtin: number /* int */;
+  exec: number /* int */;
+  errors: number /* int */;
+  conflicts: number /* int */;
+  /**
+   * PluginDir 是 exec 插件目录的绝对路径。
+   */
+  plugin_dir: string;
+}
+/**
+ * LogEntry 是中枢内存日志缓冲里的一条日志。
+ */
+export interface LogEntry {
+  time: string;
+  /**
+   * Level 是 debug | info | warn | error。
+   */
+  level: string;
+  message: string;
+  /**
+   * Attrs 是 key=value 属性文本（含 mono 单调时长），敏感键的值已替换为 ***。
+   */
+  attrs: string;
+}
+/**
+ * LogList 是 GET /api/system/logs 的响应，按时间正序。
+ */
+export interface LogList {
+  entries: LogEntry[];
+  /**
+   * Capacity 是缓冲容量（最多保留的条数）。
+   */
+  capacity: number /* int */;
 }

@@ -18,11 +18,13 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/history"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/system"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
@@ -68,6 +70,7 @@ type env struct {
 	srv       *httptest.Server
 	client    *http.Client
 	tokenFn   string
+	ring      *logging.Ring
 }
 
 func newEnv(t *testing.T) *env { return newEnvWith(t) }
@@ -109,7 +112,12 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 	}
 	hist := history.New(history.Config{DB: db, Clock: clk, Retention: func() model.RetentionSettings { return st.Get().Retention }})
 	inst := instances.New(instances.Config{DB: db, Box: box, Clock: clk, Plugins: reg, History: hist})
+	ring := logging.NewRing(5)
 	deps := Deps{
+		System: system.New(system.Config{
+			Clock: clk, Version: "v-test", DataDir: dir, Plugins: reg, Ring: ring,
+			ProcWriteBytes: func() (int64, bool) { return 0, false },
+		}),
 		Plugins:      reg,
 		Instances:    inst,
 		History:      hist,
@@ -132,7 +140,7 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 	}
 	srv := httptest.NewServer(New(deps))
 	t.Cleanup(srv.Close)
-	e := &env{t: t, clk: clk, deps: deps, db: db, refs: refs, plugins: reg, pluginDir: pluginDir, hasher: hasher, srv: srv, tokenFn: tokenPath}
+	e := &env{t: t, clk: clk, deps: deps, db: db, refs: refs, plugins: reg, pluginDir: pluginDir, hasher: hasher, srv: srv, tokenFn: tokenPath, ring: ring}
 	e.client = e.newClient()
 	return e
 }

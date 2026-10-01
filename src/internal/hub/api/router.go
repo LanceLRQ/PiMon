@@ -12,6 +12,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/system"
 	"github.com/LanceLRQ/PiMon/src/pkg/version"
 )
 
@@ -36,6 +37,7 @@ type Deps struct {
 	Plugins      *plugins.Registry
 	Instances    *instances.Service
 	History      *history.Service
+	System       *system.Service
 	// Web 是前端 SPA 处理器，挂在 "/" 兜底；为 nil 时不提供前端（测试用）。
 	Web http.Handler
 	// WS 是 UI WebSocket 的握手处理器，挂在 GET /ws；为 nil 时不提供（测试用）。
@@ -67,6 +69,7 @@ func New(d Deps) http.Handler {
 	s.registerPlugins(mux)
 	s.registerInstances(mux)
 	s.registerHistory(mux)
+	s.registerSystem(mux)
 	if d.WS != nil {
 		mux.Handle("GET /ws", d.WS)
 	}

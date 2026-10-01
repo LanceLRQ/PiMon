@@ -22,6 +22,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/system"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/webui"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/ws"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
@@ -162,9 +163,12 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	a.sessions.OnRevoke(a.ws.RecheckSessions)
 	st.OnChange(a.ws.NotifySettings)
 	a.handler = api.New(api.Deps{
-		Plugins:      a.plugins,
-		Instances:    a.instances,
-		History:      a.history,
+		Plugins:   a.plugins,
+		Instances: a.instances,
+		History:   a.history,
+		System: system.New(system.Config{
+			Clock: o.clk, Version: o.version, DataDir: a.cfg.DataDir, Plugins: a.plugins, Ring: o.logRing,
+		}),
 		Settings:     st,
 		Hasher:       auth.Hasher{Params: o.params},
 		Limiter:      auth.NewLimiter(o.clk, loginMaxFailures, loginLockTime),
