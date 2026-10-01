@@ -1,8 +1,12 @@
 import type { Layout } from '@/types/generated'
 
-// 与后端 internal/hub/screens/validate.go 对齐：screen 数上限、名称长度（按字符）、id 格式
+// 与后端 internal/hub/screens/validate.go 对齐：screen 数上限、名称长度（按字符）、id 格式、停留秒数与网格范围
 export const MAX_SCREENS = 32
 export const MAX_SCREEN_NAME_RUNES = 64
+export const MIN_DWELL_SECONDS = 3
+export const MAX_DWELL_SECONDS = 3600
+export const MAX_GRID_COLS = 12
+export const MAX_GRID_ROWS = 8
 export const SCREEN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
 
 /** 名称规整（后端同样 trim）：返回 null 表示不合法（空或过长） */

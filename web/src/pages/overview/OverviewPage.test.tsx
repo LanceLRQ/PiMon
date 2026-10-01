@@ -2,7 +2,8 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fixtureNow, makeInstance, prototypeInstances } from '@/pages/instances/instances.fixtures'
-import { json, mockApi, patchInstance, renderWithApp, seedStore } from '@/pages/instances/test-utils'
+import { apiError, json, mockApi, patchInstance, renderWithApp, seedStore } from '@/pages/instances/test-utils'
+import type { LayoutState, ScreenStatus } from '@/types/generated'
 import { liveStore } from '@/store/live-store'
 import { OverviewPage } from './OverviewPage'
 
@@ -175,13 +176,124 @@ describe('总览页', () => {
     expect(within(cell('需要处理')).queryByText('ubuntu-srv')).toBeNull()
   })
 
-  it('屏幕卡片本期是占位，按键不可点', async () => {
-    mockApi()
-    seedStore(prototypeInstances)
-    await renderWithApp(<OverviewPage />)
-    const screenCard = cell('屏幕')
-    expect(within(screenCard).getByText('屏幕模块待接入')).toBeInTheDocument()
-    for (const b of within(screenCard).getAllByRole('button')) expect(b).toBeDisabled()
+  describe('屏幕卡片', () => {
+    const layoutOf = (): LayoutState => ({
+      version: 4,
+      source: 'edit',
+      created_at: '2026-10-01T00:00:00Z',
+      broken: [],
+      layout: {
+        grid: { cols: 8, rows: 5 },
+        screens: [
+          { id: 'index', name: '首页', dwell_seconds: 0, in_rotation: true, widgets: [] },
+          { id: 's1', name: '主机', dwell_seconds: 0, in_rotation: true, widgets: [] },
+          { id: 's2', name: '网络', dwell_seconds: 0, in_rotation: true, widgets: [] },
+        ],
+      },
+    })
+    const statusOf = (over: Partial<ScreenStatus> = {}): ScreenStatus => ({
+      state: { mode: 'on', theme_id: 'ambient', reason: 'schedule', next_change: '2026-10-01T15:00:00Z' },
+      viewport: { w: 1024, h: 600, dpr: 1 },
+      coarse_pointer: false,
+      current_screen: 's1',
+      online: true,
+      ...over,
+    })
+    function seedScreen(mode = 'on') {
+      seedStore(prototypeInstances)
+      liveStore.applySnapshot({
+        type: 'snapshot', build: 'b', role: 'admin', topics: [], server_time: new Date().toISOString(), instances: prototypeInstances,
+        settings: { reduce_effects: false, timezone: 'Asia/Shanghai', screen: { carousel_mode: 'auto', idle_home_seconds: 60, default_dwell_seconds: 15, input_mode: 'auto', ui_scale: 1 } },
+        layout: layoutOf(),
+        screen_state: { mode, theme_id: 'ambient', reason: 'schedule' },
+      } as unknown as Parameters<typeof liveStore.applySnapshot>[0])
+    }
+    const key = (name: RegExp | string) => within(cell('屏幕')).getByRole('button', { name })
+
+    it('显示在线状态、当前 screen 的实时缩略图与参数', async () => {
+      mockApi((req) => (req.url === '/api/screen/status' ? json(200, statusOf()) : undefined))
+      seedScreen()
+      await renderWithApp(<OverviewPage />)
+      const card = cell('屏幕')
+      expect(await within(card).findByText('显示器在线')).toBeInTheDocument()
+      const thumb = within(card).getByTestId('screen-thumb')
+      expect(thumb).toHaveAttribute('data-screen-id', 's1')
+      expect(within(card).getByText('1024×600')).toBeInTheDocument()
+      expect(within(card).getByText('8×5')).toBeInTheDocument()
+      expect(within(card).getByText('无触摸')).toBeInTheDocument()
+      expect(within(card).getByText('s1')).toBeInTheDocument()
+      expect(within(card).getByText('ambient')).toBeInTheDocument()
+    })
+
+    it('离线时不显示 current_screen（服务端不会清空），缩略图回到首页，刷新与切换不可用', async () => {
+      mockApi((req) => (req.url === '/api/screen/status' ? json(200, statusOf({ online: false, last_seen: '2026-10-01T08:00:00Z' })) : undefined))
+      seedScreen()
+      await renderWithApp(<OverviewPage />)
+      const card = cell('屏幕')
+      expect(await within(card).findByText('显示器离线')).toBeInTheDocument()
+      expect(within(card).queryByText('s1')).toBeNull()
+      expect(within(card).getByTestId('screen-thumb')).toHaveAttribute('data-screen-id', 'index')
+      expect(key(/刷新/)).toBeDisabled()
+      expect(key(/切换 screen/)).toBeDisabled()
+      expect(key(/关屏/)).toBeEnabled()
+    })
+
+    it('状态读取失败时提示，按键不可点', async () => {
+      mockApi()
+      seedScreen()
+      await renderWithApp(<OverviewPage />)
+      const card = cell('屏幕')
+      expect(await within(card).findByText('屏幕状态暂时无法读取')).toBeInTheDocument()
+      for (const b of within(card).getAllByRole('button')) expect(b).toBeDisabled()
+    })
+
+    it('k1 刷新、k2 切到下一个 screen、k4 临时亮屏各发一次控制请求', async () => {
+      const api = mockApi((req) => {
+        if (req.url === '/api/screen/status') return json(200, statusOf())
+        if (req.url === '/api/screen/control') return json(200, { op: { id: 1, action: 'x', params: {}, client_ip: '', delivered: true, at: '2026-10-01T00:00:00Z' }, state: statusOf().state })
+        return undefined
+      })
+      seedScreen()
+      const user = userEvent.setup()
+      await renderWithApp(<OverviewPage />)
+      await within(cell('屏幕')).findByText('显示器在线')
+      await user.click(key(/刷新/))
+      await user.click(key(/切换 screen/))
+      await user.click(key(/临时亮屏/))
+      const posts = api.calls.filter((c) => c.method === 'POST' && c.url === '/api/screen/control').map((c) => c.body)
+      expect(posts).toEqual([{ action: 'refresh' }, { action: 'switch', screen_id: 's2' }, { action: 'wake', minutes: 30 }])
+      expect(await screen.findByText('已发送：临时亮屏')).toBeInTheDocument()
+    })
+
+    it('k3：亮屏时是关屏，关屏中变成开屏', async () => {
+      const api = mockApi((req) => {
+        if (req.url === '/api/screen/status') return json(200, statusOf({ state: { mode: 'off', theme_id: 'ambient', reason: 'remote_off' } }))
+        if (req.url === '/api/screen/control') return json(200, { op: { id: 1, action: 'on', params: {}, client_ip: '', delivered: true, at: '2026-10-01T00:00:00Z' }, state: statusOf().state })
+        return undefined
+      })
+      seedScreen('off')
+      const user = userEvent.setup()
+      await renderWithApp(<OverviewPage />)
+      await within(cell('屏幕')).findByText('显示器在线')
+      expect(within(cell('屏幕')).getByText('屏幕已关闭')).toBeInTheDocument()
+      await user.click(key(/开屏/))
+      expect(api.calls.find((c) => c.method === 'POST' && c.url === '/api/screen/control')?.body).toEqual({ action: 'on' })
+    })
+
+    it('控制失败时 toast 提示错误', async () => {
+      mockApi((req) => {
+        if (req.url === '/api/screen/status') return json(200, statusOf())
+        if (req.url === '/api/screen/control') return apiError(500, 'internal')
+        return undefined
+      })
+      seedScreen()
+      const user = userEvent.setup()
+      await renderWithApp(<OverviewPage />)
+      await within(cell('屏幕')).findByText('显示器在线')
+      await user.click(key(/刷新/))
+      expect(await screen.findByRole('alert')).toBeInTheDocument()
+      expect(screen.queryByText('已发送：刷新')).toBeNull()
+    })
   })
 
   it('hub 概况：版本、连接状态与最近备份', async () => {
@@ -242,7 +354,7 @@ describe('总览页', () => {
     seedStore(prototypeInstances)
     await renderWithApp(<OverviewPage />, { lng: 'en' })
     expect(within(cell('Health summary')).getByText('1 critical: ubuntu-srv 磁盘 95%')).toBeInTheDocument()
-    expect(within(cell('Screen')).getByText('Screen module not connected yet')).toBeInTheDocument()
+    expect(await within(cell('Screen')).findByText('The display status cannot be read right now')).toBeInTheDocument()
   })
 
   it('时钟不影响汇总（时间只用于「更新于」）', async () => {

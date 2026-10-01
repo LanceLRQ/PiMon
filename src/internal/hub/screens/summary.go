@@ -2,6 +2,7 @@ package screens
 
 import (
 	"encoding/json"
+	"slices"
 
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 )
@@ -19,6 +20,7 @@ func diff(prev *model.Layout, cur model.Layout) model.LayoutSummary {
 		return sum
 	}
 	sum.GridChanged = prev.Grid != cur.Grid
+	sum.Reordered = reordered(*prev, cur)
 
 	prevByID := map[string]model.LayoutScreen{}
 	for _, sc := range prev.Screens {
@@ -48,6 +50,30 @@ func diff(prev *model.Layout, cur model.Layout) model.LayoutSummary {
 		}
 	}
 	return sum
+}
+
+// reordered 判断前后两版都有的 screen 之间的相对顺序是否变了（只看共同的 screen，增删不算重排）。
+func reordered(prev, cur model.Layout) bool {
+	inPrev := map[string]bool{}
+	for _, sc := range prev.Screens {
+		inPrev[sc.ID] = true
+	}
+	inCur := map[string]bool{}
+	for _, sc := range cur.Screens {
+		inCur[sc.ID] = true
+	}
+	var a, b []string
+	for _, sc := range prev.Screens {
+		if inCur[sc.ID] {
+			a = append(a, sc.ID)
+		}
+	}
+	for _, sc := range cur.Screens {
+		if inPrev[sc.ID] {
+			b = append(b, sc.ID)
+		}
+	}
+	return !slices.Equal(a, b)
 }
 
 // screenMeta 取 screen 除小组件外的属性（名称、停留、是否轮播）。

@@ -132,12 +132,11 @@ function innerReducer(state: EditorState, action: EditorAction): EditorState {
       // 缩小到有小组件越界时拒绝；用户在越界对话框里确认后带 removeOutOfBounds 再来，连同越界的小组件一起移除
       const oob = gridShrinkConflicts(state.draft, action.grid)
       if (oob.length && !action.removeOutOfBounds) return reject(state, { reason: 'out_of_bounds', conflicts: oob.map((o) => o.widgetId) })
-      const gone = new Set(oob.map((o) => o.widgetId))
-      const screens = gone.size ? state.draft.screens.map((s) => ({ ...s, widgets: s.widgets.filter((w) => !gone.has(w.id)) })) : state.draft.screens
+      const { layout, removed } = applyGrid(state.draft, action.grid)
       return {
         ...state,
-        draft: { ...state.draft, grid: action.grid, screens },
-        selectedId: state.selectedId && gone.has(state.selectedId) ? null : state.selectedId,
+        draft: layout,
+        selectedId: state.selectedId && removed.has(state.selectedId) ? null : state.selectedId,
         rejection: null,
       }
     }
@@ -216,4 +215,11 @@ export function gridShrinkConflicts(layout: Layout, grid: Grid): ShrinkConflict[
   return layout.screens.flatMap((s) =>
     outOfBoundsWidgets(grid, s.widgets.map(toRect)).map((widgetId) => ({ screenId: s.id, widgetId })),
   )
+}
+
+/** 换成新网格：越界的小组件一并移除（调用方先让用户确认），返回新布局与被移除的小组件 id */
+export function applyGrid(layout: Layout, grid: Grid): { layout: Layout; removed: Set<string> } {
+  const removed = new Set(gridShrinkConflicts(layout, grid).map((o) => o.widgetId))
+  const screens = removed.size ? layout.screens.map((s) => ({ ...s, widgets: s.widgets.filter((w) => !removed.has(w.id)) })) : layout.screens
+  return { layout: { ...layout, grid, screens }, removed }
 }

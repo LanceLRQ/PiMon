@@ -581,7 +581,7 @@ describe('未保存改动、保存与版本历史', () => {
   describe('版本历史', () => {
     const info = (version: number, over: Partial<LayoutVersionInfo> = {}): LayoutVersionInfo => ({
       version, source: 'edit', created_at: '2026-10-01T08:00:00Z',
-      summary: { changed_screens: ['index'], widgets_added: 1, widgets_removed: 0, widgets_changed: 0, grid_changed: false }, has_broken: false, ...over,
+      summary: { changed_screens: ['index'], widgets_added: 1, widgets_removed: 0, widgets_changed: 0, grid_changed: false, reordered: false }, has_broken: false, ...over,
     })
     const versions = [info(3), info(2, { has_broken: true }), info(1, { source: 'seed' })]
     const old = (): LayoutState => {

@@ -166,6 +166,7 @@ function HistoryPanel({ open, onOpenChange, currentVersion, current, dirtyCount,
                     <div className="text-muted-foreground">
                       {t('layoutEd.history.summary', { a: v.summary.widgets_added, r: v.summary.widgets_removed, c: v.summary.widgets_changed })}
                       {v.summary.grid_changed && ` · ${t('layoutEd.history.gridChanged')}`}
+                      {v.summary.reordered && ` · ${t('layoutEd.history.reordered')}`}
                       {v.summary.rolled_back_from ? ` · ${t('layoutEd.history.rolledFrom', { v: v.summary.rolled_back_from })}` : ''}
                     </div>
                   </div>

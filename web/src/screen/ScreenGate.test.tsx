@@ -10,6 +10,10 @@ import type { SnapshotCache, StoredScreenData } from './snapshot-cache'
 import { createScreenStore } from './screen-store'
 import { snapshotOf } from './test-utils'
 
+vi.mock('./AdminScreenPreview', () => ({
+  AdminScreenPreview: () => <div data-testid="admin-preview" />,
+}))
+
 vi.mock('./ScreenApp', () => ({
   ScreenApp: (props: { initial?: StoredScreenData | null }) => (
     <div data-testid="screen-app" data-restored={props.initial ? 'yes' : 'no'} />
@@ -115,10 +119,10 @@ describe('屏幕端守卫', () => {
     expect(await screen.findByRole('heading', { name: '屏幕令牌失效' })).toBeInTheDocument()
   })
 
-  it('管理员会话打开 /screen：只提示仅预览，不渲染屏幕端应用', async () => {
+  it('管理员会话打开 /screen：进入管理员预览，不渲染屏幕端应用', async () => {
     route({ session: () => json(200, sess({ kind: 'admin' })) })
     await mount()
-    expect(await screen.findByRole('heading', { name: '管理员预览' })).toBeInTheDocument()
+    expect(await screen.findByTestId('admin-preview')).toBeInTheDocument()
     expect(screen.queryByTestId('screen-app')).toBeNull()
   })
 

@@ -154,6 +154,8 @@ type LayoutSummary struct {
 	WidgetsRemoved int      `json:"widgets_removed"`
 	WidgetsChanged int      `json:"widgets_changed"`
 	GridChanged    bool     `json:"grid_changed"`
+	// Reordered 表示前后两版都有的 screen 之间的先后顺序（轮播顺序）变了。
+	Reordered bool `json:"reordered"`
 	// RolledBackFrom 仅回滚生成的版本：内容取自哪个版本。
 	RolledBackFrom int `json:"rolled_back_from,omitempty"`
 	// Note 是调用方附加的说明（如「按显示器自动选择网格」）。

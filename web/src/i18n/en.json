@@ -513,12 +513,38 @@
     },
     "screen": {
       "title": "Screen",
-      "meta": "arrives in M1d",
-      "pending": "Screen module not connected yet",
       "keyRefresh": "Refresh",
       "keySwitch": "Switch screen",
-      "keyOff": "Screen off",
-      "keyWake": "Wake temporarily"
+      "keyOff": "Display off",
+      "keyWake": "Wake",
+      "online": "Display online",
+      "offline": "Display offline",
+      "never": "Display never connected",
+      "unavailable": "The display status cannot be read right now",
+      "thumbLabel": "Screen thumbnail",
+      "thumbEmpty": "No layout yet",
+      "thumbOff": "Display is off",
+      "kvResolution": "Resolution",
+      "kvGrid": "Grid",
+      "kvInput": "Input mode",
+      "kvCurrent": "Current screen",
+      "kvTheme": "Current theme",
+      "kvNext": "Next change",
+      "touchYes": "Touch",
+      "touchNo": "No touch",
+      "unknown": "Unknown",
+      "keySwitchTo": "To {{name}}",
+      "keyOn": "Display on",
+      "wakeMinutes": "{{n}} min",
+      "sent": "Sent: {{action}}",
+      "action": {
+        "refresh": "refresh",
+        "switch": "switch screen",
+        "off": "display off",
+        "on": "display on",
+        "wake": "temporary wake"
+      },
+      "nextAt": "{{time}}"
     },
     "table": "All instances"
   },
@@ -979,9 +1005,24 @@
       "cached": "Refreshed every 60 s"
     },
     "screen": {
-      "title": "Screen",
-      "meta": "M1d",
-      "placeholder": "Screen online state, resolution and kiosk daemon details appear here once screen sessions are wired up in M1d."
+      "title": "Display",
+      "meta": "display",
+      "online": "Online",
+      "offline": "Offline",
+      "never": "Never connected",
+      "resolution": "Resolution",
+      "grid": "Grid",
+      "input": "Input mode",
+      "scale": "UI scale",
+      "current": "Current screen",
+      "lastSeen": "Last online",
+      "unknown": "Unknown",
+      "manage": "Adjust in Screen management",
+      "touchYes": "Touch",
+      "touchNo": "No touch",
+      "touchAuto": "Auto",
+      "unavailable": "The display status cannot be read right now.",
+      "inputAuto": "Auto (detected: {{kind}})"
     },
     "idle": {
       "title": "System idle-blank check",
@@ -1097,9 +1138,11 @@
       "body": "Cannot reach the hub. Make sure pimon-hub is running on the Raspberry Pi; this screen reconnects automatically."
     },
     "adminPreview": {
-      "title": "Admin preview",
-      "body": "Opening the screen page in an admin session is a preview only and is not treated as a display. To use a display, open it with the screen token link.",
-      "back": "Back to admin"
+      "back": "Back to admin",
+      "badge": "Admin preview",
+      "hint": "Reports no display size and does not affect the display online status",
+      "loading": "Loading preview…",
+      "failed": "Failed to load the preview"
     },
     "setup": {
       "title": "First-time setup",
@@ -1321,7 +1364,8 @@
       "confirmBody": "This creates a new version v{{next}} with the content of v{{v}}; intermediate versions are not deleted.",
       "confirmDirty": "You have {{n}} unsaved change(s); they will be lost after the rollback.",
       "confirmBroken": "{{n}} widget(s) in this version have broken references and will show as placeholders after the rollback:",
-      "done": "Rolled back, created v{{version}}"
+      "done": "Rolled back, created v{{version}}",
+      "reordered": "Order changed"
     },
     "broken": {
       "instance_missing": "The bound instance no longer exists",
@@ -1343,5 +1387,127 @@
     "body": "The widgets below do not fit the new grid; continuing removes them from the layout.",
     "cancel": "Keep current grid",
     "confirm": "Remove {{n}} and shrink"
+  },
+  "screens": {
+    "sub": "The index home page plus any number of screens, one grid per screen",
+    "add": "Add screen",
+    "editLayout": "Edit layout",
+    "loading": "Loading screen settings…",
+    "loadFailed": "Could not load screen settings: {{error}}",
+    "retry": "Retry",
+    "save": "Save",
+    "saving": "Saving…",
+    "discard": "Discard changes",
+    "saved": "Saved",
+    "saveInvalid": "The layout is invalid ({{n}} problems). Please check and try again",
+    "dirty": "{{n}} unsaved changes",
+    "dirtyHint": "Based on v{{base}} · saving layout changes creates v{{next}} and pushes it to the display",
+    "conflict": "The layout was changed elsewhere: you are on v{{base}}, the latest is v{{latest}}. Reloading discards the unsaved changes on this page.",
+    "conflictReload": "Reload the latest layout",
+    "leave": {
+      "title": "Leave screen management?",
+      "body": "There are unsaved changes that will be lost.",
+      "stay": "Stay on page",
+      "leave": "Discard and leave"
+    },
+    "chg": {
+      "grid": "Grid {{from}} → {{to}}",
+      "add": "Add screen {{id}} \"{{name}}\"",
+      "rename": "Rename {{id}}: \"{{from}}\" → \"{{to}}\"",
+      "dwell": "{{id}} dwell: {{from}} → {{to}}",
+      "default": "default",
+      "rotationOn": "{{id}} joins the rotation",
+      "rotationOff": "{{id}} leaves the rotation",
+      "remove": "Delete screen {{id}} \"{{name}}\"",
+      "order": "Changed the rotation order of the screens",
+      "display": "Screen display options (rotation, input mode or UI scale)"
+    },
+    "rotation": {
+      "title": "Rotation",
+      "homeOnly": "Home page only",
+      "homeOnlyDesc": "Other screens can only be switched remotely.",
+      "auto": "Auto rotation",
+      "autoDesc": "Rotate the participating screens in the order listed below.",
+      "noTouchWarn": "This display has no touch: with \"Home page only\", other screens can only be switched from Remote control, and there is no way to page by hand on the display.",
+      "dwell": "Default dwell",
+      "dwellHelp": "Each screen can override it.",
+      "idle": "Idle back to home",
+      "idleHelp": "After switching remotely to another screen, how long without interaction before returning to index.",
+      "secondsUnit": "s",
+      "dec": "Decrease",
+      "inc": "Increase"
+    },
+    "grid": {
+      "title": "Grid",
+      "meta": "Display reports {{w}}×{{h}}",
+      "metaNone": "No display report yet",
+      "recommend": "recommended {{cols}}×{{rows}}",
+      "label": "Columns × rows",
+      "cols": "cols",
+      "rows": "rows",
+      "colsLabel": "Columns",
+      "rowsLabel": "Rows",
+      "lessCol": "Fewer columns",
+      "moreCol": "More columns",
+      "lessRow": "Fewer rows",
+      "moreRow": "More rows",
+      "presets": "Presets",
+      "help": "Presets match 800×480 · 1024×600 · 1280×720; ★ is the one recommended for the display. When shrinking the grid, widgets that no longer fit are removed after you confirm.",
+      "cell": "Cell size",
+      "cellInfo": "{{w}}×{{h}} px per cell",
+      "cells": "{{n}} cells"
+    },
+    "list": {
+      "title": "Screens",
+      "meta": "Drag the handle to change the rotation order · index stays on top",
+      "col": {
+        "thumb": "Thumbnail",
+        "screen": "Screen",
+        "widgets": "Widgets",
+        "dwell": "Dwell",
+        "rotation": "In rotation",
+        "modified": "Last changed"
+      },
+      "homeTag": "Home · cannot delete",
+      "homePinned": "index is always first",
+      "dragHint": "Drag to reorder; Up and Down arrow keys on the handle also work",
+      "grip": "Reorder handle for {{id}}",
+      "thumbLabel": "Thumbnail of {{id}}",
+      "widgets": "{{n}}",
+      "dwellLabel": "Dwell seconds for {{id}}",
+      "dwellPlaceholder": "default {{n}}",
+      "dwellInvalid": "Dwell must be a whole number of seconds from {{min}} to {{max}}; leave empty for the default",
+      "rotationLabel": "{{id}} in rotation",
+      "unsaved": "unsaved",
+      "modifiedNone": "—",
+      "editLayout": "Edit layout",
+      "delete": "Delete {{id}}",
+      "rename": "Click to rename",
+      "renameLabel": "Name of {{id}}"
+    },
+    "delete": {
+      "title": "Delete screen {{id}}?",
+      "body": "Screen \"{{name}}\" and its {{n}} widgets will be removed from the layout once you save; the version history can still roll it back.",
+      "cancel": "Cancel",
+      "confirm": "Delete"
+    },
+    "input": {
+      "title": "Display input",
+      "label": "Input mode",
+      "auto": "Auto detect",
+      "touch": "Touch",
+      "none": "No touch",
+      "detected": "Currently detected as \"{{kind}}\".",
+      "detectedNone": "The display has not reported touch capability yet.",
+      "hasTouch": "touch",
+      "noTouch": "no touch",
+      "help": "Without touch the display shows no paging hint; rotation and remote switching are unaffected."
+    },
+    "scale": {
+      "title": "UI scale",
+      "label": "Scale",
+      "help": "Enlarges text and spacing on high-resolution displays; the grid columns × rows stay the same.",
+      "restart": "Saving only stores the setting; it takes effect after the kiosk restarts Chromium."
+    }
   }
 }

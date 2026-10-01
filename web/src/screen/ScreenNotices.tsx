@@ -1,7 +1,6 @@
-import { CloudOff, KeyRound, MonitorSmartphone } from 'lucide-react'
+import { CloudOff, KeyRound } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router'
 import { ThemeRoot } from '@/templates'
 import { readStoredScreenTheme } from './theme-apply'
 
@@ -40,16 +39,4 @@ export function TokenInvalidPage() {
 export function HubDownPage() {
   const { t } = useTranslation()
   return <Notice icon={<CloudOff size={56} />} title={t('screenApp.hubDown.title')} body={t('screenApp.hubDown.body')} />
-}
-
-/** 管理员会话打开 /screen：仅提示，不连接中枢，也不会被当作显示器 */
-export function AdminPreviewPage() {
-  const { t } = useTranslation()
-  return (
-    <Notice icon={<MonitorSmartphone size={56} />} title={t('screenApp.adminPreview.title')} body={t('screenApp.adminPreview.body')}>
-      <Link to="/" className="text-lg text-s-primary underline">
-        {t('screenApp.adminPreview.back')}
-      </Link>
-    </Notice>
-  )
 }

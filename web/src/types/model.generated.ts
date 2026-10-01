@@ -422,6 +422,10 @@ export interface LayoutSummary {
   widgets_changed: number /* int */;
   grid_changed: boolean;
   /**
+   * Reordered 表示前后两版都有的 screen 之间的先后顺序（轮播顺序）变了。
+   */
+  reordered: boolean;
+  /**
    * RolledBackFrom 仅回滚生成的版本：内容取自哪个版本。
    */
   rolled_back_from?: number /* int */;

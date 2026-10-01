@@ -112,4 +112,19 @@ describe('实时 store', () => {
     expect(store.getState().synced).toBe(false)
     expect(store.getState().instances).toEqual([])
   })
+
+  it('snapshot 与 patch 同步布局和屏幕状态', () => {
+    const layout = { version: 3, source: 'edit', created_at: '2026-10-01T00:00:00Z', layout: { grid: { cols: 8, rows: 5 }, screens: [] }, broken: [] }
+    const screenState = { mode: 'on', theme_id: 'ambient', reason: 'schedule' }
+    store.applySnapshot(snapshot([], { layout, screen_state: screenState }))
+    expect(store.getState().layout?.version).toBe(3)
+    expect(store.getState().screenState?.mode).toBe('on')
+    store.applyPatch(patch({ entity: 'layout', layout: { ...layout, version: 4 } }))
+    store.applyPatch(patch({ entity: 'screen_state', screen_state: { ...screenState, mode: 'off', reason: 'remote_off' } }))
+    expect(store.getState().layout?.version).toBe(4)
+    expect(store.getState().screenState).toMatchObject({ mode: 'off', reason: 'remote_off' })
+    // 没带载荷的 patch 不覆盖已有数据
+    store.applyPatch(patch({ entity: 'layout' }))
+    expect(store.getState().layout?.version).toBe(4)
+  })
 })

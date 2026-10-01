@@ -1,10 +1,12 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiError, defaultPlugins, json, mockApi, renderWithApp, type Req } from '@/pages/instances/test-utils'
-import type { BackupInfo, LogEntry, LogList, PluginList, SystemInfo } from '@/types/generated'
+import { liveStore } from '@/store/live-store'
+import type { BackupInfo, LogEntry, LogList, PluginList, ScreenStatus, SystemInfo } from '@/types/generated'
 import { SystemPage } from './SystemPage'
 
+beforeEach(() => liveStore.reset())
 afterEach(() => vi.unstubAllGlobals())
 
 function sysInfo(over: Partial<SystemInfo> = {}): SystemInfo {
@@ -100,10 +102,61 @@ describe('版本与资源', () => {
     expect((await screen.findAllByText('v0.1.0-test')).length).toBeGreaterThan(0)
   })
 
-  it('屏幕与息屏检查是占位', async () => {
+  it('息屏检查是占位（M1e 提供）', async () => {
     await setup()
-    expect(await screen.findByText(/M1d 接入屏幕会话后显示/)).toBeInTheDocument()
-    expect(screen.getByText(/M1e 的 kiosk 部署里提供/)).toBeInTheDocument()
+    expect(await screen.findByText(/M1e 的 kiosk 部署里提供/)).toBeInTheDocument()
+  })
+})
+
+describe('屏幕区', () => {
+  const screenStatus = (over: Partial<ScreenStatus> = {}): ScreenStatus => ({
+    state: { mode: 'on', theme_id: 'ambient', reason: 'schedule' },
+    viewport: { w: 1024, h: 600, dpr: 1 },
+    coarse_pointer: false,
+    current_screen: 'index',
+    online: true,
+    ...over,
+  })
+  const withStatus = (st: ScreenStatus | null) => ({
+    extra: (r: Req) => (r.method === 'GET' && r.url === '/api/screen/status' ? (st ? json(200, st) : apiError(500, 'internal')) : undefined),
+  })
+  const panel = () => screen.getByRole('region', { name: '屏幕' })
+
+  it('在线时显示分辨率、输入方式（含检测结果）、界面缩放与当前 screen', async () => {
+    liveStore.applySnapshot({
+      type: 'snapshot', build: 'b', role: 'admin', topics: [], server_time: new Date().toISOString(), instances: [],
+      settings: { backup: { daily_at: '04:00', keep: 7 }, screen: { carousel_mode: 'auto', idle_home_seconds: 60, default_dwell_seconds: 15, input_mode: 'auto', ui_scale: 1.25 } },
+      layout: { version: 2, source: 'edit', created_at: '2026-10-01T00:00:00Z', layout: { grid: { cols: 8, rows: 5 }, screens: [] }, broken: [] },
+    } as unknown as Parameters<typeof liveStore.applySnapshot>[0])
+    await setup(withStatus(screenStatus()))
+    const p = panel()
+    expect(await within(p).findByText('1024×600')).toBeInTheDocument()
+    expect(within(p).getByText('在线')).toBeInTheDocument()
+    expect(within(p).getByText('自动（检测：无触摸）')).toBeInTheDocument()
+    expect(within(p).getByText('1.25')).toBeInTheDocument()
+    expect(within(p).getByText('8×5')).toBeInTheDocument()
+    expect(within(p).getByText('index')).toBeInTheDocument()
+    expect(within(p).getByRole('link', { name: '在屏幕管理里调整' })).toHaveAttribute('href', '/screens')
+  })
+
+  it('离线时不显示当前 screen（离线后服务端不清空），显示最近在线；从未连接与读取失败都不当作零', async () => {
+    await setup(withStatus(screenStatus({ online: false, last_seen: '2026-10-01T08:00:00Z' })))
+    const p = panel()
+    expect(await within(p).findByText('离线')).toBeInTheDocument()
+    expect(within(p).queryByText('index')).toBeNull()
+    expect(within(p).getByText('最近在线')).toBeInTheDocument()
+  })
+
+  it('从未连接', async () => {
+    await setup(withStatus(screenStatus({ online: false, viewport: undefined, coarse_pointer: undefined, current_screen: undefined })))
+    const p = panel()
+    expect(await within(p).findByText('从未连接')).toBeInTheDocument()
+    expect(within(p).queryByText('0×0')).toBeNull()
+  })
+
+  it('状态读取失败给出提示', async () => {
+    await setup(withStatus(null))
+    expect(await within(panel()).findByText('屏幕状态暂时无法读取。')).toBeInTheDocument()
   })
 })
 

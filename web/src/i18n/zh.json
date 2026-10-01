@@ -513,12 +513,38 @@
     },
     "screen": {
       "title": "屏幕",
-      "meta": "M1d 接入",
-      "pending": "屏幕模块待接入",
       "keyRefresh": "刷新",
       "keySwitch": "切换 screen",
       "keyOff": "关屏",
-      "keyWake": "临时亮屏"
+      "keyWake": "临时亮屏",
+      "online": "显示器在线",
+      "offline": "显示器离线",
+      "never": "显示器从未连接",
+      "unavailable": "屏幕状态暂时无法读取",
+      "thumbLabel": "屏幕缩略图",
+      "thumbEmpty": "暂无布局",
+      "thumbOff": "屏幕已关闭",
+      "kvResolution": "分辨率",
+      "kvGrid": "网格",
+      "kvInput": "输入方式",
+      "kvCurrent": "当前 screen",
+      "kvTheme": "当前主题",
+      "kvNext": "下一次变化",
+      "touchYes": "有触摸",
+      "touchNo": "无触摸",
+      "unknown": "未知",
+      "keySwitchTo": "切到 {{name}}",
+      "keyOn": "开屏",
+      "wakeMinutes": "{{n}} 分钟",
+      "sent": "已发送：{{action}}",
+      "action": {
+        "refresh": "刷新",
+        "switch": "切换 screen",
+        "off": "关屏",
+        "on": "开屏",
+        "wake": "临时亮屏"
+      },
+      "nextAt": "{{time}}"
     },
     "table": "实例一览"
   },
@@ -980,8 +1006,23 @@
     },
     "screen": {
       "title": "屏幕",
-      "meta": "M1d",
-      "placeholder": "屏幕在线状态、分辨率与 kiosk 守护进程信息，在 M1d 接入屏幕会话后显示。"
+      "meta": "显示器",
+      "online": "在线",
+      "offline": "离线",
+      "never": "从未连接",
+      "resolution": "分辨率",
+      "grid": "网格",
+      "input": "输入方式",
+      "scale": "界面缩放",
+      "current": "当前 screen",
+      "lastSeen": "最近在线",
+      "unknown": "未知",
+      "manage": "在屏幕管理里调整",
+      "touchYes": "有触摸",
+      "touchNo": "无触摸",
+      "touchAuto": "自动",
+      "unavailable": "屏幕状态暂时无法读取。",
+      "inputAuto": "自动（检测：{{kind}}）"
     },
     "idle": {
       "title": "系统空闲息屏检查",
@@ -1097,9 +1138,11 @@
       "body": "无法连接中枢，请确认树莓派上的 pimon-hub 正在运行，恢复后会自动重连。"
     },
     "adminPreview": {
-      "title": "管理员预览",
-      "body": "管理员会话打开屏幕端页面仅作预览，不会被当作显示器；要在显示器上显示，请用屏幕令牌链接打开。",
-      "back": "返回管理界面"
+      "back": "返回管理界面",
+      "badge": "管理员预览",
+      "hint": "不上报显示器尺寸，不影响屏幕在线状态",
+      "loading": "正在加载预览…",
+      "failed": "预览加载失败"
     },
     "setup": {
       "title": "首次设置",
@@ -1321,7 +1364,8 @@
       "confirmBody": "会生成新版本 v{{next}}，内容等于 v{{v}}；中间的版本不会被删除。",
       "confirmDirty": "你有 {{n}} 处未保存的改动，回滚后会丢失。",
       "confirmBroken": "该版本有 {{n}} 个小组件的引用已失效，回滚后它们会显示为占位卡：",
-      "done": "已回滚，生成 v{{version}}"
+      "done": "已回滚，生成 v{{version}}",
+      "reordered": "顺序调整"
     },
     "broken": {
       "instance_missing": "绑定的实例已不存在",
@@ -1343,5 +1387,127 @@
     "body": "下面的小组件放不进新网格，继续会把它们从布局里移除。",
     "cancel": "保持现有网格",
     "confirm": "移除 {{n}} 个并缩小"
+  },
+  "screens": {
+    "sub": "index 首页 + 任意多个 screen，按网格一屏显示",
+    "add": "新增 screen",
+    "editLayout": "编辑布局",
+    "loading": "正在加载屏幕配置…",
+    "loadFailed": "无法加载屏幕配置：{{error}}",
+    "retry": "重试",
+    "save": "保存",
+    "saving": "保存中…",
+    "discard": "放弃改动",
+    "saved": "已保存",
+    "saveInvalid": "布局不合法（{{n}} 处），请检查后重试",
+    "dirty": "未保存 {{n}} 处改动",
+    "dirtyHint": "基于 v{{base}} · 保存布局改动后生成 v{{next}} 并推送到显示器",
+    "conflict": "布局已被修改：你基于 v{{base}}，最新是 v{{latest}}。重新加载会丢弃本页未保存的改动。",
+    "conflictReload": "重新加载最新布局",
+    "leave": {
+      "title": "离开 screen 管理？",
+      "body": "有未保存的改动，离开后会丢失。",
+      "stay": "留在此页",
+      "leave": "放弃改动并离开"
+    },
+    "chg": {
+      "grid": "网格 {{from}} → {{to}}",
+      "add": "新增 screen {{id}}「{{name}}」",
+      "rename": "重命名 {{id}}：「{{from}}」→「{{to}}」",
+      "dwell": "{{id}} 停留：{{from}} → {{to}}",
+      "default": "默认",
+      "rotationOn": "{{id}} 加入轮播",
+      "rotationOff": "{{id}} 退出轮播",
+      "remove": "删除 screen {{id}}「{{name}}」",
+      "order": "调整了 screen 的轮播顺序",
+      "display": "屏幕显示参数（轮播、输入方式或界面缩放）"
+    },
+    "rotation": {
+      "title": "轮播",
+      "homeOnly": "只显示首页",
+      "homeOnlyDesc": "其他 screen 只能远程切换。",
+      "auto": "自动轮播",
+      "autoDesc": "按下方列表顺序轮播参与的 screen。",
+      "noTouchWarn": "当前屏幕无触摸：选择「只显示首页」后，其他 screen 只能在「远程操作」里切换，屏幕上没有办法手动翻页。",
+      "dwell": "默认停留",
+      "dwellHelp": "单个 screen 可以覆盖。",
+      "idle": "空闲回首页",
+      "idleHelp": "远程切到其他 screen 后，无操作多久回到 index。",
+      "secondsUnit": "秒",
+      "dec": "减",
+      "inc": "加"
+    },
+    "grid": {
+      "title": "网格",
+      "meta": "显示器上报 {{w}}×{{h}}",
+      "metaNone": "尚无显示器上报",
+      "recommend": "推荐 {{cols}}×{{rows}}",
+      "label": "列 × 行",
+      "cols": "列",
+      "rows": "行",
+      "colsLabel": "列数",
+      "rowsLabel": "行数",
+      "lessCol": "减列",
+      "moreCol": "加列",
+      "lessRow": "减行",
+      "moreRow": "加行",
+      "presets": "预设",
+      "help": "预设对应 800×480 · 1024×600 · 1280×720，★ 是按显示器推荐的。改小网格时，越界的小组件会在确认后被移除。",
+      "cell": "每格尺寸",
+      "cellInfo": "每格 {{w}}×{{h}} px",
+      "cells": "共 {{n}} 格"
+    },
+    "list": {
+      "title": "screen 列表",
+      "meta": "拖拽手柄调整轮播顺序 · index 置顶",
+      "col": {
+        "thumb": "缩略图",
+        "screen": "screen",
+        "widgets": "小组件",
+        "dwell": "停留",
+        "rotation": "参与轮播",
+        "modified": "上次修改"
+      },
+      "homeTag": "首页 · 不可删",
+      "homePinned": "index 固定置顶",
+      "dragHint": "拖拽排序；在手柄上按上下方向键也可移动",
+      "grip": "{{id}} 排序手柄",
+      "thumbLabel": "{{id}} 的缩略图",
+      "widgets": "{{n}} 个",
+      "dwellLabel": "{{id}} 停留秒数",
+      "dwellPlaceholder": "默认 {{n}}",
+      "dwellInvalid": "停留须为 {{min}}–{{max}} 的整数秒，留空用默认值",
+      "rotationLabel": "{{id}} 参与轮播",
+      "unsaved": "未保存",
+      "modifiedNone": "—",
+      "editLayout": "编辑布局",
+      "delete": "删除 {{id}}",
+      "rename": "点击重命名",
+      "renameLabel": "{{id}} 的名称"
+    },
+    "delete": {
+      "title": "删除 screen {{id}}？",
+      "body": "screen「{{name}}」及其中的 {{n}} 个小组件会从布局里去掉，保存后生效；版本历史里仍可回滚找回。",
+      "cancel": "取消",
+      "confirm": "删除"
+    },
+    "input": {
+      "title": "屏幕输入方式",
+      "label": "输入方式",
+      "auto": "自动检测",
+      "touch": "有触摸",
+      "none": "无触摸",
+      "detected": "当前检测为「{{kind}}」。",
+      "detectedNone": "屏幕还没有上报触摸能力。",
+      "hasTouch": "有触摸",
+      "noTouch": "无触摸",
+      "help": "无触摸时屏幕不显示翻页提示，轮播与远程切换不受影响。"
+    },
+    "scale": {
+      "title": "界面缩放",
+      "label": "缩放",
+      "help": "高分屏放大文字与间距；网格列 × 行不变。",
+      "restart": "保存只写入设置，需由 kiosk 重启 Chromium 后生效。"
+    }
   }
 }

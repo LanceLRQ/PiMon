@@ -1,9 +1,9 @@
 import { LayoutEditor } from '@/editor/LayoutEditor'
 import { PlaceholderPage } from '@/ui/placeholder-page'
+import { ScreenManager } from './ScreenManager'
 
-// 屏幕分组的四个页面在 M1d 实现，本期仅占位
 export function ScreensPage() {
-  return <PlaceholderPage no="02" titleKey="pages.screens" milestone="M1d" />
+  return <ScreenManager />
 }
 
 export function LayoutEditorPage() {
