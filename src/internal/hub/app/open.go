@@ -22,6 +22,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/webui"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
 	"github.com/LanceLRQ/PiMon/src/plugins/hubself"
@@ -164,6 +165,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		ScreenTokens: a.screen,
 		Backups:      a.backups,
 		Proxies:      proxyStore,
+		Web:          webui.New(webui.Embedded(), o.version),
 	})
 	return nil
 }

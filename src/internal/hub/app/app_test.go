@@ -561,3 +561,25 @@ func TestServeSurvivesBrokenPluginDir(t *testing.T) {
 		t.Fatal("退出超时")
 	}
 }
+
+func TestWebUIServedWithFallbackAndJSON404(t *testing.T) {
+	a := openApp(t, testConfig(t))
+	srv := httptest.NewServer(a.Handler())
+	t.Cleanup(srv.Close)
+	c := newClient()
+
+	resp, data := call(t, c, srv.URL, "GET", "/instances/1", nil)
+	if resp.StatusCode != 200 || !strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("深链接 = %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	if strings.Contains(string(data), "__PIMON_BUILD__") {
+		t.Fatalf("build 占位符未替换")
+	}
+	resp, data = call(t, c, srv.URL, "GET", "/api/nope", nil)
+	if resp.StatusCode != 404 || !strings.Contains(string(data), `"code":"not_found"`) {
+		t.Fatalf("/api/nope = %d %s", resp.StatusCode, data)
+	}
+	if resp, _ = call(t, c, srv.URL, "GET", "/healthz", nil); resp.StatusCode != 200 {
+		t.Fatalf("/healthz = %d", resp.StatusCode)
+	}
+}
