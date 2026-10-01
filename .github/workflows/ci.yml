@@ -21,3 +21,24 @@ jobs:
         run: make lint
       - name: 构建
         run: make build
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: 前端 lint 与类型检查
+        run: make lint-web
+      - name: 前端单元测试
+        run: make test-web
+      - name: 构建前端
+        run: make web
+      # Playwright 冒烟用例（需要真实 hub 的启动脚本，C9 补充），本期不在 CI 运行

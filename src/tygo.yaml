@@ -1,0 +1,14 @@
+# 前端 TS 类型生成配置（Go 模型为单一事实来源）：make generate
+# C3 创建 pkg/protocol/ui 后在 packages 里追加
+packages:
+  - path: github.com/LanceLRQ/PiMon/src/pkg/model
+    output_path: ../web/src/types/model.generated.ts
+    type_mappings:
+      time.Time: string
+      report.Report: Report
+    frontmatter: |
+      import type { Report } from './report.generated';
+  - path: github.com/LanceLRQ/PiMon/src/pkg/plugin/report
+    output_path: ../web/src/types/report.generated.ts
+    type_mappings:
+      time.Time: string
