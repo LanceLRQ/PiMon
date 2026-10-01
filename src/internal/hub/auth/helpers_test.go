@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 )
@@ -29,3 +30,12 @@ func newClock() *clock.Fake { return clock.NewFake(testStart) }
 
 // 低成本参数，仅用于测试。
 var fastParams = Params{Memory: 8, Time: 1, Threads: 1, KeyLen: 32, SaltLen: 16}
+
+func testBox(t *testing.T) *secret.Box {
+	t.Helper()
+	b, err := secret.LoadOrCreate(filepath.Join(t.TempDir(), "secret.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}

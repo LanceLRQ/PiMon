@@ -1,10 +1,12 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/httpx"
+	"github.com/LanceLRQ/PiMon/src/pkg/model"
 )
 
 func (s *server) registerScreen(mux *http.ServeMux) {
@@ -52,5 +54,9 @@ func (s *server) resetScreenToken(w http.ResponseWriter, r *http.Request) {
 	}
 	// 事务已提交，旧屏幕会话已不存在：让屏幕端的 WebSocket 立即复核并断开。
 	s.Sessions.NotifyRevoked()
+	// 操作记录写失败不影响令牌已轮换的事实，只记日志。
+	if _, err := s.ScreenState.RecordOp(r.Context(), model.ScreenActionTokenReset, nil, httpx.Info(r).ClientIP.String()); err != nil {
+		slog.Error("记录屏幕令牌重置失败", "err", err)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }

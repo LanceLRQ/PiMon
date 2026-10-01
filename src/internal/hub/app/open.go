@@ -19,6 +19,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/screens"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/screenstate"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/sdnotify"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
@@ -42,22 +43,23 @@ type App struct {
 	cfg  config.Config
 	opts options
 
-	db         *store.DB
-	box        *secret.Box
-	settings   *settings.Service
-	admins     *auth.Admins
-	setupCodes *auth.SetupCodes
-	sessions   *auth.Sessions
-	screen     *auth.ScreenTokens
-	backups    *backup.Service
-	plugins    *plugins.Registry
-	instances  *instances.Service
-	screens    *screens.Service
-	history    *history.Service
-	ws         *ws.Hub
-	notifier   *sdnotify.Notifier
-	handler    http.Handler
-	closed     bool
+	db          *store.DB
+	box         *secret.Box
+	settings    *settings.Service
+	admins      *auth.Admins
+	setupCodes  *auth.SetupCodes
+	sessions    *auth.Sessions
+	screen      *auth.ScreenTokens
+	backups     *backup.Service
+	plugins     *plugins.Registry
+	instances   *instances.Service
+	screens     *screens.Service
+	screenState *screenstate.Service
+	history     *history.Service
+	ws          *ws.Hub
+	notifier    *sdnotify.Notifier
+	handler     http.Handler
+	closed      bool
 }
 
 // Open 按固定顺序启动：建数据目录 → 密钥 → 打开数据库 → 版本变化时升级前备份 →
@@ -126,7 +128,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	}
 	a.settings = st
 	a.admins = auth.NewAdmins(a.db, o.clk)
-	a.setupCodes = auth.NewSetupCodes(a.db, o.clk)
+	a.setupCodes = auth.NewSetupCodes(a.db, o.clk, a.box)
 	a.sessions = auth.NewSessions(a.db, o.clk)
 	a.screen = auth.NewScreenTokens(a.db, o.clk, a.cfg.ScreenTokenPath())
 	a.backups = backups(st.Get)
@@ -154,6 +156,14 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	a.instances.UseProxies(proxyStore)
 	a.screens = screens.New(screens.Config{DB: a.db, Clock: o.clk, Plugins: a.plugins, Instances: a.instances})
 	a.instances.UseScreenRefs(a.screens)
+	a.screenState = screenstate.New(screenstate.Config{
+		DB: a.db, Clock: o.clk,
+		// 时区在运行时可改，每次计算时现取。
+		Timezone: func() string { return st.Get().Timezone },
+	})
+	if err := a.screenState.Load(ctx); err != nil {
+		return fmt.Errorf("加载屏幕时段计划: %w", err)
+	}
 	// hub-self 的统计来源在 instances 与 history 就绪后才能绑定，先于 Load 以便首次采集就有数据。
 	hubself.Bind(hubStats{inst: a.instances, hist: a.history, started: o.clk.Now(), dataDir: a.cfg.DataDir})
 	if err := a.instances.Load(ctx); err != nil {
@@ -165,12 +175,17 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	})
 	a.instances.OnChange(a.ws.NotifyInstance)
 	a.sessions.OnRevoke(a.ws.RecheckSessions)
-	st.OnChange(a.ws.NotifySettings)
+	st.OnChange(func() {
+		a.ws.NotifySettings()
+		// 时区变化后时段计划要按新时区重算。
+		a.screenState.Refresh()
+	})
 	a.handler = api.New(api.Deps{
-		Plugins:   a.plugins,
-		Instances: a.instances,
-		History:   a.history,
-		Screens:   a.screens,
+		Plugins:     a.plugins,
+		Instances:   a.instances,
+		History:     a.history,
+		Screens:     a.screens,
+		ScreenState: a.screenState,
 		System: system.New(system.Config{
 			Clock: o.clk, Version: o.version, DataDir: a.cfg.DataDir, Plugins: a.plugins, Ring: o.logRing,
 		}),

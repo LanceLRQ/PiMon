@@ -76,6 +76,12 @@ func (a *App) Serve(ctx context.Context) error {
 		histStop()
 		<-histDone
 	}()
+	// 屏幕状态机在时段边界与临时操作到期点重算。
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		a.screenState.Run(bg)
+	}()
 	if iv, ok := a.notifier.WatchdogInterval(); ok {
 		wg.Add(1)
 		go func() {
@@ -120,6 +126,14 @@ func (a *App) ensureSetupCode(ctx context.Context) error {
 	active, until, err := a.setupCodes.Active(ctx)
 	if err != nil {
 		return err
+	}
+	if active {
+		// 旧版本生成的设置码没有可显示的加密副本，屏幕无法展示，按没有有效码处理并重新生成。
+		_, _, revealable, rerr := a.setupCodes.Reveal(ctx)
+		if rerr != nil {
+			return rerr
+		}
+		active = revealable
 	}
 	if active {
 		_, _ = fmt.Fprintf(a.opts.stderr, "尚未设置管理员；已有未过期的设置码（有效期至 %s），如遗失可运行 pimon-hub setup-code 重新生成\n", until.Local().Format("2006-01-02 15:04:05"))

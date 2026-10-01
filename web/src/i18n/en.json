@@ -132,6 +132,9 @@
       "conflict": "The layout was updated elsewhere. Reload before saving.",
       "invalid": "The layout is invalid: overlapping, out-of-bounds or disallowed sizes"
     },
+    "schedule": {
+      "invalid": "The schedule is invalid: bad format or theme, overlapping periods, or gaps in the 24 hours"
+    },
     "run": {
       "timeout": "Collection timed out",
       "failed": "Collection failed",

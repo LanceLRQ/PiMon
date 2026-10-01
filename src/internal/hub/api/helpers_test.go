@@ -22,6 +22,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/screens"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/screenstate"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
@@ -125,7 +126,7 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 		Settings:     st,
 		Hasher:       hasher,
 		Limiter:      auth.NewLimiter(clk, 10, 15*time.Minute),
-		SetupCodes:   auth.NewSetupCodes(db, clk),
+		SetupCodes:   auth.NewSetupCodes(db, clk, box),
 		Admins:       auth.NewAdmins(db, clk),
 		Sessions:     auth.NewSessions(db, clk),
 		ScreenTokens: auth.NewScreenTokens(db, clk, tokenPath),
@@ -138,6 +139,10 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 	inst.UseProxies(deps.Proxies)
 	deps.Screens = screens.New(screens.Config{DB: db, Clock: clk, Plugins: reg, Instances: inst})
 	inst.UseScreenRefs(deps.Screens)
+	deps.ScreenState = screenstate.New(screenstate.Config{DB: db, Clock: clk, Timezone: func() string { return st.Get().Timezone }})
+	if err := deps.ScreenState.Load(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if err := deps.ScreenTokens.EnsureExists(ctx); err != nil {
 		t.Fatal(err)
 	}

@@ -860,6 +860,220 @@ export interface ProxyTestResult {
 }
 
 //////////
+// source: screenstate.go
+
+/**
+ * ThemeOff 表示该时段关屏。
+ */
+export const ThemeOff = "off";
+/**
+ * ThemeAmbient 是默认主题。
+ */
+export const ThemeAmbient = "ambient";
+/**
+ * ThemeMissionControl 是深色高密度主题。
+ */
+export const ThemeMissionControl = "mission-control";
+/**
+ * ThemeIndustrial 是米白浅色主题。
+ */
+export const ThemeIndustrial = "industrial";
+/**
+ * 屏幕状态模式与原因。
+ */
+export const ScreenModeOn = "on";
+/**
+ * 屏幕状态模式与原因。
+ */
+export const ScreenModeOff = "off";
+/**
+ * 屏幕状态模式与原因。
+ */
+export const ScreenReasonSchedule = "schedule";
+/**
+ * 屏幕状态模式与原因。
+ */
+export const ScreenReasonRemoteOn = "remote_on";
+/**
+ * 屏幕状态模式与原因。
+ */
+export const ScreenReasonRemoteOff = "remote_off";
+/**
+ * 屏幕状态模式与原因。
+ */
+export const ScreenReasonWake = "wake";
+/**
+ * 屏幕控制与操作记录的动作。
+ */
+export const ScreenActionRefresh = "refresh";
+/**
+ * 屏幕控制与操作记录的动作。
+ */
+export const ScreenActionSwitch = "switch";
+/**
+ * 屏幕控制与操作记录的动作。
+ */
+export const ScreenActionOn = "on";
+/**
+ * 屏幕控制与操作记录的动作。
+ */
+export const ScreenActionOff = "off";
+/**
+ * 屏幕控制与操作记录的动作。
+ */
+export const ScreenActionWake = "wake";
+/**
+ * 屏幕控制与操作记录的动作。
+ */
+export const ScreenActionTokenReset = "token_reset";
+/**
+ * 时段计划校验问题的类别。
+ */
+export const ScheduleProblemFormat = "format";
+/**
+ * 时段计划校验问题的类别。
+ */
+export const ScheduleProblemTheme = "theme";
+/**
+ * 时段计划校验问题的类别。
+ */
+export const ScheduleProblemEmpty = "empty";
+/**
+ * 时段计划校验问题的类别。
+ */
+export const ScheduleProblemOverlap = "overlap";
+/**
+ * 时段计划校验问题的类别。
+ */
+export const ScheduleProblemGap = "gap";
+/**
+ * SchedulePeriod 是时段计划中的一个时段，按全局时区的本地时刻计算。
+ * Start、End 为 HH:MM（00:00–23:59），区间左闭右开；End 不晚于 Start 表示跨日；
+ * 只有单个时段时 Start 等于 End 表示全天。
+ */
+export interface SchedulePeriod {
+  start: string;
+  end: string;
+  /**
+   * Theme 是内置主题 id 或 "off"（关屏）。
+   */
+  theme: string;
+}
+/**
+ * Schedule 是屏幕时段计划：时段必须互不重叠并覆盖完整 24 小时。
+ */
+export interface Schedule {
+  periods: SchedulePeriod[];
+}
+/**
+ * ScheduleProblem 是时段计划校验失败的一项；重叠与缺口用 From、To 给出区间（HH:MM）。
+ */
+export interface ScheduleProblem {
+  kind: string;
+  /**
+   * Period 是出问题的时段下标（仅 format、theme 类问题带）。
+   */
+  period?: number /* int */;
+  from?: string;
+  to?: string;
+}
+/**
+ * ScreenState 是屏幕当前状态，随 snapshot 下发，变化时发 screen_state patch。
+ */
+export interface ScreenState {
+  /**
+   * Mode 为 on 或 off。
+   */
+  mode: string;
+  /**
+   * ThemeID 是亮屏时显示的主题；关屏时为唤醒后将使用的主题。
+   */
+  theme_id: string;
+  /**
+   * Until 是远程临时操作的到期时刻；没有临时操作时缺省。
+   */
+  until?: string;
+  /**
+   * NextChange 是下一次模式或主题变化的时刻；不再变化时缺省。
+   */
+  next_change?: string;
+  /**
+   * Reason 为 schedule、remote_on、remote_off 或 wake。
+   */
+  reason: string;
+}
+/**
+ * Viewport 是屏幕上报并被采信的视口。
+ */
+export interface Viewport {
+  w: number /* int */;
+  h: number /* int */;
+  dpr: number /* float64 */;
+}
+/**
+ * ScreenStatus 是 GET /api/screen/status 的响应。
+ */
+export interface ScreenStatus {
+  state: ScreenState;
+  /**
+   * Viewport 为首次被采信之前缺省。
+   */
+  viewport?: Viewport;
+  /**
+   * CoarsePointer 是屏幕上报的触摸（粗指针）能力；未上报时缺省。
+   */
+  coarse_pointer?: boolean;
+}
+/**
+ * ScreenControlRequest 是 POST /api/screen/control 的请求体。
+ */
+export interface ScreenControlRequest {
+  /**
+   * Action 为 refresh、switch、on、off、wake。
+   */
+  action: string;
+  /**
+   * ScreenID 仅 switch 使用，必填。
+   */
+  screen_id?: string;
+  /**
+   * Minutes 仅 wake 使用，1–1440，缺省 30。
+   */
+  minutes?: number /* int */;
+}
+/**
+ * ScreenOp 是一条远程操作记录。
+ */
+export interface ScreenOp {
+  id: number /* int64 */;
+  action: string;
+  params: { [key: string]: any};
+  /**
+   * ClientIP 是发起者来源。
+   */
+  client_ip: string;
+  /**
+   * Delivered 表示一次性指令（refresh、switch）是否已送达屏幕；状态类操作随状态下发，记为 true。
+   */
+  delivered: boolean;
+  at: string;
+}
+/**
+ * ScreenControlResponse 是 POST /api/screen/control 的响应。
+ */
+export interface ScreenControlResponse {
+  op: ScreenOp;
+  state: ScreenState;
+}
+/**
+ * SetupCodeReveal 是屏幕会话取到的明文设置码。
+ */
+export interface SetupCodeReveal {
+  code: string;
+  expires_at: string;
+}
+
+//////////
 // source: settings.go
 /*
 Package model 定义前后端共享的数据模型（前端 TS 类型由此生成）。

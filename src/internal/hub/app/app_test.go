@@ -615,3 +615,42 @@ func TestSystemEndpointsWired(t *testing.T) {
 		t.Fatalf("logs = %d %s", resp.StatusCode, data)
 	}
 }
+
+func TestEnsureSetupCode有效但不可显示的旧码重新生成(t *testing.T) {
+	var stderr bytes.Buffer
+	a := openApp(t, testConfig(t), WithStderr(&stderr))
+	ctx := context.Background()
+	old, _, err := a.setupCodes.Generate(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.ExecContext(ctx, `UPDATE setup_codes SET code_enc = ''`); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.ensureSetupCode(ctx); err != nil {
+		t.Fatal(err)
+	}
+	code, _, ok, err := a.setupCodes.Reveal(ctx)
+	if err != nil || !ok {
+		t.Fatalf("重新生成后应可显示: ok=%v err=%v", ok, err)
+	}
+	if code == old || !strings.Contains(stderr.String(), code) {
+		t.Fatalf("应生成新码并打印: %q", stderr.String())
+	}
+	if ok, _ := a.setupCodes.Verify(ctx, old); ok {
+		t.Fatal("旧码应失效")
+	}
+}
+
+func TestCLI生成的设置码可显示(t *testing.T) {
+	a := openApp(t, testConfig(t))
+	ctx := context.Background()
+	code, _, err := a.SetupCode(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _, ok, err := a.setupCodes.Reveal(ctx)
+	if err != nil || !ok || got != code {
+		t.Fatalf("Reveal = %q ok=%v err=%v", got, ok, err)
+	}
+}
