@@ -1,0 +1,53 @@
+id: demo
+version: 1.0.0
+api_version: 1
+name: {zh: 演示数据, en: Demo data}
+kind: source
+runtime: builtin
+runs_on: [hub]
+interval: 30s
+timeout: 10s
+outputs:
+  - {key: quota.codex.5h,    type: quota, title: {zh: Codex 5 小时窗口, en: Codex 5-hour window}}
+  - {key: quota.codex.tool,  type: quota, title: {zh: Codex 工具调用, en: Codex tool calls}}
+  - {key: quota.claude.week, type: quota, title: {zh: Claude 周窗口, en: Claude weekly window}}
+  - {key: quota.claude.5h,   type: quota, title: {zh: Claude 5 小时窗口, en: Claude 5-hour window}}
+  - {key: quota.glm.5h,      type: quota, title: {zh: GLM 5 小时窗口, en: GLM 5-hour window}}
+  - {key: quota.glm.week,    type: quota, title: {zh: GLM 每周窗口, en: GLM weekly window}}
+  - {key: money.deepseek,    type: money, title: {zh: DeepSeek 余额, en: DeepSeek balance}}
+  - {key: money.openrouter,  type: money, title: {zh: OpenRouter 余额, en: OpenRouter balance}}
+  - {key: "host[*]",         type: state, title: {zh: 主机, en: Hosts}}
+  - {key: cpu.pi,            type: gauge, title: {zh: 树莓派 CPU, en: Raspberry Pi CPU}}
+  - {key: mem.pi,            type: gauge, title: {zh: 树莓派内存, en: Raspberry Pi memory}}
+  - {key: disk.ubuntu-srv,   type: quota, title: {zh: ubuntu-srv 磁盘, en: ubuntu-srv disk}}
+  - {key: tasks,             type: table, title: {zh: AI 任务, en: AI tasks}}
+  - {key: alert.disk,        type: state, title: {zh: 严重告警示例, en: Critical alert sample}}
+widgets:
+  - id: codex
+    name: {zh: Codex 额度, en: Codex quota}
+    sizes:
+      2x2: {template: quota-multi, bind: {windows: [{item: quota.codex.5h}, {item: quota.codex.tool}]}}
+  - id: claude
+    name: {zh: Claude 额度, en: Claude quota}
+    sizes:
+      2x2: {template: quota-multi, bind: {windows: [{item: quota.claude.week}, {item: quota.claude.5h}]}}
+  - id: glm
+    name: {zh: GLM 额度, en: GLM quota}
+    sizes:
+      2x2: {template: quota-multi, bind: {windows: [{item: quota.glm.5h}, {item: quota.glm.week}]}}
+  - id: hosts
+    name: {zh: 主机灯组, en: Host lights}
+    sizes:
+      2x2: {template: status-grid, bind: {items: {item: "host[*]"}}}
+  - id: cpu
+    name: {zh: CPU, en: CPU}
+    sizes:
+      1x1: {template: value, bind: {value: {item: cpu.pi}}}
+  - id: memory
+    name: {zh: 内存, en: Memory}
+    sizes:
+      1x1: {template: gauge, bind: {value: {item: mem.pi}}}
+  - id: tasks
+    name: {zh: AI 任务, en: AI tasks}
+    sizes:
+      6x1: {template: table, bind: {table: {item: tasks}}}

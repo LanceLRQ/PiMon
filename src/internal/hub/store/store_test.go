@@ -36,7 +36,7 @@ func TestMigrateCreatesTables(t *testing.T) {
 	if err := db.Migrate(ctx); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	for _, name := range []string{"settings", "admin", "sessions", "setup_codes", "screen_tokens", "meta", "schema_migrations"} {
+	for _, name := range []string{"settings", "admin", "sessions", "setup_codes", "screen_tokens", "meta", "schema_migrations", "proxies"} {
 		if !tableExists(t, db, name) {
 			t.Errorf("表 %s 不存在", name)
 		}
@@ -55,8 +55,8 @@ func TestMigrateIdempotent(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != 1 {
-		t.Errorf("schema_migrations 行数 = %d，期望 1", n)
+	if n != 2 {
+		t.Errorf("schema_migrations 行数 = %d，期望 2", n)
 	}
 }
 

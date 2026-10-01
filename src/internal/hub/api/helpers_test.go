@@ -16,10 +16,16 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/history"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
+	"github.com/LanceLRQ/PiMon/src/pkg/model"
+	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
 )
 
 const testPassword = "correct horse"
@@ -51,16 +57,23 @@ func (h *countingHasher) Verify(encoded, password string) (bool, error) {
 }
 
 type env struct {
-	t       *testing.T
-	clk     *clock.Fake
-	deps    Deps
-	hasher  *countingHasher
-	srv     *httptest.Server
-	client  *http.Client
-	tokenFn string
+	t         *testing.T
+	clk       *clock.Fake
+	deps      Deps
+	db        *store.DB
+	refs      *fakeReferrers
+	plugins   *plugins.Registry
+	pluginDir string
+	hasher    *countingHasher
+	srv       *httptest.Server
+	client    *http.Client
+	tokenFn   string
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T) *env { return newEnvWith(t) }
+
+// newEnvWith 在默认测试插件之外追加内置插件。
+func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 	t.Helper()
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "pimon.db"))
@@ -82,10 +95,24 @@ func newEnv(t *testing.T) *env {
 	hasher := &countingHasher{Hasher: auth.Hasher{Params: testParams}}
 	tokenPath := filepath.Join(dir, "screen.token")
 	keyPath := filepath.Join(dir, "secret.key")
-	if _, err := secret.LoadOrCreate(keyPath); err != nil {
+	box, err := secret.LoadOrCreate(keyPath)
+	if err != nil {
 		t.Fatal(err)
 	}
+	refs := &fakeReferrers{refs: map[string][]model.ProxyReferrer{}}
+	pluginDir := filepath.Join(dir, "plugins")
+	reg := plugins.New(plugins.Config{
+		Dir: pluginDir, DB: db, Clock: clk, Builtins: append(testBuiltins(t), extra...),
+	})
+	if _, err := reg.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	hist := history.New(history.Config{DB: db, Clock: clk, Retention: func() model.RetentionSettings { return st.Get().Retention }})
+	inst := instances.New(instances.Config{DB: db, Box: box, Clock: clk, Plugins: reg, History: hist})
 	deps := Deps{
+		Plugins:      reg,
+		Instances:    inst,
+		History:      hist,
 		Settings:     st,
 		Hasher:       hasher,
 		Limiter:      auth.NewLimiter(clk, 10, 15*time.Minute),
@@ -97,13 +124,15 @@ func newEnv(t *testing.T) *env {
 			DB: db, Clock: clk, SecretPath: keyPath,
 			Dir: filepath.Join(dir, "backups"), Settings: st.Get,
 		}),
+		Proxies: proxies.New(proxies.Config{DB: db, Box: box, Clock: clk, Referrers: refs}),
 	}
+	inst.UseProxies(deps.Proxies)
 	if err := deps.ScreenTokens.EnsureExists(ctx); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(New(deps))
 	t.Cleanup(srv.Close)
-	e := &env{t: t, clk: clk, deps: deps, hasher: hasher, srv: srv, tokenFn: tokenPath}
+	e := &env{t: t, clk: clk, deps: deps, db: db, refs: refs, plugins: reg, pluginDir: pluginDir, hasher: hasher, srv: srv, tokenFn: tokenPath}
 	e.client = e.newClient()
 	return e
 }

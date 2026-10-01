@@ -19,6 +19,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/app"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/plugindev"
 	"github.com/LanceLRQ/PiMon/src/pkg/version"
 )
 
@@ -29,6 +30,7 @@ const usage = `用法: pimon-hub <命令> [参数]
   setup-code                生成新的首次设置码（尚未设置管理员时）
   reset-password            从标准输入读取新密码并重置管理员密码
   restore [参数] <备份文件>  从备份包恢复（必须先停止服务）
+  plugin <子命令>           插件开发者工具：validate 校验目录、run 本机运行一次（详见 plugin help）
   version                   显示版本号
   help                      显示本说明
 
@@ -60,6 +62,23 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		return 0
 	case "help", "-h", "--help":
 		_, _ = fmt.Fprint(stdout, usage)
+		return 0
+	case "plugin":
+		if len(rest) > 0 && (rest[0] == "help" || rest[0] == "-h" || rest[0] == "--help") {
+			_, _ = fmt.Fprint(stdout, plugindev.Usage)
+			return 0
+		}
+		// Ctrl-C 经 ctx 取消采集，执行器会杀掉插件进程组。
+		sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := plugindev.Command(sigCtx, rest, stdout, stderr); err != nil {
+			_, _ = fmt.Fprintln(stderr, "错误:", err)
+			var ue plugindev.UsageError
+			if errors.As(err, &ue) {
+				return 2
+			}
+			return 1
+		}
 		return 0
 	case "serve", "setup-code", "reset-password", "restore":
 	default:

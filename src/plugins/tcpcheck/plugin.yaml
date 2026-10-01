@@ -1,0 +1,41 @@
+id: tcp-check
+version: 1.0.0
+api_version: 1
+name: {zh: TCP 端口检测, en: TCP port check}
+kind: source
+runtime: builtin
+runs_on: [hub]
+interval: 60s
+timeout: 30s
+config_schema:
+  - key: host
+    type: string
+    title: {zh: 主机, en: Host}
+    help: {zh: 域名或 IP 地址。, en: Hostname or IP address.}
+    required: true
+  - key: port
+    type: number
+    title: {zh: 端口, en: Port}
+    required: true
+    min: 1
+    max: 65535
+  - key: timeout
+    type: duration
+    title: {zh: 超时, en: Timeout}
+    help: {zh: "最长 25 秒，必须小于插件运行超时（30 秒）。", en: "At most 25 seconds; must stay below the plugin run timeout (30 s)."}
+    default: 5s
+    min: 1
+    max: 25
+  - key: proxy
+    type: proxy
+    title: {zh: 代理, en: Proxy}
+    help: {zh: "只能选 socks5 或 socks5h 代理，http 代理无法转发原始 TCP。", en: "Only socks5 or socks5h proxies work; http proxies cannot forward raw TCP."}
+outputs:
+  - {key: status,  type: state,  title: {zh: 端口状态, en: Port state}}
+  - {key: latency, type: number, title: {zh: 连接延迟, en: Connect latency}}
+widgets:
+  - id: check
+    name: {zh: TCP 端口, en: TCP port}
+    sizes:
+      1x1: {template: state, bind: {state: {item: status}}}
+      2x1: {template: value, bind: {value: {item: latency}}}

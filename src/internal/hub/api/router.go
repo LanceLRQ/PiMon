@@ -6,7 +6,11 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/history"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/httpx"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/pkg/version"
 )
@@ -28,6 +32,10 @@ type Deps struct {
 	Sessions     *auth.Sessions
 	ScreenTokens *auth.ScreenTokens
 	Backups      *backup.Service
+	Proxies      *proxies.Store
+	Plugins      *plugins.Registry
+	Instances    *instances.Service
+	History      *history.Service
 }
 
 // argonConcurrency 是同时进行的 argon2 运算上限，避免 64MiB×N 耗尽树莓派内存。
@@ -50,6 +58,10 @@ func New(d Deps) http.Handler {
 	s.registerSettings(mux)
 	s.registerScreen(mux)
 	s.registerBackup(mux)
+	s.registerProxies(mux)
+	s.registerPlugins(mux)
+	s.registerInstances(mux)
+	s.registerHistory(mux)
 	// 后续路由在此追加；需要管理员权限的用 s.admin(...) 包装。
 
 	h := httpx.RequireSameOrigin(mux)

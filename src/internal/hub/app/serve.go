@@ -47,6 +47,35 @@ func (a *App) Serve(ctx context.Context) error {
 		defer wg.Done()
 		a.backups.RunDaily(bg)
 	}()
+	// 监视失败（目录不可建、inotify 额度用尽等）不影响中枢运行：记 Warn，
+	// 插件目录的变化改靠 POST /api/plugins/rescan 手动重新扫描。
+	if watchDone, err := a.plugins.Watch(bg); err != nil {
+		slog.Warn("无法监视插件目录，插件变化需在管理界面手动重新扫描", "dir", a.cfg.PluginDir(), "err", err)
+	} else {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-watchDone
+		}()
+	}
+	// 调度器与 30 秒落盘循环：bg 结束后先停调度、再做最后一次落盘，wg 等它们做完。
+	instDone := a.instances.Start(bg)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-instDone
+	}()
+	// 历史循环用独立的上下文，等调度器停稳（不会再有采集结果进入缓冲）后才停止，
+	// 这样它在退出前的最后一次写盘能带上最后一批采集结果。
+	histCtx, histStop := context.WithCancel(context.WithoutCancel(bg))
+	histDone := a.history.Start(histCtx)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-instDone
+		histStop()
+		<-histDone
+	}()
 	if iv, ok := a.notifier.WatchdogInterval(); ok {
 		wg.Add(1)
 		go func() {

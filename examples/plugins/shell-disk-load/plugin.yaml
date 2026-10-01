@@ -1,0 +1,40 @@
+id: shell-disk-load
+version: 1.0.0
+api_version: 1
+name: {zh: 磁盘与负载（Shell 示例）, en: Disk and load (shell example)}
+kind: source
+runtime: exec
+runs_on: [hub, agent]
+interval: 60s
+timeout: 10s
+config_schema:
+  - key: path
+    type: string
+    title: {zh: 检查的路径, en: Path to check}
+    help: {zh: 取该路径所在文件系统的使用率, en: Usage of the filesystem holding this path}
+    default: /
+    pattern: "^[A-Za-z0-9_./ -]+$"
+  - key: warn_pct
+    type: number
+    title: {zh: 警告阈值（%）, en: Warning threshold (%)}
+    default: 80
+    min: 1
+    max: 100
+  - key: critical_pct
+    type: number
+    title: {zh: 严重阈值（%）, en: Critical threshold (%)}
+    default: 90
+    min: 1
+    max: 100
+outputs:
+  - {key: disk, type: gauge, title: {zh: 磁盘使用率, en: Disk usage}}
+  - {key: load, type: number, title: {zh: 1 分钟负载, en: 1-minute load}}
+widgets:
+  - id: disk
+    name: {zh: 磁盘使用率, en: Disk usage}
+    sizes:
+      1x1: {template: gauge, bind: {value: {item: disk}}}
+  - id: load
+    name: {zh: 系统负载, en: System load}
+    sizes:
+      1x1: {template: value, bind: {value: {item: load}}}

@@ -23,7 +23,7 @@ type Config struct {
 	LogLevel string // debug | info | warn | error
 }
 
-// Parse 按「命令行参数 > 环境变量 > 默认值」的优先级解析配置。
+// Parse 按「命令行参数 > 环境变量 > 默认值」的优先级解析配置；数据目录转为绝对路径。
 // getenv 由调用方注入（通常为 os.Getenv）；返回值中的 rest 为命令行剩余的位置参数。
 func Parse(args []string, getenv func(string) string) (cfg Config, rest []string, err error) {
 	cfg = Config{
@@ -44,6 +44,12 @@ func Parse(args []string, getenv func(string) string) (cfg Config, rest []string
 	if _, err = parseLevel(cfg.LogLevel); err != nil {
 		return Config{}, nil, err
 	}
+	// 数据目录一律用绝对路径：exec 插件以插件目录为工作目录运行，相对路径会解析错位。
+	abs, err := filepath.Abs(cfg.DataDir)
+	if err != nil {
+		return Config{}, nil, fmt.Errorf("数据目录 %q 无法转为绝对路径: %w", cfg.DataDir, err)
+	}
+	cfg.DataDir = abs
 	return cfg, fs.Args(), nil
 }
 
@@ -88,6 +94,9 @@ func (c Config) ScreenTokenPath() string { return filepath.Join(c.DataDir, "scre
 
 // BackupDir 是备份目录。
 func (c Config) BackupDir() string { return filepath.Join(c.DataDir, "backups") }
+
+// PluginDir 是 exec 插件目录，每个插件一个子目录。
+func (c Config) PluginDir() string { return filepath.Join(c.DataDir, "plugins") }
 
 // CertPath 是自签名证书文件。
 func (c Config) CertPath() string { return filepath.Join(c.DataDir, "hub.crt") }

@@ -1,0 +1,57 @@
+id: net-reach
+version: 1.0.0
+api_version: 1
+name: {zh: 网络连通性, en: Network reachability}
+kind: source
+runtime: builtin
+runs_on: [hub]
+interval: 120s
+timeout: 60s
+config_schema:
+  - key: targets
+    type: object_list
+    title: {zh: 探测目标, en: Targets}
+    help: {zh: "每个目标会被探测多次，成功率为成功次数的比例，延迟取成功探测的中位数。只要拿到任何 HTTP 响应就算成功。", en: "Each target is probed several times; the success rate is the share of successful probes and latency is the median of the successful ones. Any HTTP response counts as success."}
+    min: 1
+    max: 20
+    default:
+      - {name: Google, url: "https://www.google.com/generate_204"}
+      - {name: GitHub, url: "https://github.com"}
+      - {name: Cloudflare, url: "https://www.cloudflare.com/cdn-cgi/trace"}
+      - {name: 百度, url: "https://www.baidu.com"}
+    fields:
+      - key: name
+        type: string
+        title: {zh: 名称, en: Name}
+        required: true
+      - key: url
+        type: url
+        title: {zh: 地址, en: URL}
+        required: true
+        allow_public_http: true
+  - key: attempts
+    type: number
+    title: {zh: 每个目标的探测次数, en: Probes per target}
+    help: {zh: "每次运行对每个目标探测的次数，最多 5。", en: "Probes per target each run, at most 5."}
+    default: 3
+    min: 1
+    max: 5
+  - key: timeout
+    type: duration
+    title: {zh: 单次探测超时, en: Per-probe timeout}
+    help: {zh: "最长 10 秒；探测次数乘以该值必须小于插件运行超时（60 秒）。", en: "At most 10 seconds; probes times timeout must stay below the plugin run timeout (60 s)."}
+    default: 5s
+    min: 1
+    max: 10
+  - key: proxy
+    type: proxy
+    title: {zh: 代理, en: Proxy}
+    help: {zh: "可选直连或某个代理。用于检测经代理出网是否通畅时，建议选 socks5h 代理，让域名交给代理解析。", en: "Direct or a chosen proxy. To test egress through a proxy, prefer a socks5h proxy so that hostnames are resolved by the proxy."}
+outputs:
+  - {key: "target[*]",  type: gauge,  title: {zh: 目标成功率, en: Target success rate}}
+  - {key: "latency[*]", type: number, title: {zh: 目标延迟, en: Target latency}}
+widgets:
+  - id: reach
+    name: {zh: 网络连通性, en: Reachability}
+    sizes:
+      2x2: {template: list, bind: {items: {item: "target[*]"}}}

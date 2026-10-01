@@ -107,6 +107,7 @@ func TestDerivedPaths(t *testing.T) {
 		cfg.SecretKeyPath():   filepath.Join("/data", "secret.key"),
 		cfg.ScreenTokenPath(): filepath.Join("/data", "screen.token"),
 		cfg.BackupDir():       filepath.Join("/data", "backups"),
+		cfg.PluginDir():       filepath.Join("/data", "plugins"),
 		cfg.CertPath():        filepath.Join("/data", "hub.crt"),
 		cfg.KeyPath():         filepath.Join("/data", "hub.key"),
 	}
@@ -114,5 +115,22 @@ func TestDerivedPaths(t *testing.T) {
 		if got != want {
 			t.Errorf("got %s want %s", got, want)
 		}
+	}
+}
+
+// 相对数据目录在解析时转成绝对路径（exec 插件的工作目录是插件目录，相对路径会失效）。
+func TestParseRelativeDataDirMadeAbsolute(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cfg, _, err := Parse([]string{"--data-dir", "data"}, env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wd, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(wd, "data"); cfg.DataDir != want || !filepath.IsAbs(cfg.PluginDir()) {
+		t.Fatalf("DataDir = %q，期望 %q", cfg.DataDir, want)
 	}
 }

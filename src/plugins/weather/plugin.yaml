@@ -1,0 +1,67 @@
+id: weather
+version: 1.0.0
+api_version: 1
+name: {zh: 天气, en: Weather}
+kind: source
+runtime: builtin
+runs_on: [hub]
+interval: 10m
+min_interval: 5m
+timeout: 30s
+config_schema:
+  - key: city
+    type: lookup
+    title: {zh: 城市, en: City}
+    help: {zh: "输入城市名搜索并选择（来自 Open-Meteo 地理编码）。已选择城市时不会自动定位。Open-Meteo 免费 API 仅限非商业使用。", en: "Search by city name and pick one (Open-Meteo geocoding). Auto-locate is not used once a city is chosen. The free Open-Meteo API is for non-commercial use only."}
+  - key: auto_locate
+    type: boolean
+    title: {zh: 按公网 IP 自动定位, en: Locate by public IP}
+    help: {zh: "未选择城市时，向第三方定位服务 ipwho.is 查询本机出口 IP 的大致位置（强制直连，不走代理）；这会向该服务暴露出口 IP。结果缓存 24 小时；失败时请手动选择城市。刷新间隔最短 5 分钟。", en: "When no city is chosen, ask the third-party service ipwho.is for the approximate location of this host's egress IP (always direct, never through a proxy); this exposes the egress IP to that service. The result is cached for 24 hours. If it fails, choose a city manually. The shortest refresh interval is 5 minutes."}
+    default: false
+  - key: proxy
+    type: proxy
+    title: {zh: 代理, en: Proxy}
+    help: {zh: "仅用于获取天气预报，可选直连或某个代理。城市搜索与自动定位始终直连。Open-Meteo 免费 API 仅限非商业使用。", en: "Used only for fetching the forecast; direct or a chosen proxy. City search and auto-locate are always direct. The free Open-Meteo API is for non-commercial use only."}
+outputs:
+  - {key: location,           type: text,   title: {zh: 位置, en: Location}}
+  - {key: temperature,        type: number, title: {zh: 当前温度, en: Temperature}}
+  - {key: humidity,           type: gauge,  title: {zh: 湿度, en: Humidity}}
+  - {key: wind_speed,         type: number, title: {zh: 风速, en: Wind speed}}
+  - {key: wind_direction,     type: number, title: {zh: 风向, en: Wind direction}}
+  - {key: condition,          type: text,   title: {zh: 天气, en: Condition}}
+  - {key: icon,               type: text,   title: {zh: 天气图标, en: Condition icon}}
+  - {key: tomorrow_high,      type: number, title: {zh: 明日最高温, en: Tomorrow high}}
+  - {key: tomorrow_low,       type: number, title: {zh: 明日最低温, en: Tomorrow low}}
+  - {key: tomorrow_condition, type: text,   title: {zh: 明日天气, en: Tomorrow condition}}
+  - {key: tomorrow_icon,      type: text,   title: {zh: 明日天气图标, en: Tomorrow icon}}
+  - {key: attribution,        type: text,   title: {zh: 数据署名, en: Attribution}}
+widgets:
+  - id: temperature
+    name: {zh: 当前温度, en: Temperature}
+    sizes:
+      1x1: {template: value, bind: {value: {item: temperature}}}
+  - id: weather
+    name: {zh: 天气, en: Weather}
+    sizes:
+      2x1:
+        template: weather
+        bind:
+          location: {item: location}
+          temperature: {item: temperature}
+          condition: {item: condition}
+          icon: {item: icon}
+          attribution: {item: attribution}
+      2x2:
+        template: weather
+        bind:
+          location: {item: location}
+          temperature: {item: temperature}
+          condition: {item: condition}
+          icon: {item: icon}
+          humidity: {item: humidity}
+          wind_speed: {item: wind_speed}
+          wind_direction: {item: wind_direction}
+          tomorrow_high: {item: tomorrow_high}
+          tomorrow_low: {item: tomorrow_low}
+          tomorrow_icon: {item: tomorrow_icon}
+          attribution: {item: attribution}
