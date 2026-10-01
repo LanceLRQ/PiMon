@@ -54,14 +54,15 @@ export function ScreenCard() {
       onClick: () => nextScreen && send({ action: 'switch', screen_id: nextScreen.id }),
     },
     {
-      k: 'k3',
+      // 编号与远程操作页一致：开屏是 k3，关屏是 k4，当前适用哪个就显示哪个
+      k: off ? 'k3' : 'k4',
       icon: <Power size={15} />,
       label: off ? t('overview.screen.keyOn') : t('overview.screen.keyOff'),
       disabled: !ready,
       onClick: () => send({ action: off ? 'on' : 'off' }),
     },
     {
-      k: 'k4',
+      k: 'k5',
       icon: <Sun size={15} />,
       label: t('overview.screen.keyWake'),
       sub: t('overview.screen.wakeMinutes', { n: WAKE_MINUTES }),

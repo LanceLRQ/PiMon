@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Schedule } from '@/types/generated'
 import {
   currentAndNext,
+  minutesUntilWallMinute,
   formatHM,
   fromServer,
   lengthOf,
@@ -49,6 +50,10 @@ describe('校验与后端一致', () => {
     expect(validate(gap)).toEqual([{ kind: 'gap', from: '08:00', to: '10:00' }])
     const overlap = fromServer(plan(['00:00', '12:00', 'ambient'], ['10:00', '00:00', 'off']))
     expect(validate(overlap)).toEqual([{ kind: 'overlap', from: '10:00', to: '12:00' }])
+  })
+  it('重叠区间延伸到一天结束时端点写作 24:00，与后端一致', () => {
+    const ps = fromServer(plan(['00:00', '00:00', 'ambient'], ['12:00', '00:00', 'off']))
+    expect(validate(ps)).toEqual([{ kind: 'overlap', from: '12:00', to: '24:00' }])
   })
   it('空计划、未知主题、时间格式错误', () => {
     expect(validate([])).toEqual([{ kind: 'empty' }])
@@ -171,6 +176,21 @@ describe('服务端时区的现在与下一次变化', () => {
     expect(night.next).toEqual({ at: parseHM('07:00')!, theme: 'industrial', inMinutes: 7 * 60 + 30 })
     const same = fromServer(plan(['00:00', '12:00', 'ambient'], ['12:00', '00:00', 'ambient']))
     expect(currentAndNext(same, 100).next).toBeNull()
+  })
+  it('夏令时当天按真实时刻差计算倒计时，不差一小时', () => {
+    const ps = fromServer(plan(['07:00', '23:00', 'ambient'], ['23:00', '07:00', 'off']))
+    // 2026-11-01 纽约秋季回拨（06:00Z 由 02:00 EDT 回到 01:00 EST）：当地 00:30 到 07:00 实际 7.5 小时
+    const fall = Date.parse('2026-11-01T04:30:00Z')
+    expect(formatHM(minuteInZone(fall, 'America/New_York'))).toBe('00:30')
+    expect(minutesUntilWallMinute(fall, 'America/New_York', 7 * 60)).toBe(450)
+    expect(currentAndNext(ps, 30, { nowMs: fall, timeZone: 'America/New_York' }).next?.inMinutes).toBe(450)
+    // 挂钟差只有 6.5 小时（旧算法）
+    expect(currentAndNext(ps, 30).next?.inMinutes).toBe(390)
+    // 2026-03-08 春季跳变（07:00Z 由 02:00 EST 跳到 03:00 EDT）：当地 00:30 到 07:00 实际 5.5 小时
+    const spring = Date.parse('2026-03-08T05:30:00Z')
+    expect(minutesUntilWallMinute(spring, 'America/New_York', 7 * 60)).toBe(330)
+    // 普通日与挂钟差一致
+    expect(minutesUntilWallMinute(Date.parse('2026-10-01T14:47:00Z'), 'Asia/Shanghai', 23 * 60)).toBe(13)
   })
   it('各主题的使用时段', () => {
     expect(themeUsage(base())).toEqual({ industrial: ['07:00–19:00'], ambient: ['19:00–23:00'], off: ['23:00–07:00'] })

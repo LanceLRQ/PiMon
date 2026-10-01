@@ -1,13 +1,12 @@
 import { ArrowLeftRight, Clock, KeyRound, Power, RefreshCw, Sun } from 'lucide-react'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { formatClockInZone, formatIn, parseTime } from '@/lib/time'
+import { formatClockInZone, formatIn, parseTime, useNow } from '@/lib/time'
 import { effectiveTouch } from '@/pages/screens/touch'
 import { useScreenStatus } from '@/pages/screens/use-screen-status'
 import { LiveThumb, useScreenView } from '@/pages/screens/use-screen-view'
 import { useIsMobile } from '@/lib/use-mobile'
 import { cn } from '@/lib/utils'
-import { serverNow } from '@/store/live-store'
 import type { ScreenOp } from '@/types/generated'
 import { PageHeader } from '@/ui/page-header'
 import { Button } from '@/ui/button'
@@ -37,7 +36,8 @@ export function RemotePage() {
   const { screens, online, state, off, settings } = view
   const ready = status !== null
   const tz = settings?.timezone ?? 'UTC'
-  const nowMs = serverNow()
+  // 相对时间（「N 分钟后」）随时间推移定时刷新，页面停留时不会变旧
+  const nowMs = useNow(15_000)
   const clock = (ms: number) => formatClockInZone(ms, nowMs, tz, i18n.language)
   const targetId = screens.some((s) => s.id === target) ? target : (screens.find((s) => s.id !== view.current?.id) ?? screens[0])?.id ?? ''
   const nextMs = parseTime(state?.next_change)
@@ -49,10 +49,12 @@ export function RemotePage() {
     if (!state) return null
     switch (state.reason) {
       case 'remote_on':
-      case 'remote_off':
-        return t(`remote.reason.${state.reason}`, { until: clock(untilMs ?? nextMs ?? nowMs) })
+      case 'remote_off': {
+        const end = untilMs ?? nextMs
+        return end === null ? t(`remote.reason.${state.reason}_open`) : t(`remote.reason.${state.reason}`, { until: clock(end) })
+      }
       case 'wake':
-        return t('remote.reason.wake', { until: clock(untilMs ?? nowMs) })
+        return untilMs === null ? t('remote.reason.wake_open') : t('remote.reason.wake', { until: clock(untilMs) })
       default:
         return t('remote.reason.schedule')
     }
@@ -107,7 +109,7 @@ export function RemotePage() {
   const keypad = (
     <div data-testid="remote-keys" className="grid grid-cols-2 gap-2 p-3.5 mobile:grid-cols-2 mobile:p-3">
       <RemoteKey k="k1" icon={<RefreshCw size={15} />} label={t('remote.keys.refresh.label')} desc={t('remote.keys.refresh.desc')} disabled={busy || !ready || !online} onClick={() => void send({ action: 'refresh' })} className="mobile:order-5 mobile:col-span-2" />
-      <RemoteKeyFrame k="k2" icon={<ArrowLeftRight size={15} />} label={t('remote.keys.switch.label')} desc={t('remote.keys.switch.desc', { n: idleSeconds })} className="col-span-2 mobile:order-3">
+      <RemoteKeyFrame k="k2" icon={<ArrowLeftRight size={15} />} label={t('remote.keys.switch.label')} desc={t('remote.keys.switch.desc', { n: idleSeconds })} disabled={!ready || !online} className="col-span-2 mobile:order-3">
         <Select className="flex-1" aria-label={t('remote.keys.switch.target')} value={targetId} disabled={!ready || !online || screens.length === 0} onChange={(e) => setTarget(e.target.value)}>
           {screens.map((s) => (
             <option key={s.id} value={s.id}>
@@ -166,7 +168,7 @@ export function RemotePage() {
           <>
             {statusHead}
             {keysHead}
-            <Section no="02.1" title={t('remote.status.detail')}>{body}</Section>
+            <Section no="02.3" title={t('remote.status.detail')}>{body}</Section>
           </>
         ) : (
           <div className="grid grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] items-start gap-4">
@@ -174,7 +176,7 @@ export function RemotePage() {
             {keysHead}
           </div>
         )}
-        <Section no="02.3" title={t('remote.ops.title')} meta={t('remote.ops.meta', { n: 5 })}>
+        <Section no={mobile ? '02.4' : '02.3'} title={t('remote.ops.title')} meta={t('remote.ops.meta', { n: 5 })}>
           {opRows.length === 0 ? (
             <div className="px-4 py-3 text-[13px] text-muted-foreground">{t('remote.ops.empty')}</div>
           ) : (
@@ -190,7 +192,7 @@ export function RemotePage() {
                         {t(`remote.ops.action.${o.action}`, { defaultValue: o.action })}
                         {opDetail(o) && <span className="ml-2 font-mono text-[12px] text-muted-foreground">{opDetail(o)}</span>}
                         {oneShot && (
-                          <span className={cn('ml-2 rounded-[2px] border px-1.5 text-[11px] leading-[16px]', o.delivered ? 'border-border text-muted-foreground' : 'border-status-warn')}>
+                          <span className={cn('ml-2 rounded-[2px] border px-1.5 text-[11px] leading-[16px]', o.delivered || online ? 'border-border text-muted-foreground' : 'border-status-warn')}>
                             {t(o.delivered ? 'remote.ops.delivered' : 'remote.ops.undelivered')}
                           </span>
                         )}

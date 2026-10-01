@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiError, json, mockApi, renderWithApp, seedStore, type ApiHandler, type Req } from '@/pages/instances/test-utils'
@@ -76,6 +76,35 @@ describe('时段计划页', () => {
     expect(screen.getByTestId('timeline-foot')).toHaveTextContent('Asia/Shanghai')
   })
 
+  it('计划未改动且按计划运行时，倒计时取后端 next_change（权威，含夏令时），编辑后改用本地预览', async () => {
+    seedStore([])
+    liveStore.applySnapshot({ type: 'snapshot', build: 'b', role: 'admin', topics: [], server_time: '2026-10-01T14:47:00Z', instances: [], screen_state: { mode: 'on', theme_id: 'ambient', reason: 'schedule', next_change: '2026-10-01T15:07:00Z' } } as unknown as Parameters<typeof liveStore.applySnapshot>[0])
+    mockApi((req) => (req.url === '/api/schedule' ? json(200, plan()) : req.url === '/api/settings' ? json(200, settingsOf()) : req.url === '/api/screen/status' ? json(200, statusOf()) : undefined))
+    const user = userEvent.setup()
+    await renderWithApp(<SchedulePage />)
+    await screen.findByTestId('timeline')
+    expect(screen.getByTestId('timeline-foot')).toHaveTextContent('20 分钟后')
+    await user.click(rowsOf()[0])
+    await user.click(screen.getByRole('button', { name: /（mission-control）/ }))
+    expect(screen.getByTestId('timeline-foot')).toHaveTextContent('13 分钟后')
+  })
+
+  it('保存期间时间输入框、时段类型、主题卡、降低特效与时间轴都被禁用', async () => {
+    const user = userEvent.setup()
+    let release: (r: Response) => void = () => {}
+    await mount({ over: (req) => (req.method === 'PUT' && req.url === '/api/schedule' ? (new Promise<Response>((r) => (release = r)) as unknown as Response) : undefined) })
+    await user.click(rowsOf()[1])
+    await user.click(screen.getByRole('button', { name: /（mission-control）/ }))
+    await user.click(screen.getByRole('button', { name: '保存并推送' }))
+    await waitFor(() => expect(timeInput('开始时间 HH:MM')).toBeDisabled())
+    expect(timeInput('结束时间 HH:MM')).toBeDisabled()
+    expect(screen.getByRole('radio', { name: '关屏' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /（ambient）/ })).toBeDisabled()
+    expect(screen.getByRole('switch', { name: '降低特效' })).toBeDisabled()
+    expect(screen.getByRole('slider', { name: /19:00/ })).toBeDisabled()
+    release(json(200, plan()))
+  })
+
   it('换成别的时区，「现在」随之变化', async () => {
     await mount({ settings: () => settingsOf({ timezone: 'America/Los_Angeles' }) })
     expect(within(screen.getByTestId('timeline')).getByText('现在 07:47')).toBeInTheDocument()
@@ -123,6 +152,56 @@ describe('时段计划页', () => {
     expect(ranges()).toEqual(['07:00-19:05', '19:05-23:00', '23:00-07:00'])
     await user.keyboard('{Shift>}{ArrowLeft}{/Shift}')
     expect(ranges()).toEqual(['07:00-18:05', '18:05-23:00', '23:00-07:00'])
+  })
+
+  describe('指针拖动边界', () => {
+    // 轴宽 1440 像素、左边缘 0：clientX 即分钟数
+    const rect = vi.spyOn(Element.prototype, 'getBoundingClientRect')
+    beforeEach(() => {
+      rect.mockImplementation(function (this: Element) {
+        const w = this.getAttribute('data-testid') === 'timeline' ? 1440 : 0
+        return { left: 0, right: w, width: w, top: 0, bottom: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect
+      })
+    })
+    afterEach(() => rect.mockReset())
+    const ptr = (el: Element, type: string, x = 0) => fireEvent(el, new MouseEvent(type, { clientX: x, bubbles: true }))
+
+    it('拖到轴的最右端不会跳到对侧：边界夹在相邻两段各至少 1 分钟之内，继续停在最右端也保持稳定', async () => {
+      await mount()
+      const handle = screen.getByRole('slider', { name: /19:00/ })
+      ptr(handle, 'pointerdown', 1140)
+      ptr(handle, 'pointermove', 1440)
+      expect(ranges()).toEqual(['07:00-22:59', '22:59-23:00', '23:00-07:00'])
+      ptr(handle, 'pointermove', 1440)
+      expect(ranges()).toEqual(['07:00-22:59', '22:59-23:00', '23:00-07:00'])
+      // 同一次拖动里再拖回中间，位置相对按下时计算，不受夹取影响
+      ptr(handle, 'pointermove', 600)
+      expect(ranges()).toEqual(['07:00-10:00', '10:00-23:00', '23:00-07:00'])
+      ptr(handle, 'pointerup')
+      expect(screen.queryByTestId('problems')).toBeNull()
+    })
+
+    it('跨午夜：23:00 的边界向右拖到轴端，变成 00:00，并且停在端点时不抖动', async () => {
+      await mount()
+      const handle = screen.getByRole('slider', { name: /23:00/ })
+      ptr(handle, 'pointerdown', 1380)
+      ptr(handle, 'pointermove', 1440)
+      expect(ranges()).toEqual(['00:00-07:00', '07:00-19:00', '19:00-00:00'])
+      ptr(handle, 'pointermove', 1440)
+      expect(ranges()).toEqual(['00:00-07:00', '07:00-19:00', '19:00-00:00'])
+      ptr(handle, 'pointerup')
+      expect(screen.queryByTestId('problems')).toBeNull()
+    })
+
+    it('07:00 的边界向左拖到轴的最左端，变成 00:00，前一段（跨日段）缩到 23:00–00:00', async () => {
+      await mount()
+      const handle = screen.getByRole('slider', { name: /07:00/ })
+      ptr(handle, 'pointerdown', 420)
+      ptr(handle, 'pointermove', 0)
+      expect(ranges()).toEqual(['00:00-19:00', '19:00-23:00', '23:00-00:00'])
+      ptr(handle, 'pointermove', 0)
+      expect(ranges()).toEqual(['00:00-19:00', '19:00-23:00', '23:00-00:00'])
+    })
   })
 
   it('添加时段会拆分当前选中的时段，新时段被选中，计划仍覆盖全天', async () => {

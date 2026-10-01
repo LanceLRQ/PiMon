@@ -36,6 +36,11 @@ export function formatHM(minutes: number): string {
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 }
 
+/** 区间端点的文案：一天结束写作 24:00（与后端校验问题的格式一致） */
+export function formatBound(minutes: number): string {
+  return minutes === DAY ? '24:00' : formatHM(minutes)
+}
+
 /** 时段长度（分钟，1–1440）；开始等于结束视为全天 */
 export function lengthOf(p: Pick<DraftPeriod, 'start' | 'end'>): number {
   return (((p.end - p.start) % DAY) + DAY) % DAY || DAY
@@ -87,11 +92,11 @@ export function validate(ps: readonly DraftPeriod[]): ScheduleProblem[] {
   segs.sort((a, b) => a.from - b.from || a.to - b.to)
   let cursor = 0
   for (const sg of segs) {
-    if (sg.from > cursor) problems.push({ kind: 'gap', from: formatHM(cursor), to: formatHM(sg.from) })
-    else if (sg.from < cursor) problems.push({ kind: 'overlap', from: formatHM(sg.from), to: formatHM(Math.min(cursor, sg.to)) })
+    if (sg.from > cursor) problems.push({ kind: 'gap', from: formatBound(cursor), to: formatBound(sg.from) })
+    else if (sg.from < cursor) problems.push({ kind: 'overlap', from: formatBound(sg.from), to: formatBound(Math.min(cursor, sg.to)) })
     cursor = Math.max(cursor, sg.to)
   }
-  if (cursor < DAY) problems.push({ kind: 'gap', from: formatHM(cursor), to: '24:00' })
+  if (cursor < DAY) problems.push({ kind: 'gap', from: formatBound(cursor), to: '24:00' })
   return problems
 }
 
@@ -219,8 +224,30 @@ export interface NextChange {
   inMinutes: number
 }
 
-/** 当前时段与下一次可见变化（主题或开关屏不同才算，与后端 next_change 同口径） */
-export function currentAndNext(ps: readonly DraftPeriod[], nowMinute: number): { current: DraftPeriod | null; next: NextChange | null } {
+/**
+ * 从 nowMs 起，设置时区里下一次出现「当天第 atMinute 分钟」的真实时刻，距现在多少分钟。
+ * 用真实时刻差而不是挂钟分钟差，夏令时切换当天不会差一小时；该挂钟时刻不存在（春季跳变）时取之后的第一个有效时刻。
+ */
+export function minutesUntilWallMinute(nowMs: number, timeZone: string, atMinute: number): number {
+  const wallNow = minuteInZone(nowMs, timeZone)
+  let guess = nowMs + (((atMinute - wallNow) % DAY + DAY) % DAY || DAY) * 60_000
+  for (let i = 0; i < 4; i++) {
+    let diff = atMinute - minuteInZone(guess, timeZone)
+    if (diff > DAY / 2) diff -= DAY
+    if (diff < -DAY / 2) diff += DAY
+    if (diff === 0) break
+    guess += diff * 60_000
+  }
+  return Math.max(1, Math.round((guess - nowMs) / 60_000))
+}
+
+/** 当前时段与下一次可见变化（主题或开关屏不同才算，与后端 next_change 同口径）。
+ *  传入 clock 时倒计时按真实时刻差计算（识别夏令时），否则按挂钟分钟差。 */
+export function currentAndNext(
+  ps: readonly DraftPeriod[],
+  nowMinute: number,
+  clock?: { nowMs: number; timeZone: string },
+): { current: DraftPeriod | null; next: NextChange | null } {
   const i = locate(ps, nowMinute)
   if (i < 0) return { current: null, next: null }
   const current = ps[i]
@@ -228,7 +255,7 @@ export function currentAndNext(ps: readonly DraftPeriod[], nowMinute: number): {
   for (let step = 1; step < ps.length; step++) {
     const p = ps[(i + step) % ps.length]
     if (p.theme !== current.theme) {
-      const inMinutes = ((at - nowMinute) % DAY + DAY) % DAY || DAY
+      const inMinutes = clock ? minutesUntilWallMinute(clock.nowMs, clock.timeZone, at % DAY) : ((at - nowMinute) % DAY + DAY) % DAY || DAY
       return { current, next: { at: at % DAY, theme: p.theme, inMinutes } }
     }
     at += lengthOf(p)

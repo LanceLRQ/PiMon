@@ -151,10 +151,47 @@ describe('远程操作页', () => {
     seed()
     await mount({ ops: [op(3, 'refresh', { delivered: false }), op(2, 'switch', { delivered: true, params: { screen_id: 's1' } }), op(1, 'on')] })
     const rows = within(screen.getByTestId('remote-log')).getAllByRole('row')
-    expect(rows[0]).toHaveTextContent('屏幕离线，未送达')
+    expect(rows[0]).toHaveTextContent('当时未送达')
+    // 显示器已重新在线：历史上的未送达不再用警示色
+    expect(rows[0].querySelector('.border-status-warn')).toBeNull()
     expect(rows[1]).toHaveTextContent('已下发')
     expect(rows[2]).not.toHaveTextContent('已下发')
     expect(rows[2]).not.toHaveTextContent('未送达')
+  })
+
+  it('显示器仍离线时，未送达的一次性指令用警示色标注', async () => {
+    seed()
+    await mount({ status: statusOf({ online: false }), ops: [op(3, 'refresh', { delivered: false })] })
+    expect(within(screen.getByTestId('remote-log')).getAllByRole('row')[0].querySelector('.border-status-warn')).not.toBeNull()
+  })
+
+  it('没有 until 时不退回「现在」，改用不带时刻的文案', async () => {
+    seed(stateOf({ reason: 'remote_on', next_change: undefined }))
+    await mount({ status: statusOf({ state: stateOf({ reason: 'remote_on', next_change: undefined }) }) })
+    const st = screen.getByTestId('remote-state')
+    expect(within(st).getByText('远程开屏中，持续到下一个时段边界，之后回到时段计划。')).toBeInTheDocument()
+    expect(st).not.toHaveTextContent('23:')
+  })
+
+  it('离线时 k2（切换 screen）整块置灰，与 k1 一致', async () => {
+    seed()
+    await mount({ status: statusOf({ online: false }) })
+    expect(screen.getByTestId('key-k2')).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByTestId('key-k2').className).toContain('opacity-50')
+    expect(screen.getByRole('combobox', { name: '目标 screen' })).toBeDisabled()
+  })
+
+  it('相对时间随时间推移自动刷新，不需要重新取数', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'], now: Date.parse('2026-10-01T14:47:00Z') })
+    try {
+      seed()
+      await mount()
+      expect(within(screen.getByTestId('remote-state')).getByText(/（13 分钟后）/)).toBeInTheDocument()
+      act(() => void vi.advanceTimersByTime(5 * 60_000))
+      expect(within(screen.getByTestId('remote-state')).getByText(/（8 分钟后）/)).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('k6 二次确认：打开对话框说明后果但不发请求；取消不发；确认后重置并给出新链接的获取方式，记录刷新', async () => {
@@ -200,6 +237,9 @@ describe('远程操作页', () => {
     const kv = screen.getByTestId('remote-kv')
     expect(state.compareDocumentPosition(keys) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(keys.compareDocumentPosition(kv) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // 手机上状态详情与操作记录的分区编号不与前面重复
+    const nos = screen.getAllByText(/^02\.\d$/).map((e) => e.textContent)
+    expect(new Set(nos).size).toBe(nos.length)
   })
 
   it('screen_state 推送变化后状态卡即时更新', async () => {

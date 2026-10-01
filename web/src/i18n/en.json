@@ -1530,7 +1530,10 @@
       "schedule": "Following the schedule.",
       "remote_on": "Turned on remotely until {{until}} (the next period boundary), then back to the schedule.",
       "remote_off": "Turned off remotely until {{until}} (the next period boundary), then back to the schedule.",
-      "wake": "Temporarily lit; back to the schedule when it ends at {{until}}."
+      "wake": "Temporarily lit; back to the schedule when it ends at {{until}}.",
+      "remote_on_open": "Turned on remotely until the next period boundary, then back to the schedule.",
+      "remote_off_open": "Turned off remotely until the next period boundary, then back to the schedule.",
+      "wake_open": "Temporarily lit; back to the schedule when it ends."
     },
     "kv": {
       "display": "Display",
@@ -1586,7 +1589,7 @@
       "toScreen": "→ {{id}}",
       "minutes": "{{n}} min",
       "delivered": "sent",
-      "undelivered": "display offline, not delivered",
+      "undelivered": "not delivered at the time",
       "action": {
         "refresh": "Refresh",
         "switch": "Switch screen",

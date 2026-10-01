@@ -1530,7 +1530,10 @@
       "schedule": "按时段计划运行。",
       "remote_on": "远程开屏中，持续到 {{until}}（下一个时段边界），之后回到时段计划。",
       "remote_off": "远程关屏中，持续到 {{until}}（下一个时段边界），之后回到时段计划。",
-      "wake": "临时亮屏中，{{until}} 到期后回到时段计划。"
+      "wake": "临时亮屏中，{{until}} 到期后回到时段计划。",
+      "remote_on_open": "远程开屏中，持续到下一个时段边界，之后回到时段计划。",
+      "remote_off_open": "远程关屏中，持续到下一个时段边界，之后回到时段计划。",
+      "wake_open": "临时亮屏中，到期后回到时段计划。"
     },
     "kv": {
       "display": "显示器",
@@ -1586,7 +1589,7 @@
       "toScreen": "→ {{id}}",
       "minutes": "{{n}} 分钟",
       "delivered": "已下发",
-      "undelivered": "屏幕离线，未送达",
+      "undelivered": "当时未送达",
       "action": {
         "refresh": "刷新",
         "switch": "切换 screen",

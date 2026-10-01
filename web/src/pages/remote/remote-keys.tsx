@@ -48,13 +48,14 @@ interface RemoteKeyFrameProps {
   desc?: string
   className?: string
   testId?: string
+  disabled?: boolean
   children: ReactNode
 }
 
 /** 带自带控件的按键外框（如 k2 的目标选择、k5 的分钟选择）：外观与 RemoteKey 一致，但本身不是按钮 */
-export function RemoteKeyFrame({ k, icon, label, desc, className, testId, children }: RemoteKeyFrameProps) {
+export function RemoteKeyFrame({ k, icon, label, desc, className, testId, disabled, children }: RemoteKeyFrameProps) {
   return (
-    <div data-testid={testId ?? `key-${k}`} className={cn(keyClass(), className)}>
+    <div data-testid={testId ?? `key-${k}`} aria-disabled={disabled || undefined} className={cn(keyClass(), disabled && 'opacity-50', className)}>
       <span className="flex items-center justify-between">
         {icon}
         <NumberTag no={k} />

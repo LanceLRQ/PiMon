@@ -6,7 +6,7 @@ import { http } from '@/api/client'
 import { isApiError } from '@/api/errors'
 import { UnsavedGuard } from '@/app/unsaved-guard'
 import { translateErrorValue } from '@/i18n/errors'
-import { useNow } from '@/lib/time'
+import { parseTime, useNow } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/lib/use-mobile'
 import { effectiveTouch } from '@/pages/screens/touch'
@@ -111,7 +111,13 @@ export function SchedulePage() {
   const dirtyCount = (planDirty ? 1 : 0) + (reduceDirty ? 1 : 0)
   const selected = draft.find((p) => p.key === selKey) ?? draft[0]
   const selIndex = selected ? draft.indexOf(selected) : -1
-  const { current, next } = useMemo(() => (localProblems.length === 0 ? currentAndNext(draft, nowMinute) : { current: null, next: null }), [draft, nowMinute, localProblems.length])
+  const { current, next: localNext } = useMemo(
+    () => (localProblems.length === 0 ? currentAndNext(draft, nowMinute, { nowMs, timeZone: tz }) : { current: null, next: null }),
+    [draft, nowMinute, nowMs, tz, localProblems.length],
+  )
+  // 计划未改动且屏幕按计划运行时，倒计时直接用后端的 next_change（权威，含夏令时）；编辑预览才用本地推算
+  const serverNext = parseTime(liveState?.reason === 'schedule' ? liveState.next_change : undefined)
+  const next = localNext && !planDirty && serverNext !== null && serverNext > nowMs ? { ...localNext, inMinutes: Math.max(1, Math.round((serverNext - nowMs) / 60_000)) } : localNext
   const usage = useMemo(() => themeUsage(draft), [draft])
 
   const themeLabel = useCallback((id: string) => (id === OFF ? t('schedule.tl.off') : id), [t])
@@ -292,6 +298,8 @@ export function SchedulePage() {
             selectedKey={selected?.key ?? null}
             onSelect={setSelKey}
             onMoveBoundary={(key, delta) => edit((ps) => moveBoundary(ps, key, delta))}
+            onDragBoundary={(origin, key, delta) => edit(() => moveBoundary(origin, key, delta))}
+            disabled={saving}
             nowMinute={nowMinute}
             nowLabel={t('schedule.tl.now', { time: formatHM(nowMinute) })}
             mobile={mobile}
@@ -377,14 +385,15 @@ export function SchedulePage() {
               <div className="flex items-center gap-4 mobile:grid mobile:grid-cols-2 mobile:gap-2">
                 <label className="flex items-center gap-2">
                   {t('schedule.edit.start')}
-                  <TimeField value={selected.start} ariaLabel={t('schedule.edit.startAria')} onInvalid={setTimeInvalid} onCommit={(m) => edit((ps) => setStart(ps, selected.key, m))} />
+                  <TimeField disabled={saving} value={selected.start} ariaLabel={t('schedule.edit.startAria')} onInvalid={setTimeInvalid} onCommit={(m) => edit((ps) => setStart(ps, selected.key, m))} />
                 </label>
                 <label className="flex items-center gap-2">
                   {t('schedule.edit.end')}
-                  <TimeField value={selected.end} ariaLabel={t('schedule.edit.endAria')} onInvalid={setTimeInvalid} onCommit={(m) => edit((ps) => setEnd(ps, selected.key, m))} />
+                  <TimeField disabled={saving} value={selected.end} ariaLabel={t('schedule.edit.endAria')} onInvalid={setTimeInvalid} onCommit={(m) => edit((ps) => setEnd(ps, selected.key, m))} />
                 </label>
               </div>
               <Segmented
+                disabled={saving}
                 ariaLabel={t('schedule.edit.kind')}
                 value={selOff ? 'off' : 'theme'}
                 onChange={(v) => edit((ps) => setTheme(ps, selected.key, v === 'off' ? OFF : selOff ? THEME_ORDER[0] : selected.theme))}
@@ -417,7 +426,7 @@ export function SchedulePage() {
                   key={th.id}
                   type="button"
                   aria-pressed={on}
-                  disabled={selOff || !selected}
+                  disabled={selOff || !selected || saving}
                   aria-label={t('schedule.themes.card', { name: th.name[i18n.language === 'en' ? 'en' : 'zh'], id: th.id })}
                   onClick={() => selected && edit((ps) => setTheme(ps, selected.key, th.id))}
                   className={cn(
@@ -451,7 +460,7 @@ export function SchedulePage() {
                 <b className="font-medium">{t('schedule.reduce.title')}</b>
                 <div className="mt-1 text-[12px] leading-[1.55] text-muted-foreground">{t('schedule.reduce.help')}</div>
               </div>
-              <Switch checked={reduceDraft} onChange={(v) => !savingRef.current && setReduceDraft(v)} ariaLabel={t('schedule.reduce.title')} className="mt-0.5" />
+              <Switch checked={reduceDraft} onChange={(v) => !savingRef.current && setReduceDraft(v)} disabled={saving} ariaLabel={t('schedule.reduce.title')} className="mt-0.5" />
             </div>
           </Section>
           <Section no="02.5" title={t('schedule.wake.title')} meta={t('schedule.wake.meta')}>

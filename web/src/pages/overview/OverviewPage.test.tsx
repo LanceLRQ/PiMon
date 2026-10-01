@@ -247,7 +247,7 @@ describe('总览页', () => {
       for (const b of within(card).getAllByRole('button')) expect(b).toBeDisabled()
     })
 
-    it('k1 刷新、k2 切到下一个 screen、k4 临时亮屏各发一次控制请求', async () => {
+    it('k1 刷新、k2 切到下一个 screen、k5 临时亮屏各发一次控制请求，编号与远程操作页一致', async () => {
       const api = mockApi((req) => {
         if (req.url === '/api/screen/status') return json(200, statusOf())
         if (req.url === '/api/screen/control') return json(200, { op: { id: 1, action: 'x', params: {}, client_ip: '', delivered: true, at: '2026-10-01T00:00:00Z' }, state: statusOf().state })
@@ -257,6 +257,12 @@ describe('总览页', () => {
       const user = userEvent.setup()
       await renderWithApp(<OverviewPage />)
       await within(cell('屏幕')).findByText('显示器在线')
+      const card = within(cell('屏幕'))
+      expect(card.getByTestId('key-k1')).toHaveTextContent('刷新')
+      expect(card.getByTestId('key-k2')).toHaveTextContent('切换 screen')
+      expect(card.getByTestId('key-k4')).toHaveTextContent('关屏')
+      expect(card.queryByTestId('key-k3')).toBeNull()
+      expect(card.getByTestId('key-k5')).toHaveTextContent('临时亮屏')
       await user.click(key(/刷新/))
       await user.click(key(/切换 screen/))
       await user.click(key(/临时亮屏/))
@@ -265,7 +271,7 @@ describe('总览页', () => {
       expect(await screen.findByText('已发送：临时亮屏')).toBeInTheDocument()
     })
 
-    it('k3：亮屏时是关屏，关屏中变成开屏', async () => {
+    it('亮屏时显示 k4 关屏，关屏中变成 k3 开屏', async () => {
       const api = mockApi((req) => {
         if (req.url === '/api/screen/status') return json(200, statusOf({ state: { mode: 'off', theme_id: 'ambient', reason: 'remote_off' } }))
         if (req.url === '/api/screen/control') return json(200, { op: { id: 1, action: 'on', params: {}, client_ip: '', delivered: true, at: '2026-10-01T00:00:00Z' }, state: statusOf().state })
@@ -276,6 +282,8 @@ describe('总览页', () => {
       await renderWithApp(<OverviewPage />)
       await within(cell('屏幕')).findByText('显示器在线')
       expect(within(cell('屏幕')).getByText('屏幕已关闭')).toBeInTheDocument()
+      expect(within(cell('屏幕')).getByTestId('key-k3')).toHaveTextContent('开屏')
+      expect(within(cell('屏幕')).queryByTestId('key-k4')).toBeNull()
       await user.click(key(/开屏/))
       expect(api.calls.find((c) => c.method === 'POST' && c.url === '/api/screen/control')?.body).toEqual({ action: 'on' })
     })

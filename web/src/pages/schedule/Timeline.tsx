@@ -10,8 +10,12 @@ interface Props {
   periods: readonly DraftPeriod[]
   selectedKey: string | null
   onSelect: (key: string) => void
-  /** 把某段起点的边界移动 delta 分钟 */
+  /** 把某段起点的边界移动 delta 分钟（键盘，相对当前草稿） */
   onMoveBoundary: (key: string, delta: number) => void
+  /** 拖动边界：delta 相对按下指针时的计划（origin），避免边界越过午夜取模后累计误差 */
+  onDragBoundary: (origin: readonly DraftPeriod[], key: string, delta: number) => void
+  /** 保存中等场景下禁用全部交互 */
+  disabled?: boolean
   nowMinute: number
   nowLabel: string
   mobile: boolean
@@ -21,10 +25,10 @@ const STEP = 5
 const BIG_STEP = 60
 
 /** 24 小时时间轴：色段点击选中，段与段之间的边界可拖动或用方向键移动；「现在」指针由设置时区算出 */
-export function Timeline({ periods, selectedKey, onSelect, onMoveBoundary, nowMinute, nowLabel, mobile }: Props) {
+export function Timeline({ periods, selectedKey, onSelect, onMoveBoundary, onDragBoundary, disabled, nowMinute, nowLabel, mobile }: Props) {
   const { t } = useTranslation()
   const trackRef = useRef<HTMLDivElement>(null)
-  const dragRef = useRef<{ key: string; start: number } | null>(null)
+  const dragRef = useRef<{ key: string; start: number; origin: readonly DraftPeriod[] } | null>(null)
 
   const themeName = (id: string) => (id === OFF ? t('schedule.tl.off') : id)
 
@@ -48,16 +52,16 @@ export function Timeline({ periods, selectedKey, onSelect, onMoveBoundary, nowMi
   }
   const onPointerDown = (e: PointerEvent<HTMLButtonElement>, p: DraftPeriod) => {
     e.currentTarget.setPointerCapture?.(e.pointerId)
-    dragRef.current = { key: p.key, start: p.start }
+    dragRef.current = { key: p.key, start: p.start, origin: periods }
   }
   const onPointerMove = (e: PointerEvent<HTMLButtonElement>) => {
     const d = dragRef.current
     if (!d) return
     const m = minuteAt(e.clientX)
-    const cur = periods.find((x) => x.key === d.key)
-    if (m === null || !cur) return
-    const delta = m - cur.start
-    if (delta !== 0) onMoveBoundary(d.key, delta)
+    if (m === null) return
+    // 增量始终相对按下时的位置与计划，由 moveBoundary 夹在相邻两段各至少 1 分钟之内
+    const delta = m - d.start
+    onDragBoundary(d.origin, d.key, delta)
   }
   const endDrag = () => {
     dragRef.current = null
@@ -85,6 +89,7 @@ export function Timeline({ periods, selectedKey, onSelect, onMoveBoundary, nowMi
               data-theme={themed ? p.theme : undefined}
               aria-label={t('schedule.tl.seg', { from: formatHM(p.start), to: formatHM(p.end), theme: name })}
               aria-pressed={selected}
+              disabled={disabled}
               onClick={() => onSelect(p.key)}
               style={style}
               className={cn(
@@ -119,6 +124,7 @@ export function Timeline({ periods, selectedKey, onSelect, onMoveBoundary, nowMi
               aria-valuemax={DAY - 1}
               aria-valuenow={p.start}
               aria-valuetext={formatHM(p.start)}
+              disabled={disabled}
               onKeyDown={(e) => onKey(e, p.key)}
               onPointerDown={(e) => onPointerDown(e, p)}
               onPointerMove={onPointerMove}
