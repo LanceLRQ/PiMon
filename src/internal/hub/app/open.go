@@ -205,6 +205,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		a.screenState.Refresh()
 	})
 	a.handler = api.New(api.Deps{
+		DataDir:     a.cfg.DataDir,
 		Plugins:     a.plugins,
 		Instances:   a.instances,
 		History:     a.history,

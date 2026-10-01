@@ -120,6 +120,7 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 			Clock: clk, Version: "v-test", DataDir: dir, Plugins: reg, Ring: ring,
 			ProcWriteBytes: func() (int64, bool) { return 0, false },
 		}),
+		DataDir:      dir,
 		Plugins:      reg,
 		Instances:    inst,
 		History:      hist,

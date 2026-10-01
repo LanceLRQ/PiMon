@@ -42,6 +42,8 @@ type Deps struct {
 	Screens      *screens.Service
 	ScreenState  *screenstate.Service
 	System       *system.Service
+	// DataDir 是数据目录，品牌标识从其 logos 子目录读取；为空时标识接口一律 404。
+	DataDir string
 	// Web 是前端 SPA 处理器，挂在 "/" 兜底；为 nil 时不提供前端（测试用）。
 	Web http.Handler
 	// WS 是 UI WebSocket 的握手处理器，挂在 GET /ws；为 nil 时不提供（测试用）。
@@ -76,6 +78,7 @@ func New(d Deps) http.Handler {
 	s.registerInstances(mux)
 	s.registerHistory(mux)
 	s.registerSystem(mux)
+	s.registerLogos(mux)
 	if d.WS != nil {
 		mux.Handle("GET /ws", d.WS)
 	}
