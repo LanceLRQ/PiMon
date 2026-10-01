@@ -1181,7 +1181,8 @@
       "drag": "move",
       "move": "nudge by cell",
       "delete": "delete",
-      "esc": "deselect"
+      "esc": "deselect",
+      "undo": "undo"
     },
     "reject": {
       "overlap": "No room: overlaps another widget",
@@ -1238,6 +1239,100 @@
       "warning": "Warning threshold",
       "critical": "Critical threshold",
       "remove": "Delete widget"
+    },
+    "saved": "Saved as v{{version}} and pushed to the display",
+    "saveInvalid": "The layout failed validation ({{n}} problem(s)); check overlaps, bounds and sizes",
+    "undo": {
+      "label": "Undo",
+      "title": "Undo the latest change (⌘Z)",
+      "conflict": "Cannot undo: restoring it would overlap the current draft. The conflicting widgets are highlighted on the canvas; resolve them first.",
+      "outOfBounds": "Cannot undo: restoring it would fall outside the grid. Undo the grid change first."
+    },
+    "bar": {
+      "history": "History",
+      "discard": "Discard",
+      "save": "Save and push",
+      "saving": "Saving…"
+    },
+    "chg": {
+      "title": "Unsaved changes",
+      "dirty": "{{n}} unsaved",
+      "clean": "Same as v{{version}}",
+      "meta": "Based on v{{base}} · saving creates v{{next}} and pushes it to the display",
+      "none": "No unsaved changes",
+      "undoOne": "Undo",
+      "kind": {
+        "grid": "Grid",
+        "add": "Added",
+        "remove": "Removed",
+        "move": "Moved",
+        "resize": "Size",
+        "config": "Settings"
+      }
+    },
+    "discardDlg": {
+      "title": "Discard all unsaved changes?",
+      "body": "The draft returns to v{{version}}; {{n}} change(s) will be lost.",
+      "cancel": "Keep editing",
+      "confirm": "Discard changes"
+    },
+    "leave": {
+      "title": "Leave the layout editor?",
+      "body": "You have unsaved layout changes; they will be lost if you leave.",
+      "stay": "Stay on this page",
+      "leave": "Discard changes and leave"
+    },
+    "conflict": {
+      "title": "The layout was updated by someone else",
+      "body": "You edited from v{{base}}, but the server is now at v{{latest}}.",
+      "overwriteHint": "Keeping mine overwrites their changes with your draft; their version stays in the history and can be rolled back to at any time.",
+      "view": "View their changes",
+      "overwrite": "Keep mine and resubmit on the latest version",
+      "close": "Later",
+      "theirsTitle": "Their changes (v{{base}} → v{{latest}})",
+      "theirsNone": "No differences to list against your base",
+      "again": "The latest version changed again (v{{latest}}); review their changes again before resubmitting"
+    },
+    "history": {
+      "title": "Version history",
+      "sub": "Last {{n}} versions",
+      "current": "Current",
+      "preview": "Preview",
+      "rollback": "Roll back to this version",
+      "back": "Back to list",
+      "empty": "No versions yet",
+      "source": {
+        "seed": "Initial layout",
+        "edit": "Manual edit",
+        "rollback": "Rollback",
+        "auto": "Auto adjusted"
+      },
+      "summary": "Added {{a}} · Removed {{r}} · Changed {{c}}",
+      "gridChanged": "Grid changed",
+      "rolledFrom": "Rolled back from v{{v}}",
+      "brokenTag": "Has broken references",
+      "brokenTitle": "This version has widgets with broken references",
+      "diffTitle": "Differences from current v{{v}}",
+      "noDiff": "Same as the current version",
+      "confirmTitle": "Roll back to v{{v}}?",
+      "confirmGo": "Roll back to v{{v}}",
+      "confirmBody": "This creates a new version v{{next}} with the content of v{{v}}; intermediate versions are not deleted.",
+      "confirmDirty": "You have {{n}} unsaved change(s); they will be lost after the rollback.",
+      "confirmBroken": "{{n}} widget(s) in this version have broken references and will show as placeholders after the rollback:",
+      "done": "Rolled back, created v{{version}}"
+    },
+    "broken": {
+      "instance_missing": "The bound instance no longer exists",
+      "instance_plugin_mismatch": "The instance does not belong to the widget's plugin",
+      "plugin_missing": "The plugin is unavailable",
+      "widget_missing": "The plugin no longer provides this widget",
+      "size_unsupported": "The plugin no longer provides this size"
     }
+  },
+  "outOfBounds": {
+    "title": "Shrinking to {{cols}}×{{rows}} puts {{n}} widget(s) out of bounds",
+    "body": "The widgets below do not fit the new grid; continuing removes them from the layout.",
+    "cancel": "Keep current grid",
+    "confirm": "Remove {{n}} and shrink"
   }
 }

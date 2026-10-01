@@ -1,5 +1,6 @@
 import type { Grid, Layout, LayoutScreen, LayoutWidget, WidgetSize } from '@/types/generated'
 import { evaluatePlacement, outOfBoundsWidgets, sizeAllowed, type GridWidgetRect } from './grid-ops'
+import { diffLayouts, undoChange, type Change } from './changes'
 import { applyOptionsPatch, type OptionsPatch } from './options'
 
 // 编辑器状态：保留服务端基线（base + baseVersion）与当前草稿（draft），
@@ -12,6 +13,8 @@ export interface Rejection {
   reason: RejectReason
   widgetId?: string
   conflicts: string[]
+  /** 单条撤销被拒绝时为 true，提示文案不同 */
+  undo?: boolean
 }
 
 export interface EditorState {
@@ -21,6 +24,8 @@ export interface EditorState {
   screenId: string
   selectedId: string | null
   rejection: Rejection | null
+  /** 改动清单键，按最近一次被改动的先后排列；末尾是最近一条 */
+  order: string[]
 }
 
 export type EditorAction =
@@ -34,12 +39,15 @@ export type EditorAction =
   | { type: 'remove'; id: string }
   | { type: 'setOptions'; id: string; patch: OptionsPatch }
   | { type: 'setBinding'; id: string; binding: LayoutWidget['binding'] }
-  | { type: 'setGrid'; grid: Grid }
+  | { type: 'setGrid'; grid: Grid; removeOutOfBounds?: boolean }
+  | { type: 'undoChange'; key: string }
+  | { type: 'undoLast' }
+  | { type: 'discard' }
 
 const emptyLayout: Layout = { grid: { cols: 1, rows: 1 }, screens: [] }
 
 export function initialEditorState(): EditorState {
-  return { baseVersion: 0, base: emptyLayout, draft: emptyLayout, screenId: 'index', selectedId: null, rejection: null }
+  return { baseVersion: 0, base: emptyLayout, draft: emptyLayout, screenId: 'index', selectedId: null, rejection: null, order: [] }
 }
 
 export function toRect(w: LayoutWidget): GridWidgetRect {
@@ -63,13 +71,13 @@ function reject(state: EditorState, r: Rejection): EditorState {
   return { ...state, rejection: r }
 }
 
-export function editorReducer(state: EditorState, action: EditorAction): EditorState {
+function innerReducer(state: EditorState, action: EditorAction): EditorState {
   const screen = currentScreen(state)
   const widgets = screen?.widgets ?? []
   switch (action.type) {
     case 'load': {
       const keep = action.layout.screens.some((s) => s.id === state.screenId) ? state.screenId : (action.layout.screens[0]?.id ?? 'index')
-      return { baseVersion: action.version, base: action.layout, draft: action.layout, screenId: keep, selectedId: null, rejection: null }
+      return { baseVersion: action.version, base: action.layout, draft: action.layout, screenId: keep, selectedId: null, rejection: null, order: [] }
     }
     case 'selectScreen':
       return state.screenId === action.id ? state : { ...state, screenId: action.id, selectedId: null, rejection: null }
@@ -118,12 +126,67 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (!widgets.some((w) => w.id === action.id)) return state
       return { ...state, draft: mapWidget(state, action.id, (w) => ({ ...w, binding: action.binding })) }
     case 'setGrid': {
-      // 缩小到有小组件越界时拒绝（越界处理对话框在保存流程里）；越界列表由 gridShrinkConflicts 单独提供
+      // 缩小到有小组件越界时拒绝；用户在越界对话框里确认后带 removeOutOfBounds 再来，连同越界的小组件一起移除
       const oob = gridShrinkConflicts(state.draft, action.grid)
-      if (oob.length) return reject(state, { reason: 'out_of_bounds', conflicts: oob.map((o) => o.widgetId) })
-      return { ...state, draft: { ...state.draft, grid: action.grid }, rejection: null }
+      if (oob.length && !action.removeOutOfBounds) return reject(state, { reason: 'out_of_bounds', conflicts: oob.map((o) => o.widgetId) })
+      const gone = new Set(oob.map((o) => o.widgetId))
+      const screens = gone.size ? state.draft.screens.map((s) => ({ ...s, widgets: s.widgets.filter((w) => !gone.has(w.id)) })) : state.draft.screens
+      return {
+        ...state,
+        draft: { ...state.draft, grid: action.grid, screens },
+        selectedId: state.selectedId && gone.has(state.selectedId) ? null : state.selectedId,
+        rejection: null,
+      }
+    }
+    case 'undoChange':
+      return applyUndo(state, diffLayouts(state.base, state.draft).find((c) => c.key === action.key))
+    case 'undoLast':
+      return applyUndo(state, changeList(state).at(-1))
+    case 'discard':
+      return { ...state, draft: state.base, selectedId: null, rejection: null, order: [] }
+  }
+}
+
+function applyUndo(state: EditorState, change: Change | undefined): EditorState {
+  if (!change) return state
+  const r = undoChange(state.base, state.draft, change)
+  if (!r.ok) {
+    return {
+      ...state,
+      screenId: r.screenId ?? change.screenId ?? state.screenId,
+      selectedId: null,
+      rejection: { reason: r.reason, widgetId: change.widgetId, conflicts: r.conflicts, undo: true },
     }
   }
+  const stillThere = change.widgetId && r.draft.screens.some((s) => s.widgets.some((w) => w.id === change.widgetId))
+  return {
+    ...state,
+    draft: r.draft,
+    screenId: change.screenId && r.draft.screens.some((s) => s.id === change.screenId) ? change.screenId : state.screenId,
+    selectedId: stillThere ? change.widgetId! : null,
+    rejection: null,
+  }
+}
+
+/** 未保存的改动，按最近被改动的先后排列（末尾是最近一条） */
+export function changeList(state: EditorState): Change[] {
+  const rank = new Map(state.order.map((k, i) => [k, i]))
+  return diffLayouts(state.base, state.draft).sort((a, b) => (rank.get(a.key) ?? -1) - (rank.get(b.key) ?? -1))
+}
+
+// 记录每条改动最近被动过的先后：草稿变了，就把签名发生变化（含新出现）的项挪到末尾
+function touch(prev: EditorState, next: EditorState): string[] {
+  const before = new Map(diffLayouts(next.base, prev.draft).map((c) => [c.key, c.sig]))
+  const now = diffLayouts(next.base, next.draft)
+  const touched = now.filter((c) => before.get(c.key) !== c.sig).map((c) => c.key)
+  const alive = new Set(now.map((c) => c.key))
+  return [...prev.order.filter((k) => alive.has(k) && !touched.includes(k)), ...touched]
+}
+
+export function editorReducer(state: EditorState, action: EditorAction): EditorState {
+  const next = innerReducer(state, action)
+  if (next.draft === state.draft || next.base !== state.base) return next
+  return { ...next, order: touch(state, next) }
 }
 
 export interface ShrinkConflict {

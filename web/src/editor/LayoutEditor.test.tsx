@@ -4,7 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { apiError, defaultPlugins, json, mockApi, renderWithApp, seedStore, type ApiHandler } from '@/pages/instances/test-utils'
 import { makeInstance } from '@/pages/instances/instances.fixtures'
 import { liveStore } from '@/store/live-store'
-import type { Layout, LayoutState, LayoutWidget, PluginInfo, ScreenStatus, WidgetCatalog } from '@/types/generated'
+import type { Layout, LayoutState, LayoutVersionInfo, LayoutWidget, PluginInfo, ScreenStatus, WidgetCatalog } from '@/types/generated'
 import { LayoutEditor } from './LayoutEditor'
 
 // jsdom 没有 DragEvent：补一个继承 MouseEvent 的，让 dragover/drop 带上坐标
@@ -294,14 +294,26 @@ describe('布局编辑器', () => {
   })
 
   describe('网格', () => {
-    it('缩小到会让小组件越界的网格时被拒绝并提示数量，网格保持不变', async () => {
+    it('缩小到会让小组件越界的网格时弹越界对话框；取消保持原网格，确认则移除越界者并缩小', async () => {
       const user = userEvent.setup()
       await mount()
       const sel = screen.getByRole('combobox', { name: '网格' })
       expect(within(sel).getByRole('option', { name: /6×4 · 1 个越界/ })).toBeInTheDocument()
       await user.selectOptions(sel, '6x4')
-      expect(await screen.findByText(/缩小到这个网格会让 1 个小组件越界/)).toBeInTheDocument()
+      const dlg = await screen.findByRole('dialog')
+      expect(dlg).toHaveTextContent('缩小到 6×4 会让 1 个小组件越界')
+      expect(within(dlg).getByTestId('oob-list')).toHaveTextContent('index 首页')
+      expect(within(dlg).getByTestId('oob-list')).toHaveTextContent('c8 r5 · 1×1')
+      await user.click(within(dlg).getByRole('button', { name: '保持现有网格' }))
       expect(sel).toHaveValue('8x5')
+      expect(widgetEl('far')).toBeInTheDocument()
+      expect(screen.getByTestId('dirty-chip')).toHaveAttribute('data-dirty', 'false')
+
+      await user.selectOptions(sel, '6x4')
+      await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /移除 1 个并缩小/ }))
+      expect(sel).toHaveValue('6x4')
+      expect(screen.queryByTestId('editor-widget-far')).toBeNull()
+      expect(within(screen.getByTestId('changes-panel')).getAllByRole('listitem')).toHaveLength(2)
     })
 
     it('放大网格直接生效，标尺随之增加', async () => {
@@ -413,5 +425,219 @@ describe('布局编辑器', () => {
     expect(screen.getByText('请用电脑编辑布局')).toBeInTheDocument()
     expect(screen.queryByTestId('layout-editor')).toBeNull()
     expect(screen.queryByTestId('editor-canvas-area')).toBeNull()
+  })
+})
+
+describe('未保存改动、保存与版本历史', () => {
+  const changeRows = () => within(screen.getByTestId('changes-panel')).queryAllByRole('listitem')
+  const moveB = (key: string) => fireEvent.keyDown(document.body, { key })
+
+  it('焦点在检查器按钮上时 Delete、Backspace 与方向键不作用于选中的小组件', async () => {
+    const user = userEvent.setup()
+    await mount()
+    await user.click(widgetEl('b'))
+    const right = screen.getByRole('button', { name: '右移' })
+    right.focus()
+    for (const key of ['Delete', 'Backspace', 'ArrowRight']) fireEvent.keyDown(right, { key })
+    expect(widgetEl('b')).toBeInTheDocument()
+    expect(label('b')).toContain('第 4 列第 1 行')
+    expect(screen.getByTestId('dirty-chip')).toHaveAttribute('data-dirty', 'false')
+  })
+
+  it('改动进入清单；单条撤销让画布位置真正回退，清单撤空后显示已与 v3 一致', async () => {
+    const user = userEvent.setup()
+    await mount()
+    expect(screen.getByTestId('dirty-chip')).toHaveTextContent('已与 v3 一致')
+    await user.click(widgetEl('b'))
+    moveB('ArrowRight')
+    moveB('ArrowDown')
+    expect(label('b')).toContain('第 5 列第 2 行')
+    expect(screen.getByTestId('dirty-chip')).toHaveTextContent('未保存 1 处')
+    expect(changeRows()).toHaveLength(1)
+    expect(changeRows()[0]).toHaveTextContent('移动')
+    await user.click(within(changeRows()[0]).getByRole('button', { name: '撤销此条' }))
+    expect(label('b')).toContain('第 4 列第 1 行')
+    expect(changeRows()).toHaveLength(0)
+    expect(screen.getByTestId('dirty-chip')).toHaveTextContent('已与 v3 一致')
+    expect(screen.getByTestId('changes-panel')).toHaveTextContent('没有未保存的改动')
+  })
+
+  it('顶栏撤销只撤最近一条', async () => {
+    const user = userEvent.setup()
+    await mount()
+    await user.click(widgetEl('b'))
+    moveB('ArrowRight')
+    await user.click(widgetEl('a'))
+    moveB('ArrowRight')
+    expect(changeRows()).toHaveLength(2)
+    await user.click(screen.getByRole('button', { name: /撤销$/ }))
+    expect(label('a')).toContain('第 1 列第 1 行')
+    expect(label('b')).toContain('第 5 列第 1 行')
+    expect(changeRows()).toHaveLength(1)
+  })
+
+  it('单条撤销移动被新增的小组件占位时：拒绝、高亮冲突块、位置不变、有说明', async () => {
+    const user = userEvent.setup()
+    await mount()
+    await user.click(widgetEl('a'))
+    moveB('ArrowRight')
+    await user.click(screen.getByRole('button', { name: '添加「CPU」到画布' }))
+    const moveRow = changeRows().find((r) => r.textContent?.includes('移动'))!
+    await user.click(within(moveRow).getByRole('button', { name: '撤销此条' }))
+    expect(await screen.findByText(/无法撤销：恢复后会与当前草稿重叠/)).toBeInTheDocument()
+    expect(label('a')).toContain('第 2 列第 1 行')
+    expect(document.querySelectorAll('[data-conflict="true"]')).toHaveLength(1)
+    expect(changeRows()).toHaveLength(2)
+  })
+
+  it('放弃：确认后草稿回到基线', async () => {
+    const user = userEvent.setup()
+    await mount()
+    await user.click(widgetEl('b'))
+    moveB('ArrowRight')
+    await user.click(screen.getByRole('button', { name: '放弃' }))
+    expect(await screen.findByRole('dialog')).toHaveTextContent('草稿会恢复为 v3，1 处改动将丢失')
+    await user.click(screen.getByRole('button', { name: '放弃改动' }))
+    expect(label('b')).toContain('第 4 列第 1 行')
+    expect(screen.getByTestId('dirty-chip')).toHaveAttribute('data-dirty', 'false')
+  })
+
+  it('有未保存改动时关闭标签页会触发浏览器确认；无改动时不会', async () => {
+    const user = userEvent.setup()
+    await mount()
+    const fire = () => {
+      const e = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(e)
+      return e.defaultPrevented
+    }
+    expect(fire()).toBe(false)
+    await user.click(widgetEl('b'))
+    moveB('ArrowRight')
+    expect(fire()).toBe(true)
+  })
+
+  describe('保存', () => {
+    const saved = (version: number, l: Layout = layout()): LayoutState => ({ version, source: 'edit', created_at: '2026-10-01T00:00:00Z', layout: l, broken: [] })
+
+    it('保存带 base_version 与整份草稿，成功后基线更新、清单清空', async () => {
+      const user = userEvent.setup()
+      const api = await mount((req) => (req.method === 'PUT' && req.url === '/api/screens' ? json(200, saved(4, (req.body as { layout: Layout }).layout)) : undefined))
+      expect(screen.getByRole('button', { name: '保存并推送' })).toBeDisabled()
+      await user.click(widgetEl('b'))
+      moveB('ArrowRight')
+      await user.click(screen.getByRole('button', { name: '保存并推送' }))
+      await waitFor(() => expect(screen.getByTestId('base-version')).toHaveTextContent('基于 v4'))
+      const put = api.calls.find((c) => c.method === 'PUT')!
+      expect(put.body).toMatchObject({ base_version: 3 })
+      const b = (put.body as { layout: Layout }).layout.screens[0].widgets.find((w) => w.id === 'b')
+      expect(b).toMatchObject({ col: 4, row: 0 })
+      expect(screen.getByTestId('dirty-chip')).toHaveTextContent('已与 v4 一致')
+      expect(label('b')).toContain('第 5 列第 1 行')
+    })
+
+    it('版本冲突：提示并可查看对方改动，再以我的为准基于最新版本重新提交', async () => {
+      const user = userEvent.setup()
+      const theirs = layout()
+      theirs.screens[0].widgets = theirs.screens[0].widgets.map((w) => (w.id === 'a' ? { ...w, col: 5 } : w))
+      let puts = 0
+      const api = await mount((req) => {
+        if (req.method === 'PUT') {
+          puts++
+          return puts === 1 ? apiError(409, 'layout.conflict', { latest_version: 5 }) : json(200, saved(6, (req.body as { layout: Layout }).layout))
+        }
+        if (req.method === 'GET' && req.url === '/api/screens' && puts > 0) return json(200, saved(5, theirs))
+        return undefined
+      })
+      await user.click(widgetEl('b'))
+      moveB('ArrowRight')
+      await user.click(screen.getByRole('button', { name: '保存并推送' }))
+      const dlg = await screen.findByRole('dialog')
+      expect(dlg).toHaveTextContent('服务端当前已是 v5')
+      await user.click(within(dlg).getByRole('button', { name: '查看对方改动' }))
+      const list = await within(dlg).findByTestId('conflict-theirs')
+      expect(list).toHaveTextContent('移动')
+      expect(list).toHaveTextContent('c1 r1')
+      expect(list).toHaveTextContent('c6 r1')
+      await user.click(within(dlg).getByRole('button', { name: '以我的为准，基于最新版本重新提交' }))
+      await waitFor(() => expect(screen.getByTestId('base-version')).toHaveTextContent('基于 v6'))
+      const puts2 = api.calls.filter((c) => c.method === 'PUT')
+      expect(puts2[1].body).toMatchObject({ base_version: 5 })
+      const a = (puts2[1].body as { layout: Layout }).layout.screens[0].widgets.find((w) => w.id === 'a')
+      expect(a).toMatchObject({ col: 0 })
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+
+    it('布局校验失败：toast 提示问题数，草稿保留', async () => {
+      const user = userEvent.setup()
+      await mount((req) => (req.method === 'PUT' ? apiError(400, 'layout.invalid', { problems: [{ code: 'overlap' }, { code: 'overlap' }] }) : undefined))
+      await user.click(widgetEl('b'))
+      moveB('ArrowRight')
+      await user.click(screen.getByRole('button', { name: '保存并推送' }))
+      expect(await screen.findByText(/布局未通过校验（2 处问题）/)).toBeInTheDocument()
+      expect(screen.getByTestId('dirty-chip')).toHaveAttribute('data-dirty', 'true')
+    })
+  })
+
+  describe('版本历史', () => {
+    const info = (version: number, over: Partial<LayoutVersionInfo> = {}): LayoutVersionInfo => ({
+      version, source: 'edit', created_at: '2026-10-01T08:00:00Z',
+      summary: { changed_screens: ['index'], widgets_added: 1, widgets_removed: 0, widgets_changed: 0, grid_changed: false }, has_broken: false, ...over,
+    })
+    const versions = [info(3), info(2, { has_broken: true }), info(1, { source: 'seed' })]
+    const old = (): LayoutState => {
+      const l = layout()
+      l.screens[0].widgets = l.screens[0].widgets.filter((w) => w.id !== 'far')
+      return { version: 2, source: 'edit', created_at: '2026-09-30T00:00:00Z', layout: l, broken: [{ screen: 'index', widget: 'b', code: 'instance_missing' }] }
+    }
+    const histHandler = (req: { method: string; url: string }) => {
+      if (req.url === '/api/screens/versions') return json(200, versions)
+      if (req.url === '/api/screens/versions/2') return json(200, old())
+      if (req.method === 'POST' && req.url === '/api/screens/rollback') return json(200, { ...old(), version: 4, source: 'rollback' })
+      return undefined
+    }
+
+    it('抽屉列出版本，标出当前与含失效引用的版本；预览显示缩略图、差异与失效提示', async () => {
+      const user = userEvent.setup()
+      await mount(histHandler)
+      await user.click(screen.getByRole('button', { name: '版本历史' }))
+      const list = await screen.findByTestId('history-list')
+      expect(within(list).getAllByRole('listitem')).toHaveLength(3)
+      expect(within(list).getByText('当前')).toBeInTheDocument()
+      expect(list.querySelector('[data-version="2"]')).toHaveTextContent('含失效引用')
+      await user.click(within(list.querySelector('[data-version="2"]') as HTMLElement).getByRole('button', { name: '预览' }))
+      expect(await screen.findByTestId('mini-map')).toBeInTheDocument()
+      expect(screen.getByTestId('history-broken')).toHaveTextContent('绑定的实例已不存在')
+      expect(screen.getByTestId('history-diff')).toHaveTextContent('删除')
+    })
+
+    it('回滚前提示失效引用，确认后调用接口并把基线换成新版本', async () => {
+      const user = userEvent.setup()
+      const api = await mount(histHandler)
+      await user.click(screen.getByRole('button', { name: '版本历史' }))
+      const list = await screen.findByTestId('history-list')
+      await user.click(within(list.querySelector('[data-version="2"]') as HTMLElement).getByRole('button', { name: '预览' }))
+      await screen.findByTestId('mini-map')
+      await user.click(screen.getByRole('button', { name: '回滚到此版本' }))
+      const confirm = (await screen.findAllByRole('dialog')).find((d) => d.textContent?.includes('回滚到 v2？'))!
+      expect(within(confirm).getByTestId('rollback-broken')).toHaveTextContent('绑定的实例已不存在')
+      expect(confirm).toHaveTextContent('会生成新版本 v4')
+      await user.click(within(confirm).getByRole('button', { name: '回滚到 v2' }))
+      await waitFor(() => expect(screen.getByTestId('base-version')).toHaveTextContent('基于 v4'))
+      expect(api.calls.find((c) => c.method === 'POST')?.body).toEqual({ version: 2 })
+      expect(screen.queryByTestId('editor-widget-far')).toBeNull()
+    })
+
+    it('当前版本不能回滚；有未保存改动时确认框提示会丢失', async () => {
+      const user = userEvent.setup()
+      await mount(histHandler)
+      await user.click(widgetEl('b'))
+      moveB('ArrowRight')
+      await user.click(screen.getByRole('button', { name: '版本历史' }))
+      const list = await screen.findByTestId('history-list')
+      await user.click(within(list.querySelector('[data-version="2"]') as HTMLElement).getByRole('button', { name: '预览' }))
+      await screen.findByTestId('mini-map')
+      await user.click(screen.getByRole('button', { name: '回滚到此版本' }))
+      expect(await screen.findByText(/你有 1 处未保存的改动，回滚后会丢失/)).toBeInTheDocument()
+    })
   })
 })

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Layout, LayoutWidget } from '@/types/generated'
-import { editorReducer, gridShrinkConflicts, initialEditorState, currentScreen, type EditorState } from './state'
+import { changeList, editorReducer, gridShrinkConflicts, initialEditorState, currentScreen, type EditorState } from './state'
 
 const widget = (id: string, col: number, row: number, cols = 1, rows = 1, over: Partial<LayoutWidget> = {}): LayoutWidget => ({
   id, source: 'generic', template: 'value', size: { cols, rows }, col, row, binding: {}, options: {}, ...over,
@@ -81,5 +81,69 @@ describe('编辑器状态', () => {
     expect(rej.rejection).toEqual({ reason: 'out_of_bounds', conflicts: ['far'] })
     const ok = editorReducer(load(layoutOf([widget('a', 0, 0)])), { type: 'setGrid', grid: { cols: 4, rows: 3 } })
     expect(ok.draft.grid).toEqual({ cols: 4, rows: 3 })
+  })
+})
+
+describe('改动清单与撤销', () => {
+  it('清单按最近被改动的先后排列，再次改动同一项会挪到末尾', () => {
+    let s = load(layoutOf([widget('a', 0, 0), widget('b', 3, 0)]))
+    s = editorReducer(s, { type: 'move', id: 'a', col: 1, row: 1 })
+    s = editorReducer(s, { type: 'move', id: 'b', col: 4, row: 1 })
+    expect(changeList(s).map((c) => c.key)).toEqual(['move:a', 'move:b'])
+    s = editorReducer(s, { type: 'move', id: 'a', col: 2, row: 1 })
+    expect(changeList(s).map((c) => c.key)).toEqual(['move:b', 'move:a'])
+  })
+
+  it('顶栏撤销撤销最近一条，画布位置真正回退；撤空后与基线一致', () => {
+    let s = load(layoutOf([widget('a', 0, 0), widget('b', 3, 0)]))
+    s = editorReducer(s, { type: 'move', id: 'a', col: 1, row: 1 })
+    s = editorReducer(s, { type: 'move', id: 'b', col: 4, row: 1 })
+    s = editorReducer(s, { type: 'undoLast' })
+    expect(ws(s).find((w) => w.id === 'b')).toMatchObject({ col: 3, row: 0 })
+    expect(ws(s).find((w) => w.id === 'a')).toMatchObject({ col: 1, row: 1 })
+    s = editorReducer(s, { type: 'undoLast' })
+    expect(changeList(s)).toEqual([])
+    expect(ws(s).map((w) => [w.col, w.row])).toEqual([[0, 0], [3, 0]])
+  })
+
+  it('撤销与当前草稿冲突时拒绝：草稿不变，rejection 标出冲突块并带 undo 标记', () => {
+    let s = load(layoutOf([widget('a', 0, 0)]))
+    s = editorReducer(s, { type: 'move', id: 'a', col: 3, row: 2 })
+    s = editorReducer(s, { type: 'add', widget: widget('n', 0, 0) })
+    const draft = s.draft
+    s = editorReducer(s, { type: 'undoChange', key: 'move:a' })
+    expect(s.draft).toBe(draft)
+    expect(s.rejection).toEqual({ reason: 'overlap', widgetId: 'a', conflicts: ['n'], undo: true })
+  })
+
+  it('撤销其他 screen 上的改动时切到该 screen', () => {
+    let s = load(layoutOf([widget('a', 0, 0)]))
+    s = editorReducer(s, { type: 'move', id: 'a', col: 2, row: 2 })
+    s = editorReducer(s, { type: 'selectScreen', id: 's1' })
+    s = editorReducer(s, { type: 'undoChange', key: 'move:a' })
+    expect(s.screenId).toBe('index')
+    expect(s.selectedId).toBe('a')
+  })
+
+  it('放弃：草稿回到基线，清单清空', () => {
+    let s = load(layoutOf([widget('a', 0, 0)]))
+    s = editorReducer(s, { type: 'move', id: 'a', col: 2, row: 2 })
+    s = editorReducer(s, { type: 'discard' })
+    expect(s.draft).toBe(s.base)
+    expect(changeList(s)).toEqual([])
+  })
+
+  it('越界确认后缩小：连同越界的小组件一起移除，且这些移除进入清单、可单条撤销（先撤网格再撤删除）', () => {
+    let s = load(layoutOf([widget('a', 0, 0), widget('far', 5, 3)]))
+    s = editorReducer(s, { type: 'setGrid', grid: { cols: 4, rows: 3 }, removeOutOfBounds: true })
+    expect(s.draft.grid).toEqual({ cols: 4, rows: 3 })
+    expect(ws(s).map((w) => w.id)).toEqual(['a'])
+    expect(changeList(s).map((c) => c.key).sort()).toEqual(['grid', 'remove:far'])
+    // 网格还小，放不回 far
+    const blocked = editorReducer(s, { type: 'undoChange', key: 'remove:far' })
+    expect(blocked.rejection).toMatchObject({ reason: 'out_of_bounds', undo: true })
+    s = editorReducer(s, { type: 'undoChange', key: 'grid' })
+    s = editorReducer(s, { type: 'undoChange', key: 'remove:far' })
+    expect(changeList(s)).toEqual([])
   })
 })

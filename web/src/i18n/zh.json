@@ -1181,7 +1181,8 @@
       "drag": "移动",
       "move": "按格微调",
       "delete": "删除",
-      "esc": "取消选中"
+      "esc": "取消选中",
+      "undo": "撤销"
     },
     "reject": {
       "overlap": "放不下：与其他小组件重叠",
@@ -1238,6 +1239,100 @@
       "warning": "警告阈值",
       "critical": "严重阈值",
       "remove": "删除小组件"
+    },
+    "saved": "已保存为 v{{version}}，已推送到显示器",
+    "saveInvalid": "布局未通过校验（{{n}} 处问题），请检查重叠、越界或尺寸",
+    "undo": {
+      "label": "撤销",
+      "title": "撤销最近一条改动（⌘Z）",
+      "conflict": "无法撤销：恢复后会与当前草稿重叠，已在画布上标出冲突的小组件，请先处理它们。",
+      "outOfBounds": "无法撤销：恢复后会超出网格，请先撤销网格改动。"
+    },
+    "bar": {
+      "history": "版本历史",
+      "discard": "放弃",
+      "save": "保存并推送",
+      "saving": "正在保存…"
+    },
+    "chg": {
+      "title": "未保存的改动",
+      "dirty": "未保存 {{n}} 处",
+      "clean": "已与 v{{version}} 一致",
+      "meta": "基于 v{{base}} · 保存后生成 v{{next}} 并推送到显示器",
+      "none": "没有未保存的改动",
+      "undoOne": "撤销此条",
+      "kind": {
+        "grid": "网格",
+        "add": "新增",
+        "remove": "删除",
+        "move": "移动",
+        "resize": "尺寸",
+        "config": "设置"
+      }
+    },
+    "discardDlg": {
+      "title": "放弃全部未保存的改动？",
+      "body": "草稿会恢复为 v{{version}}，{{n}} 处改动将丢失。",
+      "cancel": "继续编辑",
+      "confirm": "放弃改动"
+    },
+    "leave": {
+      "title": "离开布局编辑器？",
+      "body": "有未保存的布局改动，离开后会丢失。",
+      "stay": "留在此页",
+      "leave": "放弃改动并离开"
+    },
+    "conflict": {
+      "title": "布局已被他人更新",
+      "body": "你基于 v{{base}} 编辑，服务端当前已是 v{{latest}}。",
+      "overwriteHint": "以我的为准会用你的草稿覆盖对方的改动；对方的版本仍保留在版本历史里，可随时回滚。",
+      "view": "查看对方改动",
+      "overwrite": "以我的为准，基于最新版本重新提交",
+      "close": "稍后处理",
+      "theirsTitle": "对方的改动（v{{base}} → v{{latest}}）",
+      "theirsNone": "与你的基线相比没有可列出的差异",
+      "again": "最新版本又变了（v{{latest}}），请重新查看对方改动后再提交"
+    },
+    "history": {
+      "title": "版本历史",
+      "sub": "最近 {{n}} 个版本",
+      "current": "当前",
+      "preview": "预览",
+      "rollback": "回滚到此版本",
+      "back": "返回列表",
+      "empty": "还没有任何版本",
+      "source": {
+        "seed": "初始布局",
+        "edit": "手动编辑",
+        "rollback": "回滚",
+        "auto": "自动调整"
+      },
+      "summary": "新增 {{a}} · 删除 {{r}} · 修改 {{c}}",
+      "gridChanged": "网格变化",
+      "rolledFrom": "回滚自 v{{v}}",
+      "brokenTag": "含失效引用",
+      "brokenTitle": "此版本含引用失效的小组件",
+      "diffTitle": "与当前 v{{v}} 相比的差异",
+      "noDiff": "与当前版本相同",
+      "confirmTitle": "回滚到 v{{v}}？",
+      "confirmGo": "回滚到 v{{v}}",
+      "confirmBody": "会生成新版本 v{{next}}，内容等于 v{{v}}；中间的版本不会被删除。",
+      "confirmDirty": "你有 {{n}} 处未保存的改动，回滚后会丢失。",
+      "confirmBroken": "该版本有 {{n}} 个小组件的引用已失效，回滚后它们会显示为占位卡：",
+      "done": "已回滚，生成 v{{version}}"
+    },
+    "broken": {
+      "instance_missing": "绑定的实例已不存在",
+      "instance_plugin_mismatch": "实例不属于该小组件的插件",
+      "plugin_missing": "插件已不可用",
+      "widget_missing": "插件不再提供该小组件",
+      "size_unsupported": "插件不再提供该尺寸"
     }
+  },
+  "outOfBounds": {
+    "title": "缩小到 {{cols}}×{{rows}} 会让 {{n}} 个小组件越界",
+    "body": "下面的小组件放不进新网格，继续会把它们从布局里移除。",
+    "cancel": "保持现有网格",
+    "confirm": "移除 {{n}} 个并缩小"
   }
 }

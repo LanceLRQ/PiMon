@@ -1,8 +1,10 @@
-import { Monitor, Power } from 'lucide-react'
+import { History, Monitor, Power, Undo2, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import { http } from '@/api/client'
+import { isApiError } from '@/api/errors'
+import { UnsavedGuard } from '@/app/unsaved-guard'
 import { translateErrorValue } from '@/i18n/errors'
 import { usePlugins } from '@/pages/instances/use-plugins'
 import { cn } from '@/lib/utils'
@@ -11,19 +13,25 @@ import { selectInstances, selectSettings, serverNow, useLiveStore } from '@/stor
 import { DEFAULT_THEME_ID, isThemeId, themes, type ThemeId, type ThemeRuntime } from '@/themes'
 import type { Grid, LayoutState, ScreenStatus, WidgetCatalog, WidgetSize } from '@/types/generated'
 import { Button } from '@/ui/button'
+import { Dialog, DialogContent } from '@/ui/dialog'
+import { OutOfBoundsDialog, type OutOfBoundsItem } from '@/ui/out-of-bounds-dialog'
 import { NumberTag } from '@/ui/numbered-label'
 import { Note } from '@/ui/note'
 import { Segmented } from '@/ui/segmented'
 import { Select } from '@/ui/select'
 import { useToast } from '@/ui/toast'
+import { ChangeList } from './ChangeList'
+import { diffLayouts, widgetLabel, type Change } from './changes'
+import { ConflictDialog } from './ConflictDialog'
 import { DEFAULT_VIEWPORT } from './geometry'
+import { HistorySheet } from './HistorySheet'
 import { EditorCanvas, type DragIntent } from './EditorCanvas'
 import { firstFreeSpot, moveByKey, occupiedCells, type Cell } from './grid-ops'
 import { Inspector } from './Inspector'
 import { allowedSizesOf, buildLibrary, createWidget, newWidgetId, templateOf, type LibraryEntry } from './library'
 import { applyPreviewState, previewStates, type PreviewState } from './preview-state'
 import { resolveScreen, referencedInstanceIds } from './resolve-draft'
-import { currentScreen, editorReducer, gridShrinkConflicts, initialEditorState, toRect, type Rejection } from './state'
+import { changeList, currentScreen, editorReducer, gridShrinkConflicts, initialEditorState, toRect, type Rejection } from './state'
 import { useCanvasData } from './use-canvas-data'
 import { WidgetLibrary } from './WidgetLibrary'
 
@@ -35,6 +43,11 @@ const gridPresets: Grid[] = [
 
 // 输入控件里的按键归输入控件；单选组与标签页自己用方向键切换
 const editableTarget = (t: EventTarget | null) => t instanceof HTMLElement && t.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]') !== null
+// 焦点在按钮等可交互控件上时，Delete、Backspace 与方向键归控件自己（画布上的小组件除外，它们靠焦点选中）
+const interactiveTarget = (t: EventTarget | null) =>
+  t instanceof HTMLElement &&
+  t.closest('[data-editor-widget]') === null &&
+  t.closest('button, a[href], summary, [role="button"], [role="tab"], [role="radio"], [role="checkbox"], [role="switch"], [role="option"], [role="menuitem"]') !== null
 const ownsArrows = (t: EventTarget | null) => t instanceof HTMLElement && t.closest('[role="radiogroup"], [role="tablist"]') !== null
 
 interface ServerData {
@@ -73,8 +86,16 @@ function MobileNotice() {
 }
 
 function rejectionMessage(t: (k: string, o?: Record<string, unknown>) => string, r: Rejection): string {
+  if (r.undo) return t(r.reason === 'overlap' ? 'layoutEd.undo.conflict' : 'layoutEd.undo.outOfBounds')
   if (r.reason === 'out_of_bounds' && !r.widgetId) return t('layoutEd.reject.gridShrink', { n: r.conflicts.length })
   return t(`layoutEd.reject.${r.reason}`)
+}
+
+interface ConflictInfo {
+  latestVersion: number
+  theirs: Change[] | null
+  busy: 'view' | 'overwrite' | null
+  error: string | null
 }
 
 function EditorBody() {
@@ -89,6 +110,11 @@ function EditorBody() {
   const [runtime, setRuntime] = useState<ThemeRuntime | null>(null)
   // 预览状态只存在于这个组件，不进 reducer，不写草稿
   const [previewState, setPreviewState] = useState<PreviewState>('real')
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [discardOpen, setDiscardOpen] = useState(false)
+  const [pendingGrid, setPendingGrid] = useState<Grid | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [conflict, setConflict] = useState<ConflictInfo | null>(null)
   const plugins = usePlugins()
   const instances = useLiveStore(selectInstances)
   const settings = useLiveStore(selectSettings)
@@ -124,6 +150,8 @@ function EditorBody() {
   const widgets = useMemo(() => screen?.widgets ?? [], [screen])
   const rects = useMemo(() => widgets.map(toRect), [widgets])
   const selected = widgets.find((w) => w.id === state.selectedId) ?? null
+  const changes = useMemo(() => changeList(state), [state])
+  const dirty = changes.length > 0
 
   const resolved = useMemo(
     () => (screen ? resolveScreen(screen, { plugins: pluginList, instances }) : null),
@@ -163,13 +191,19 @@ function EditorBody() {
   const selectedId = selected?.id ?? null
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || editableTarget(e.target)) return
+      if (e.defaultPrevented || e.altKey || editableTarget(e.target)) return
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        dispatch({ type: 'undoLast' })
+        return
+      }
+      if (e.metaKey || e.ctrlKey) return
       if (e.key === 'Escape') {
         dispatch({ type: 'select', id: null })
         return
       }
       const sel = selectedId ? rects.find((r) => r.id === selectedId) : undefined
-      if (!sel) return
+      if (!sel || interactiveTarget(e.target)) return
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault()
         dispatch({ type: 'remove', id: sel.id })
@@ -189,7 +223,60 @@ function EditorBody() {
 
   const onGridChange = (value: string) => {
     const [cols, rows] = value.split('x').map(Number)
-    dispatch({ type: 'setGrid', grid: { cols, rows } })
+    const next = { cols, rows }
+    // 有小组件放不进新网格：交给越界对话框处理，不再直接拒绝
+    if (gridShrinkConflicts(state.draft, next).length) setPendingGrid(next)
+    else dispatch({ type: 'setGrid', grid: next })
+  }
+
+  const oobItems = (g: Grid): OutOfBoundsItem[] =>
+    gridShrinkConflicts(state.draft, g).flatMap((c) => {
+      const s = state.draft.screens.find((x) => x.id === c.screenId)
+      const w = s?.widgets.find((x) => x.id === c.widgetId)
+      return s && w ? [{ id: w.id, screen: `${s.id} ${s.name}`, label: widgetLabel(w), place: `c${w.col + 1} r${w.row + 1} · ${w.size.cols}×${w.size.rows}` }] : []
+    })
+
+  const loadSaved = (st: LayoutState) => dispatch({ type: 'load', version: st.version, layout: st.layout })
+
+  const save = async (baseVersion = state.baseVersion) => {
+    setSaving(true)
+    try {
+      const st = await http.put<LayoutState>('/api/screens', { base_version: baseVersion, layout: state.draft })
+      loadSaved(st)
+      setConflict(null)
+      toast.show(t('layoutEd.saved', { version: st.version }))
+    } catch (e) {
+      if (isApiError(e) && e.code === 'layout.conflict') {
+        const latest = Number(e.details?.latest_version)
+        setConflict((c) => ({ latestVersion: Number.isFinite(latest) ? latest : (c?.latestVersion ?? baseVersion), theirs: null, busy: null, error: c ? t('layoutEd.conflict.again', { latest }) : null }))
+      } else if (isApiError(e) && e.code === 'layout.invalid') {
+        const problems = Array.isArray(e.details?.problems) ? e.details.problems.length : 0
+        toast.show(t('layoutEd.saveInvalid', { n: problems }), 'warn')
+        setConflict(null)
+      } else {
+        toast.show(translateErrorValue(i18n, e), 'warn')
+        setConflict(null)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // 去看对方改了什么：取最新版本，与我的基线比较
+  const viewTheirs = async () => {
+    setConflict((c) => c && { ...c, busy: 'view', error: null })
+    try {
+      const latest = await http.get<LayoutState>('/api/screens')
+      setConflict((c) => c && { ...c, busy: null, latestVersion: latest.version, theirs: diffLayouts(state.base, latest.layout) })
+    } catch (e) {
+      setConflict((c) => c && { ...c, busy: null, error: translateErrorValue(i18n, e) })
+    }
+  }
+
+  const overwrite = async () => {
+    if (!conflict) return
+    setConflict({ ...conflict, busy: 'overwrite', error: null })
+    await save(conflict.latestVersion)
   }
 
   if (loadError) {
@@ -221,6 +308,7 @@ function EditorBody() {
 
   return (
     <div data-testid="layout-editor" className="flex min-h-0 flex-1 flex-col">
+      <UnsavedGuard dirty={dirty} textKey="layoutEd.leave" />
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-card px-4 py-2">
         <div className="flex items-baseline gap-2.5">
           <NumberTag no="02" className="border-foreground text-foreground" />
@@ -263,6 +351,31 @@ function EditorBody() {
           <span className="font-mono text-muted-foreground" data-testid="base-version">
             {t('layoutEd.baseVersion', { version: state.baseVersion })}
           </span>
+          <span
+            data-testid="dirty-chip"
+            data-dirty={dirty ? 'true' : 'false'}
+            className={cn('inline-flex items-center gap-1.5', dirty ? 'text-signal-text' : 'text-muted-foreground')}
+          >
+            <i className={cn('size-1.5 rounded-full', dirty ? 'bg-signal' : 'bg-status-ok')} />
+            {dirty ? t('layoutEd.chg.dirty', { n: changes.length }) : t('layoutEd.chg.clean', { version: state.baseVersion })}
+          </span>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button variant="ghost" size="sm" className="rounded-[2px]" disabled={!dirty} title={t('layoutEd.undo.title')} onClick={() => dispatch({ type: 'undoLast' })}>
+            <Undo2 size={15} />
+            {t('layoutEd.undo.label')}
+          </Button>
+          <Button variant="ghost" size="sm" className="rounded-[2px]" onClick={() => setHistoryOpen(true)}>
+            <History size={15} />
+            {t('layoutEd.bar.history')}
+          </Button>
+          <Button variant="outline" size="sm" className="rounded-[2px]" disabled={!dirty || saving} onClick={() => setDiscardOpen(true)}>
+            {t('layoutEd.bar.discard')}
+          </Button>
+          <Button size="sm" className="rounded-[2px]" disabled={!dirty || saving} onClick={() => void save()}>
+            <Upload size={15} />
+            {saving ? t('layoutEd.bar.saving') : t('layoutEd.bar.save')}
+          </Button>
         </div>
       </div>
 
@@ -326,10 +439,24 @@ function EditorBody() {
             }}
             onThemeRuntime={setRuntime}
           />
+          <section aria-label={t('layoutEd.chg.title')} data-testid="changes-panel" className="max-h-[172px] shrink-0 overflow-y-auto border-t border-border bg-card">
+            <div className="sticky top-0 flex items-baseline gap-2.5 border-b border-border bg-card px-3.5 py-1.5">
+              <NumberTag no="02.2" />
+              <h2 className="text-[13px] font-medium">
+                {t('layoutEd.chg.title')}
+                <span className="ml-1.5 font-mono" data-testid="changes-count">{changes.length}</span>
+              </h2>
+              <span className="ml-auto truncate text-[12px] text-muted-foreground">
+                {dirty ? t('layoutEd.chg.meta', { base: state.baseVersion, next: state.baseVersion + 1 }) : t('layoutEd.chg.clean', { version: state.baseVersion })}
+              </span>
+            </div>
+            <ChangeList changes={changes} onUndo={(key) => dispatch({ type: 'undoChange', key })} empty={t('layoutEd.chg.none')} testId="changes-list" />
+          </section>
           <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border bg-card px-3.5 py-1.5 text-[11.5px] text-muted-foreground">
             <span><kbd className="font-mono">{t('layoutEd.keys.dragKey')}</kbd> {t('layoutEd.keys.drag')}</span>
             <span><kbd className="font-mono">← ↑ → ↓</kbd> {t('layoutEd.keys.move')}</span>
             <span><kbd className="font-mono">del</kbd> {t('layoutEd.keys.delete')}</span>
+            <span><kbd className="font-mono">⌘Z</kbd> {t('layoutEd.keys.undo')}</span>
             <span><kbd className="font-mono">esc</kbd> {t('layoutEd.keys.esc')}</span>
           </div>
         </div>
@@ -358,6 +485,64 @@ function EditorBody() {
           </div>
         </aside>
       </div>
+      <OutOfBoundsDialog
+        open={pendingGrid !== null}
+        grid={pendingGrid ?? grid}
+        items={pendingGrid ? oobItems(pendingGrid) : []}
+        onCancel={() => setPendingGrid(null)}
+        onConfirm={() => {
+          if (pendingGrid) dispatch({ type: 'setGrid', grid: pendingGrid, removeOutOfBounds: true })
+          setPendingGrid(null)
+        }}
+      />
+      <ConflictDialog
+        open={conflict !== null}
+        baseVersion={state.baseVersion}
+        latestVersion={conflict?.latestVersion ?? state.baseVersion}
+        theirs={conflict?.theirs ?? null}
+        busy={conflict?.busy ?? null}
+        error={conflict?.error ?? null}
+        onView={() => void viewTheirs()}
+        onOverwrite={() => void overwrite()}
+        onClose={() => setConflict(null)}
+      />
+      <HistorySheet
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        currentVersion={state.baseVersion}
+        current={state.base}
+        dirtyCount={changes.length}
+        onRolledBack={loadSaved}
+        onNotify={toast.show}
+      />
+      <Dialog open={discardOpen} onOpenChange={setDiscardOpen}>
+        {discardOpen && (
+          <DialogContent
+            tag="!"
+            tagTone="crit"
+            title={t('layoutEd.discardDlg.title')}
+            footer={
+              <>
+                <Button variant="outline" className="rounded-[2px]" onClick={() => setDiscardOpen(false)}>
+                  {t('layoutEd.discardDlg.cancel')}
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="rounded-[2px]"
+                  onClick={() => {
+                    dispatch({ type: 'discard' })
+                    setDiscardOpen(false)
+                  }}
+                >
+                  {t('layoutEd.discardDlg.confirm')}
+                </Button>
+              </>
+            }
+          >
+            <p>{t('layoutEd.discardDlg.body', { version: state.baseVersion, n: changes.length })}</p>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   )
 }

@@ -231,6 +231,7 @@ export function EditorCanvas(props: EditorCanvasProps) {
                     role="button"
                     tabIndex={0}
                     data-testid={`editor-widget-${w.id}`}
+                    data-editor-widget=""
                     data-selected={isSel ? 'true' : undefined}
                     data-conflict={isConflict ? 'true' : undefined}
                     aria-pressed={isSel}
