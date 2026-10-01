@@ -441,11 +441,16 @@
     "instanceUnit": "个监控实例",
     "noInstances": "还没有监控实例，先添加一个吧。",
     "otherState": "未知/其他",
+    "pausedState": "已暂停",
     "distribution": "{{count}} 个实例的状态分布",
     "legend": "图例",
     "listSep": "、",
     "also": "另有 {{list}}",
     "alsoItem": {
+      "broken": "{{count}} 项引用失效",
+      "offline": "{{count}} 项离线",
+      "unconfigured": "{{count}} 项未配置",
+      "paused": "{{count}} 项已暂停",
       "critical": "{{count}} 项严重",
       "error": "{{count}} 项采集失败",
       "warning": "{{count}} 项警告",
@@ -453,6 +458,9 @@
       "other": "{{count}} 项状态未知"
     },
     "verdict": {
+      "broken": "{{count}} 项引用失效：{{name}}",
+      "offline": "{{count}} 项离线：{{name}}",
+      "unconfigured": "{{count}} 项未配置：{{name}}",
       "allOk": "全部正常",
       "critical": "{{count}} 项严重：{{name}} {{reading}}",
       "error": "{{count}} 项采集失败：{{name}} {{reading}}",

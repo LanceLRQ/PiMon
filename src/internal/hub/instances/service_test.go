@@ -860,6 +860,44 @@ func TestReferrersAndMissingProxy(t *testing.T) {
 	// 指向已不存在代理的实例不再按直连运行，见 TestRemovedProxyFailsRun（Ruling 49）。
 }
 
+// 已暂停的引用实例再被摘除：代理设置照常清除，保持暂停，不会被意外恢复。
+func TestDetachAndPauseKeepsPausedInstancePaused(t *testing.T) {
+	f := newFx(t)
+	px, _ := proxy.Parse("http://127.0.0.1:8080")
+	f.px.known["px1"] = px
+	cfg := probeCfg("a")
+	cfg["proxy"] = "px1"
+	a := f.create("probe", "走代理", cfg)
+	f.start()
+	if _, err := f.svc.Pause(bg, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.DetachAndPause(bg, "px1"); err != nil {
+		t.Fatal(err)
+	}
+	g, _ := f.svc.Get(bg, a.ID)
+	if !g.Paused || g.Config["proxy"] != "direct" || f.svc.isScheduled(a.ID) {
+		t.Fatalf("应保持暂停且代理已清除: paused=%v proxy=%v", g.Paused, g.Config["proxy"])
+	}
+}
+
+// 没有实例引用的代理：DetachAndPause 不改任何实例。
+func TestDetachAndPauseWithoutReferrersIsNoop(t *testing.T) {
+	f := newFx(t)
+	px, _ := proxy.Parse("http://127.0.0.1:8080")
+	f.px.known["px1"] = px
+	a := f.create("probe", "直连", probeCfg("a"))
+	f.start()
+	before, _ := f.svc.Get(bg, a.ID)
+	if err := f.svc.DetachAndPause(bg, "px1"); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := f.svc.Get(bg, a.ID)
+	if after.Paused || !f.svc.isScheduled(a.ID) || after.UpdatedAt != before.UpdatedAt {
+		t.Fatalf("无引用时不应有副作用: %+v", after)
+	}
+}
+
 func TestStreamerUsesStreamManager(t *testing.T) {
 	f := newFx(t)
 	f.start()

@@ -146,7 +146,8 @@ export function defaultDir(key: SortKey): SortDir {
   return key === 'status' ? 'desc' : 'asc'
 }
 
-// 状态统计（总览健康汇总）：未列出的状态（未知、离线、未配置等）归入 other
+// 状态统计（总览健康汇总）：已暂停的实例单独计入 paused，不按展示状态计入严重度；
+// other 只含 unknown、maintenance 等未列出的状态
 export interface StateCounts {
   total: number
   ok: number
@@ -154,18 +155,29 @@ export interface StateCounts {
   critical: number
   error: number
   stale: number
+  broken: number
+  offline: number
+  unconfigured: number
+  paused: number
   other: number
 }
 
 export function countStates(list: Instance[]): StateCounts {
-  const c: StateCounts = { total: list.length, ok: 0, warning: 0, critical: 0, error: 0, stale: 0, other: 0 }
+  const c: StateCounts = { total: list.length, ok: 0, warning: 0, critical: 0, error: 0, stale: 0, broken: 0, offline: 0, unconfigured: 0, paused: 0, other: 0 }
   for (const i of list) {
+    if (i.paused) {
+      c.paused++
+      continue
+    }
     switch (i.display_state) {
       case 'ok':
       case 'warning':
       case 'critical':
       case 'error':
       case 'stale':
+      case 'broken':
+      case 'offline':
+      case 'unconfigured':
         c[i.display_state]++
         break
       default:

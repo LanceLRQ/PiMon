@@ -441,11 +441,16 @@
     "instanceUnit": "monitoring instances",
     "noInstances": "No monitoring instances yet, add one first.",
     "otherState": "Unknown/other",
+    "pausedState": "Paused",
     "distribution": "Status distribution of {{count}} instances",
     "legend": "legend",
     "listSep": ", ",
     "also": "also {{list}}",
     "alsoItem": {
+      "broken": "{{count}} broken references",
+      "offline": "{{count}} offline",
+      "unconfigured": "{{count}} unconfigured",
+      "paused": "{{count}} paused",
       "critical": "{{count}} critical",
       "error": "{{count}} collection failures",
       "warning": "{{count}} warnings",
@@ -453,6 +458,9 @@
       "other": "{{count}} unknown"
     },
     "verdict": {
+      "broken": "{{count}} broken references: {{name}}",
+      "offline": "{{count}} offline: {{name}}",
+      "unconfigured": "{{count}} unconfigured: {{name}}",
       "allOk": "All OK",
       "critical": "{{count}} critical: {{name}} {{reading}}",
       "error": "{{count}} collection failures: {{name}} {{reading}}",

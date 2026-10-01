@@ -12,7 +12,7 @@ import type { BackupInfo, Instance, SystemInfo } from '@/types/generated'
 import { useInstanceManager } from '@/pages/instances/actions'
 import { InstanceDetailDrawer } from '@/pages/instances/InstanceDetailDrawer'
 import { InstanceTable } from '@/pages/instances/InstanceTable'
-import { countStates, isAttention, statusRank, type StateCounts } from '@/pages/instances/query'
+import { attentionStates, countStates, isAttention, statusRank, type StateCounts } from '@/pages/instances/query'
 import { usePlugins } from '@/pages/instances/use-plugins'
 import { Button } from '@/ui/button'
 import { NumberTag } from '@/ui/numbered-label'
@@ -30,6 +30,9 @@ const segColor: Record<string, string> = {
   critical: 'bg-status-crit',
   error: 'bg-status-crit/60',
   stale: 'bg-status-unknown/60',
+  broken: 'bg-status-unknown/60',
+  offline: 'bg-status-unknown/60',
+  unconfigured: 'bg-status-unknown/60',
 }
 
 function Cell({ no, title, meta, children, className }: { no: string; title: string; meta?: React.ReactNode; children: React.ReactNode; className?: string }) {
@@ -47,22 +50,17 @@ function Cell({ no, title, meta, children, className }: { no: string; title: str
 
 type Verdict = { state: string; key: string; count: number; instance: Instance } | null
 
-// 健康结论取最严重的一类：严重 > 采集失败 > 警告 > 过期 > 其他（未知等）
+// 健康结论取最严重的一类，口径同「需要处理」（attentionStates 顺序，不含已暂停）；其后才是其他（未知、维护中）
 function verdictOf(list: Instance[], counts: StateCounts): Verdict {
-  const order: [string, number][] = [
-    ['critical', counts.critical],
-    ['error', counts.error],
-    ['warning', counts.warning],
-    ['stale', counts.stale],
-  ]
-  for (const [state, count] of order) {
+  for (const state of attentionStates) {
+    const count = counts[state]
     if (count > 0) {
-      const inst = list.filter((i) => i.display_state === state).sort((a, b) => a.name.localeCompare(b.name))[0]
+      const inst = list.filter((i) => !i.paused && i.display_state === state).sort((a, b) => a.name.localeCompare(b.name))[0]
       return { state, key: state, count, instance: inst }
     }
   }
   if (counts.other > 0) {
-    const inst = list.find((i) => !['ok', 'warning', 'critical', 'error', 'stale'].includes(i.display_state))
+    const inst = list.find((i) => !i.paused && !['ok', ...attentionStates].includes(i.display_state))
     if (inst) return { state: 'unknown', key: 'other', count: counts.other, instance: inst }
   }
   return null
@@ -72,8 +70,9 @@ function HealthSummary({ instances, synced }: { instances: Instance[]; synced: b
   const { t } = useTranslation()
   const counts = useMemo(() => countStates(instances), [instances])
   const verdict = useMemo(() => verdictOf(instances, counts), [instances, counts])
-  const others = (['critical', 'error', 'warning', 'stale', 'other'] as const).filter((k) => k !== verdict?.key && counts[k] > 0)
-  const segs = useMemo(() => [...instances].sort((a, b) => statusRank(a.display_state) - statusRank(b.display_state)), [instances])
+  const others = ([...attentionStates, 'paused', 'other'] as const).filter((k) => k !== verdict?.key && counts[k] > 0)
+  const segState = (i: Instance) => (i.paused ? 'unknown' : i.display_state)
+  const segs = useMemo(() => [...instances].sort((a, b) => statusRank(segState(a)) - statusRank(segState(b))), [instances])
 
   const rows: { state: string; label: string; n: number }[] = [
     { state: 'ok', label: t('status.ok'), n: counts.ok },
@@ -81,6 +80,10 @@ function HealthSummary({ instances, synced }: { instances: Instance[]; synced: b
     { state: 'critical', label: t('status.critical'), n: counts.critical },
     { state: 'error', label: t('status.error'), n: counts.error },
     { state: 'stale', label: t('status.stale'), n: counts.stale },
+    { state: 'broken', label: t('status.broken'), n: counts.broken },
+    { state: 'offline', label: t('status.offline'), n: counts.offline },
+    { state: 'unconfigured', label: t('status.unconfigured'), n: counts.unconfigured },
+    { state: 'unknown', label: t('overview.pausedState'), n: counts.paused },
     { state: 'unknown', label: t('overview.otherState'), n: counts.other },
   ]
 
@@ -136,7 +139,7 @@ function HealthSummary({ instances, synced }: { instances: Instance[]; synced: b
       <div className="px-4 pb-3">
         <div role="img" aria-label={t('overview.distribution', { count: counts.total })} className="flex h-2.5 gap-px overflow-hidden rounded-[1px]">
           {segs.map((i) => (
-            <span key={i.id} title={`${i.name} · ${t(`status.${i.display_state}`, { defaultValue: t('status.unknown') })}`} className={cn('h-full min-w-[3px] flex-1', segColor[i.display_state] ?? 'bg-status-unknown/40')} />
+            <span key={i.id} title={`${i.name} · ${i.paused ? t('overview.pausedState') : t(`status.${i.display_state}`, { defaultValue: t('status.unknown') })}`} className={cn('h-full min-w-[3px] flex-1', segColor[segState(i)] ?? 'bg-status-unknown/40')} />
           ))}
         </div>
       </div>

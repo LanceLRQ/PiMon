@@ -35,6 +35,10 @@ describe('总览页', () => {
       ['严重', '1'],
       ['采集失败', '1'],
       ['过期', '0'],
+      ['引用失效', '0'],
+      ['离线', '0'],
+      ['未配置', '0'],
+      ['已暂停', '0'],
       ['未知/其他', '0'],
     ])
     expect(within(health).getByRole('img', { name: '17 个实例的状态分布' }).children).toHaveLength(17)
@@ -95,6 +99,39 @@ describe('总览页', () => {
     const todo = cell('需要处理')
     expect(within(todo).getByText('3 项 · 按严重度')).toBeInTheDocument()
     expect(within(todo).getAllByRole('listitem').map((li) => li.getAttribute('data-state-row'))).toEqual(['broken', 'offline', 'unconfigured'])
+  })
+
+  it('健康汇总：broken、offline、unconfigured 各自计数，不再算作状态未知', async () => {
+    mockApi()
+    seedStore([
+      makeInstance({ id: 'b', name: 'b', display_state: 'broken' }),
+      makeInstance({ id: 'o1', name: 'o1', display_state: 'offline' }),
+      makeInstance({ id: 'o2', name: 'o2', display_state: 'offline' }),
+      makeInstance({ id: 'u', name: 'u', display_state: 'unconfigured' }),
+      makeInstance({ id: 'k', name: 'k', display_state: 'unknown' }),
+    ])
+    await renderWithApp(<OverviewPage />)
+    const health = cell('健康汇总')
+    const count = (label: string) => within(health).getByText(label, { selector: 'dt' }).parentElement!.querySelector('dd')!.textContent
+    expect(count('引用失效')).toBe('1')
+    expect(count('离线')).toBe('2')
+    expect(count('未配置')).toBe('1')
+    expect(count('未知/其他')).toBe('1')
+    expect(within(health).getByText(/^1 项引用失效：b/)).toBeInTheDocument()
+  })
+
+  it('健康汇总：已暂停的严重实例不影响结论，单独计入已暂停', async () => {
+    mockApi()
+    seedStore([
+      makeInstance({ id: 'p', name: 'p', display_state: 'critical', paused: true }),
+      makeInstance({ id: 'a', name: 'a' }),
+    ])
+    await renderWithApp(<OverviewPage />)
+    const health = cell('健康汇总')
+    expect(within(health).getByText('全部正常')).toBeInTheDocument()
+    expect(within(health).getByText('已暂停', { selector: 'dt' }).parentElement!.querySelector('dd')!.textContent).toBe('1')
+    expect(within(health).getByText('严重', { selector: 'dt' }).parentElement!.querySelector('dd')!.textContent).toBe('0')
+    expect(within(cell('需要处理')).getByText('没有需要处理的项')).toBeInTheDocument()
   })
 
   it('查看实例打开详情抽屉', async () => {

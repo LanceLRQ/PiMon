@@ -317,6 +317,8 @@ func (s *Store) Update(ctx context.Context, id string, in model.ProxyInput) (mod
 
 // Delete 删除代理。被引用且 force=false 返回 *InUseError；force=true 先把引用的实例清除代理设置并暂停再删除
 // （两步不在同一事务内：先改实例，失败即返回错误且不删代理；改成功而删除失败时，实例已暂停且为直连，重试即可）。
+// 竞态窗口：DetachAndPause 与随后的 DELETE 之间，若有实例刚好改为引用该代理，
+// 它不会被暂停，代理删除后该实例引用已不存在的代理，运行时会明确失败并提示重新选择（Ruling 49），不会静默直连。
 func (s *Store) Delete(ctx context.Context, id string, force bool) error {
 	if _, _, err := s.get(ctx, id); err != nil {
 		return err
