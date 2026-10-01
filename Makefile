@@ -4,7 +4,7 @@ PKG     := github.com/LanceLRQ/PiMon/src
 LDFLAGS := -s -w -X $(PKG)/pkg/version.Version=$(VERSION)
 BIN     := $(CURDIR)/bin
 
-.PHONY: generate web build build-go test test-go test-web lint lint-go lint-web dev clean
+.PHONY: generate web build build-go test test-go test-web test-e2e lint lint-go lint-web dev clean
 
 TYGO_VERSION := v0.2.21
 
@@ -22,13 +22,19 @@ build-go:
 	cd src && CGO_ENABLED=0 GOOS=linux  GOARCH=arm64 go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN)/pimon-hub-linux-arm64  ./cmd/pimon-hub
 	cd src && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN)/pimon-hub-darwin-arm64 ./cmd/pimon-hub
 
-test: test-go test-web
+test: test-go test-web test-e2e
 
 test-go:
 	cd src && CGO_ENABLED=1 go test -race -count=1 ./...
 
 test-web:
 	cd web && pnpm install --frozen-lockfile && pnpm test
+
+# Playwright 冒烟：先构建前端（hub 内嵌最新产物），再由 globalSetup 编译并启动真实 hub
+# （临时数据目录 + 随机端口），跑完关闭并清理。需要 Go 与本机 Chromium（缺失时自动安装）
+test-e2e: web
+	cd web && pnpm exec playwright install chromium
+	cd web && pnpm e2e
 
 lint: lint-go lint-web
 

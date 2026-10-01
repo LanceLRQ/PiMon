@@ -62,3 +62,7 @@ secret.key
 *.log
 .idea/
 .vscode/
+
+# Playwright 产物
+web/playwright-report/
+web/test-results/

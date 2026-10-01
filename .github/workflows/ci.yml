@@ -26,6 +26,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache-dependency-path: src/go.sum
       - uses: pnpm/action-setup@v4
         with:
           package_json_file: web/package.json
@@ -41,4 +45,7 @@ jobs:
         run: make test-web
       - name: 构建前端
         run: make web
-      # Playwright 冒烟用例（需要真实 hub 的启动脚本，C9 补充），本期不在 CI 运行
+      - name: 安装 Playwright 浏览器
+        run: cd web && pnpm exec playwright install --with-deps chromium
+      - name: Playwright 冒烟（真实 hub）
+        run: make test-e2e
