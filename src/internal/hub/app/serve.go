@@ -84,6 +84,15 @@ func (a *App) Serve(ctx context.Context) error {
 		}()
 	}
 
+	// UI WebSocket 的连接被 Hijack 后不受 http.Server.Shutdown 管理，
+	// 由广播中心在 bg 结束时主动关闭，并等它收尾。
+	wsDone := a.ws.Start(bg)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-wsDone
+	}()
+
 	onReady := func() {
 		slog.Info("服务已就绪", "addr", ln.Addr().String(), "https", cert != nil)
 		_ = a.notifier.Ready()

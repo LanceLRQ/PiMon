@@ -29,6 +29,10 @@ package httpx
 //	run.failed               采集失败（或上游请求失败），details.message 可选  502
 //	run.busy                 该实例正在运行，等待至多插件超时仍未轮到       409
 //	internal                 内部错误                              500
+//	ws.subscribe_denied      UI WebSocket 协议级错误消息（非 HTTP 响应，连接不断开）：
+//	                         当前会话无权订阅所请求的主题，details.topics 为被拒主题
+//	ws.bad_message           UI WebSocket 协议级错误消息（同上）：消息不是合法 JSON、type 未知
+//	                         或订阅了未知主题（details.topics）
 const (
 	CodeInvalidJSON           = "request.invalid_json"
 	CodeValidationFail        = "validation.failed"

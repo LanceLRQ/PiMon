@@ -38,6 +38,9 @@ type Deps struct {
 	History      *history.Service
 	// Web 是前端 SPA 处理器，挂在 "/" 兜底；为 nil 时不提供前端（测试用）。
 	Web http.Handler
+	// WS 是 UI WebSocket 的握手处理器，挂在 GET /ws；为 nil 时不提供（测试用）。
+	// 它自己校验 Origin 与会话，不经 s.admin：管理员会话与屏幕会话都可以连。
+	WS http.Handler
 }
 
 // argonConcurrency 是同时进行的 argon2 运算上限，避免 64MiB×N 耗尽树莓派内存。
@@ -64,6 +67,9 @@ func New(d Deps) http.Handler {
 	s.registerPlugins(mux)
 	s.registerInstances(mux)
 	s.registerHistory(mux)
+	if d.WS != nil {
+		mux.Handle("GET /ws", d.WS)
+	}
 	// 后续路由在此追加；需要管理员权限的用 s.admin(...) 包装。
 
 	// 兜底：未匹配的 /api/ 路径回 JSON 404，其余 GET/HEAD 交给前端。
