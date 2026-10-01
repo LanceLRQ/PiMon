@@ -55,7 +55,6 @@
     "reload": "刷新页面",
     "sessionError": "无法获取登录状态，请确认中枢是否在运行",
     "retry": "重试",
-    "screenPlaceholder": "屏幕端将在 M1d 提供",
     "notFound": "页面不存在",
     "versionUpdated": "中枢已升级，请手动刷新页面以加载新版本"
   },
@@ -1087,6 +1086,28 @@
       "history": "历史曲线",
       "noItems": "暂无数据",
       "updated": "更新于"
+    },
+    "disconnected": "连接中断，显示 {{time}} 的数据",
+    "tokenInvalid": {
+      "title": "屏幕令牌失效",
+      "body": "请在树莓派上重启 kiosk（或重新用屏幕令牌链接打开本页），以获取新的会话。"
+    },
+    "hubDown": {
+      "title": "hub 未运行",
+      "body": "无法连接中枢，请确认树莓派上的 pimon-hub 正在运行，恢复后会自动重连。"
+    },
+    "adminPreview": {
+      "title": "管理员预览",
+      "body": "管理员会话打开屏幕端页面仅作预览，不会被当作显示器；要在显示器上显示，请用屏幕令牌链接打开。",
+      "back": "返回管理界面"
+    },
+    "setup": {
+      "title": "首次设置",
+      "codeLabel": "设置码",
+      "openOnPhone": "用手机打开 {{url}} 完成设置",
+      "unavailable": "设置码暂不可用，请稍候…",
+      "hint": "在手机上输入设置码并设置管理员密码，本屏幕会自动进入面板。",
+      "raspberryHost": "树莓派地址"
     }
   }
 }

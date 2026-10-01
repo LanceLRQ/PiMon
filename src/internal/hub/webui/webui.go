@@ -22,6 +22,9 @@ var embedded embed.FS
 // buildPlaceholder 是 index.html 里的 build 版本占位符，返回 index 时替换。
 const buildPlaceholder = "__PIMON_BUILD__"
 
+// screenServiceWorker 是屏幕端 Service Worker 脚本的路径（相对 dist 根）。
+const screenServiceWorker = "screen/sw.js"
+
 const (
 	cacheImmutable = "public, max-age=31536000, immutable"
 	cacheNoCache   = "no-cache"
@@ -108,6 +111,11 @@ func (h *spa) serveFile(w http.ResponseWriter, r *http.Request, name string, dat
 	} else {
 		// 根目录静态文件（favicon 等）文件名不带哈希，每次校验以便升级后立即生效。
 		w.Header().Set("Cache-Control", cacheNoCache)
+	}
+	if name == screenServiceWorker {
+		// 脚本放在 /screen/ 下，默认作用域是 /screen/，覆盖不到 /screen 本身；放宽后由页面注册时指定 scope 为 /screen，
+		// 脚本内部只处理 /screen 与 /assets/ 的请求。
+		w.Header().Set("Service-Worker-Allowed", "/")
 	}
 	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
 }

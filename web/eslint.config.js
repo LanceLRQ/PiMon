@@ -56,6 +56,11 @@ export default tseslint.config(
     rules: reactHooks.configs.recommended.rules,
   },
   {
+    // 屏幕端 Service Worker 是不经打包的经典脚本，运行在 worker 环境
+    files: ['public/screen/sw.js'],
+    languageOptions: { globals: { ...globals.serviceworker } },
+  },
+  {
     files: themedFiles,
     rules: { 'no-restricted-syntax': ['error', ...restrictedSyntax] },
   },

@@ -55,7 +55,6 @@
     "reload": "Reload page",
     "sessionError": "Cannot read the session state. Check that the hub is running.",
     "retry": "Retry",
-    "screenPlaceholder": "The screen app arrives in M1d",
     "notFound": "Page not found",
     "versionUpdated": "The hub was upgraded. Reload the page to load the new version."
   },
@@ -1087,6 +1086,28 @@
       "history": "History",
       "noItems": "No data yet",
       "updated": "Updated"
+    },
+    "disconnected": "Connection lost, showing data from {{time}}",
+    "tokenInvalid": {
+      "title": "Screen token is no longer valid",
+      "body": "Restart the kiosk on the Raspberry Pi (or open this page again with the screen token link) to get a new session."
+    },
+    "hubDown": {
+      "title": "The hub is not running",
+      "body": "Cannot reach the hub. Make sure pimon-hub is running on the Raspberry Pi; this screen reconnects automatically."
+    },
+    "adminPreview": {
+      "title": "Admin preview",
+      "body": "Opening the screen page in an admin session is a preview only and is not treated as a display. To use a display, open it with the screen token link.",
+      "back": "Back to admin"
+    },
+    "setup": {
+      "title": "First-time setup",
+      "codeLabel": "Setup code",
+      "openOnPhone": "Open {{url}} on your phone to finish setup",
+      "unavailable": "The setup code is not available yet, please wait…",
+      "hint": "Enter the code on your phone and set the admin password; this screen will open the dashboard automatically.",
+      "raspberryHost": "Pi address"
     }
   }
 }

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import type { SocketSink } from '@/store/socket-sink'
 import type { ResolvedLayout, ScreenInstanceData, ScreenState } from '@/types/generated'
+import type { StoredScreenData } from './snapshot-cache'
 import type { ScreenSettings } from '@/types/protocol.generated'
 
 // 屏幕端实时数据存储：snapshot 整体覆盖，patch 按实体增量合并，状态不可变。
@@ -41,6 +42,11 @@ export interface ScreenStore extends SocketSink {
   getState(): ScreenStoreState
   subscribe(listener: () => void): () => void
   reset(): void
+  /**
+   * 用本地存档还原布局、设置与数据（hub 暂时不可达时先显示上次的内容）。
+   * 不改时钟校正、不标记 synced；已经收到过真实 snapshot 就忽略，避免旧数据覆盖新数据。
+   */
+  restore(stored: StoredScreenData): void
 }
 
 function parseTime(serverTime: string): number | null {
@@ -118,6 +124,16 @@ export function createScreenStore(): ScreenStore {
     setConnected: (connected) => set({ connected }),
     setBuildOutdated: (buildOutdated) => set({ buildOutdated }),
     setError: (lastError) => set({ lastError }),
+    restore(stored) {
+      if (state.synced) return
+      set({
+        settings: stored.settings,
+        layout: stored.layout,
+        screenState: stored.screenState,
+        data: stored.data,
+        lastDataAt: stored.lastDataAt,
+      })
+    },
     reset() {
       state = initialScreenState
       listeners.forEach((l) => l())
