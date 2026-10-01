@@ -4,13 +4,20 @@ PKG     := github.com/LanceLRQ/PiMon/src
 LDFLAGS := -s -w -X $(PKG)/pkg/version.Version=$(VERSION)
 BIN     := $(CURDIR)/bin
 
-.PHONY: generate web build build-go test test-go test-web test-e2e lint lint-go lint-web dev clean
+.PHONY: generate check-generated web build build-go test test-go test-web test-e2e lint lint-go lint-web dev clean
 
 TYGO_VERSION := v0.2.21
 
 # 由 Go 模型生成前端 TS 类型（src/tygo.yaml）
 generate:
 	cd src && go run github.com/gzuidhof/tygo@$(TYGO_VERSION) generate
+
+# 生成物漂移检查：重新生成后，web/src/types 下的内容必须与已提交的一致（只比较该目录，不受工作区其他改动影响）
+check-generated:
+	@before="$$(git diff -- web/src/types; git ls-files --others --exclude-standard web/src/types | xargs -I{} sh -c 'echo {}; cat {}')"; \
+	$(MAKE) --no-print-directory generate; \
+	after="$$(git diff -- web/src/types; git ls-files --others --exclude-standard web/src/types | xargs -I{} sh -c 'echo {}; cat {}')"; \
+	if [ "$$before" != "$$after" ]; then echo "tygo 生成物与 Go 模型不一致，请运行 make generate 并提交 web/src/types"; git diff --stat -- web/src/types; exit 1; fi
 
 # 构建前端，产物写入 src/internal/hub/webui/dist（由 hub 通过 go:embed 打包）
 web:
@@ -36,7 +43,7 @@ test-e2e: web
 	cd web && pnpm exec playwright install chromium
 	cd web && pnpm e2e
 
-lint: lint-go lint-web
+lint: check-generated lint-go lint-web
 
 lint-go:
 	@out="$$(cd src && gofmt -l .)"; if [ -n "$$out" ]; then echo "以下文件未 gofmt："; echo "$$out"; exit 1; fi
