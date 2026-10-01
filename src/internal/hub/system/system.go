@@ -54,6 +54,8 @@ type Service struct {
 	usedAt   time.Time
 	used     *int64
 	usedDone bool
+	// inflight 非 nil 表示正有一次遍历在进行，其余请求等它结束并共用结果。
+	inflight chan struct{}
 }
 
 // New 创建 Service，启动时刻取自注入的时钟。
@@ -129,14 +131,35 @@ func (s *Service) pluginStats() model.SystemPlugins {
 }
 
 // dataDirUsed 返回数据目录用量，结果缓存 dataDirTTL；目录不可读时为 nil（未知）。
+// 遍历不持锁；同一时刻只有一次遍历，并发请求等待并共用其结果。
 func (s *Service) dataDirUsed(now time.Time) *int64 {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.usedDone && now.Sub(s.usedAt) < dataDirTTL {
-		return s.used
+	for {
+		if s.usedDone && now.Sub(s.usedAt) < dataDirTTL {
+			u := s.used
+			s.mu.Unlock()
+			return u
+		}
+		if s.inflight == nil {
+			break
+		}
+		wait := s.inflight
+		s.mu.Unlock()
+		<-wait
+		s.mu.Lock()
 	}
-	s.used, s.usedAt, s.usedDone = dirSize(s.cfg.DataDir), now, true
-	return s.used
+	done := make(chan struct{})
+	s.inflight = done
+	s.mu.Unlock()
+
+	used := dirSize(s.cfg.DataDir)
+
+	s.mu.Lock()
+	s.used, s.usedAt, s.usedDone = used, now, true
+	s.inflight = nil
+	s.mu.Unlock()
+	close(done)
+	return used
 }
 
 func dirSize(root string) *int64 {

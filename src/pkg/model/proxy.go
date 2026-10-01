@@ -38,7 +38,7 @@ type Proxy struct {
 	// Referrers 是引用该代理的监控实例；没有引用时为空数组。
 	Referrers []ProxyReferrer `json:"referrers"`
 	CreatedAt time.Time       `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
 // ProxyAuthState 是认证的回显形式：{"set": true}。

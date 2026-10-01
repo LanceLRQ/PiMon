@@ -33,6 +33,7 @@ test-web:
 lint: lint-go lint-web
 
 lint-go:
+	@out="$$(cd src && gofmt -l .)"; if [ -n "$$out" ]; then echo "以下文件未 gofmt："; echo "$$out"; exit 1; fi
 	cd src && go vet ./...
 	cd src && golangci-lint run ./...
 

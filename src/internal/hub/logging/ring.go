@@ -3,10 +3,12 @@ package logging
 import (
 	"context"
 	"log/slog"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // Entry 是环形缓冲里的一条日志。
@@ -87,7 +89,11 @@ func (h *ringHandler) Handle(_ context.Context, rec slog.Record) error {
 		appendAttr(&sb, h.group, a)
 		return true
 	})
-	h.ring.add(Entry{Time: rec.Time, Level: rec.Level, Message: rec.Message, Attrs: strings.TrimPrefix(sb.String(), " ")})
+	h.ring.add(Entry{
+		Time: rec.Time, Level: rec.Level,
+		Message: truncate(maskURLUserinfo(rec.Message)),
+		Attrs:   truncate(strings.TrimPrefix(sb.String(), " ")),
+	})
 	return nil
 }
 
@@ -113,6 +119,34 @@ func (h *ringHandler) WithGroup(name string) slog.Handler {
 
 // sensitiveKeys 命中（不区分大小写、子串匹配）的属性键，其值不进入缓冲。
 var sensitiveKeys = []string{"password", "passwd", "secret", "token", "setup_code", "authorization", "cookie", "credential", "api_key", "apikey"}
+
+// maxTextLen 是单条日志消息或属性文本进入缓冲的长度上限（字节）。
+const maxTextLen = 2048
+
+const truncatedMark = "…(已截断)"
+
+// truncate 把过长的文本截到 maxTextLen 附近（不切断 UTF-8 字符）并标注已截断。
+func truncate(s string) string {
+	if len(s) <= maxTextLen {
+		return s
+	}
+	cut := maxTextLen
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + truncatedMark
+}
+
+// userinfoRe 匹配 scheme://user:pass@ 形式的内嵌凭据。
+var userinfoRe = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/\s@]*:[^/\s@]*@`)
+
+// maskURLUserinfo 把文本里 scheme://user:pass@ 的凭据部分换成 scheme://***@。
+func maskURLUserinfo(s string) string {
+	if !strings.Contains(s, "@") {
+		return s
+	}
+	return userinfoRe.ReplaceAllString(s, "${1}***@")
+}
 
 func isSensitive(key string) bool {
 	k := strings.ToLower(key)
@@ -142,11 +176,12 @@ func appendAttr(sb *strings.Builder, group string, a slog.Attr) {
 	sb.WriteByte(' ')
 	sb.WriteString(group + a.Key)
 	sb.WriteByte('=')
-	if isSensitive(a.Key) {
+	// 键名或任一级分组名命中敏感词，值都不进入缓冲。
+	if isSensitive(a.Key) || isSensitive(group) {
 		sb.WriteString("***")
 		return
 	}
-	v := a.Value.String()
+	v := maskURLUserinfo(a.Value.String())
 	if v == "" || strings.ContainsAny(v, " \t\r\n\"=") {
 		v = strconv.Quote(v)
 	}

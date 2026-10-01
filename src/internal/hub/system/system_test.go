@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -151,4 +152,22 @@ func TestParseProcIOWriteBytes(t *testing.T) {
 	if _, ok := parseWriteBytes("write_bytes: abc\n"); ok {
 		t.Fatal("非数字应为未知")
 	}
+}
+
+func TestDataDirUsageConcurrentRequestsShareOneWalk(t *testing.T) {
+	s, _, dir := newSvc(t, nil)
+	if err := os.WriteFile(filepath.Join(dir, "a"), make([]byte, 7), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if u := s.Info().DataDir.UsedBytes; u == nil || *u != 7 {
+				t.Errorf("用量不对: %v", u)
+			}
+		}()
+	}
+	wg.Wait()
 }

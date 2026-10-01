@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestRingKeepsNewestWithinCapacity(t *testing.T) {
@@ -101,5 +102,56 @@ func TestRingConcurrent(t *testing.T) {
 	}
 	if n := len(r.Entries(slog.LevelDebug, 1000)); n != 50 {
 		t.Fatalf("n = %d", n)
+	}
+}
+
+func TestRingMasksURLUserinfoInMessageAndValues(t *testing.T) {
+	r := NewRing(5)
+	lg := slog.New(r.Handler(slog.LevelDebug))
+	lg.Info("连接 socks5://alice:p4ss@10.0.0.1:1080 失败", "proxy", "http://bob:s3cret@host/x", "plain", "https://example.com/a@b")
+	e := r.Entries(slog.LevelDebug, 1)[0]
+	if strings.Contains(e.Message+e.Attrs, "p4ss") || strings.Contains(e.Message+e.Attrs, "s3cret") {
+		t.Fatalf("泄露凭据: %+v", e)
+	}
+	if !strings.Contains(e.Message, "socks5://***@10.0.0.1:1080") || !strings.Contains(e.Attrs, "http://***@host/x") {
+		t.Fatalf("应保留其余部分: %+v", e)
+	}
+	if !strings.Contains(e.Attrs, "https://example.com/a@b") {
+		t.Fatalf("没有凭据的 URL 不应被改动: %s", e.Attrs)
+	}
+}
+
+func TestRingMasksChildrenOfSensitiveGroup(t *testing.T) {
+	r := NewRing(5)
+	lg := slog.New(r.Handler(slog.LevelDebug))
+	lg.Info("x", slog.Group("credentials", slog.String("user", "alice"), slog.String("value", "v1")), slog.String("ok", "fine"))
+	lg.WithGroup("secrets").Info("y", "name", "n1")
+	es := r.Entries(slog.LevelDebug, 2)
+	if a := es[0].Attrs; strings.Contains(a, "alice") || strings.Contains(a, "v1") || !strings.Contains(a, "credentials.user=***") || !strings.Contains(a, "ok=fine") {
+		t.Fatalf("分组子键应脱敏: %s", a)
+	}
+	if a := es[1].Attrs; strings.Contains(a, "n1") || !strings.Contains(a, "secrets.name=***") {
+		t.Fatalf("WithGroup 的子键应脱敏: %s", a)
+	}
+}
+
+func TestRingTruncatesLongText(t *testing.T) {
+	r := NewRing(5)
+	lg := slog.New(r.Handler(slog.LevelDebug))
+	long := strings.Repeat("中", 3000)
+	lg.Info(long, "k", long)
+	e := r.Entries(slog.LevelDebug, 1)[0]
+	for name, v := range map[string]string{"message": e.Message, "attrs": e.Attrs} {
+		if len(v) > maxTextLen+len(truncatedMark) || !strings.HasSuffix(v, truncatedMark) {
+			t.Errorf("%s 未截断: len=%d", name, len(v))
+		}
+		if !utf8.ValidString(v) {
+			t.Errorf("%s 截断后不是合法 UTF-8", name)
+		}
+	}
+	short := "ok"
+	lg.Info(short)
+	if got := r.Entries(slog.LevelDebug, 1)[0].Message; got != short {
+		t.Errorf("短文本不应变化: %q", got)
 	}
 }
