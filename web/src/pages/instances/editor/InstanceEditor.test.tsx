@@ -6,7 +6,7 @@ import { liveStore } from '@/store/live-store'
 import { InstanceEditPage } from '../InstanceEditPage'
 import { InstanceNewPage } from '../InstanceNewPage'
 import { apiError, json, mockApi, renderWithApp, type ApiHandler, type Req } from '../test-utils'
-import { editorPlugins, kitchenPlugin, makeDetail, proxyFixtures } from './fixtures'
+import { editorPlugins, kitchenPlugin, makeDetail, proxyFixtures } from './editor.fixtures'
 
 beforeEach(() => {
   liveStore.reset()

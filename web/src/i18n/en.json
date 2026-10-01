@@ -55,6 +55,7 @@
     "reload": "Reload page",
     "sessionError": "Cannot read the session state. Check that the hub is running.",
     "retry": "Retry",
+    "screenPlaceholder": "The screen app arrives in M1d",
     "notFound": "Page not found",
     "versionUpdated": "The hub was upgraded. Reload the page to load the new version."
   },

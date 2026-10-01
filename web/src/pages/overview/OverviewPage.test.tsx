@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fixtureNow, makeInstance, prototypeInstances } from '@/pages/instances/fixtures'
+import { fixtureNow, makeInstance, prototypeInstances } from '@/pages/instances/instances.fixtures'
 import { json, mockApi, patchInstance, renderWithApp, seedStore } from '@/pages/instances/test-utils'
 import { liveStore } from '@/store/live-store'
 import { OverviewPage } from './OverviewPage'
@@ -67,6 +67,14 @@ describe('总览页', () => {
     const health = cell('健康汇总')
     expect(within(health).getByText('加载中')).toBeInTheDocument()
     expect(within(health).queryByText('0')).toBeNull()
+  })
+
+  it('hub 概况：snapshot 到达前实例数显示未知，不显示 0', async () => {
+    mockApi()
+    await renderWithApp(<OverviewPage />)
+    const hub = cell('hub 概况')
+    expect(within(hub).queryByText('0')).toBeNull()
+    expect(within(hub).getByText('实例数').parentElement).toHaveTextContent('未知')
   })
 
   it('需要处理按严重度排序，只有采集失败的行有「立即重试」', async () => {

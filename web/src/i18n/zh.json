@@ -55,6 +55,7 @@
     "reload": "刷新页面",
     "sessionError": "无法获取登录状态，请确认中枢是否在运行",
     "retry": "重试",
+    "screenPlaceholder": "屏幕端将在 M1d 提供",
     "notFound": "页面不存在",
     "versionUpdated": "中枢已升级，请手动刷新页面以加载新版本"
   },

@@ -2,6 +2,7 @@ import { lazy, Suspense, type ComponentType, type ReactNode } from 'react'
 import { Route, Routes } from 'react-router'
 import { AdminLayout } from './AdminLayout'
 import { NotFoundPage } from './NotFoundPage'
+import { ScreenPlaceholderPage } from './ScreenPlaceholderPage'
 import { PublicRoute, RequireSession } from './guard'
 import { LazyBoundary, RouteFallback } from './route-fallback'
 
@@ -45,6 +46,8 @@ export function AppRoutes() {
         <Route path="/setup" element={<SetupPage />} />
       </Route>
       <Route element={<RequireSession />}>
+        {/* 屏幕端由 M1d 提供；此前占位，不带管理外壳、不连管理 WebSocket */}
+        <Route path="screen/*" element={<ScreenPlaceholderPage />} />
         <Route element={<AdminLayout />}>
           <Route index element={<OverviewPage />} />
           <Route path="screens" element={<ScreensPage />} />

@@ -104,6 +104,34 @@ describe('应用外壳与会话守卫', () => {
     expect(screen.queryByRole('heading', { name: '设置' })).not.toBeInTheDocument()
   })
 
+  it('屏幕会话访问 /screen：不再跳转，显示「屏幕端将在 M1d 提供」占位且没有管理外壳', async () => {
+    const redirect = vi.fn()
+    await mount({ session: { authenticated: true, kind: 'screen', needs_setup: false }, path: '/screen', redirectExternal: redirect })
+    expect(await screen.findByText('屏幕端将在 M1d 提供')).toBeInTheDocument()
+    expect(redirect).not.toHaveBeenCalled()
+    expect(screen.queryByRole('complementary', { name: '主导航' })).not.toBeInTheDocument()
+  })
+
+  it('屏幕会话占位页英文界面', async () => {
+    await mount({ session: { authenticated: true, kind: 'screen', needs_setup: false }, path: '/screen', lng: 'en' })
+    expect(await screen.findByText('The screen app arrives in M1d')).toBeInTheDocument()
+  })
+
+  it('屏幕会话访问 /screens（管理页，与 /screen 前缀相近）仍跳 /screen', async () => {
+    const redirect = vi.fn()
+    await mount({ session: { authenticated: true, kind: 'screen', needs_setup: false }, path: '/screens', redirectExternal: redirect })
+    await waitFor(() => expect(redirect).toHaveBeenCalledWith('/screen'))
+  })
+
+  it.each(['/login?next=%2F%5Cevil.com', '/login?next=%2F%5C%5Cevil.com', '/login?next=%2F%09%2Fevil.com'])(
+    '已登录的管理员访问 %s 时回根路径',
+    async (path) => {
+      await mount({ session: admin, path })
+      await screen.findByRole('heading', { name: '总览' })
+      expect(screen.getByTestId('loc')).toHaveTextContent(/^\/$/)
+    },
+  )
+
   it('管理员会话显示外壳与页面', async () => {
     await mount({ session: admin, path: '/proxies' })
     expect(await screen.findByRole('heading', { name: '代理' })).toBeInTheDocument()

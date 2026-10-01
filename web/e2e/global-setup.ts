@@ -6,5 +6,6 @@ export default async function globalSetup() {
   const hub = await startHub()
   process.env.PIMON_E2E_URL = hub.url
   process.env.PIMON_E2E_SETUP_CODE = hub.setupCode
+  process.env.PIMON_E2E_DATA_DIR = hub.dataDir
   return hub.dispose
 }

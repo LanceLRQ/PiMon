@@ -4,9 +4,10 @@ import { Navigate, Outlet, useLocation, useSearchParams } from 'react-router'
 import { Button } from '@/ui/button'
 import { useSession } from './session'
 
-// 登录后回跳的目标只接受站内路径，且不能回到登录/首次设置页本身
+// 登录后回跳的目标只接受站内路径，且不能回到登录/首次设置页本身；
+// 浏览器会把反斜杠当作斜杠、并忽略 tab 与换行，所以含反斜杠或空白字符的一律回根
 export function safeNext(next: string | null): string {
-  if (!next || !next.startsWith('/') || next.startsWith('//')) return '/'
+  if (!next || !next.startsWith('/') || next.startsWith('//') || /[\\\s]/.test(next)) return '/'
   if (next === '/login' || next === '/setup' || next.startsWith('/login?') || next.startsWith('/setup?')) return '/'
   return next
 }
@@ -43,10 +44,13 @@ export function RequireSession() {
   const { status, info, redirectExternal } = useSession()
   const location = useLocation()
   const isScreen = status === 'ready' && info?.authenticated === true && info.kind === 'screen'
+  // 已经在屏幕端路径下就不再跳转，否则服务端回退返回管理端页面会造成无限刷新（/screens 是管理页，不算）
+  const onScreenPath = location.pathname === '/screen' || location.pathname.startsWith('/screen/')
+  const shouldLeave = isScreen && !onScreenPath
 
   useEffect(() => {
-    if (isScreen) redirectExternal('/screen')
-  }, [isScreen, redirectExternal])
+    if (shouldLeave) redirectExternal('/screen')
+  }, [shouldLeave, redirectExternal])
 
   if (status !== 'ready' || !info) return <SessionPending />
   if (info.needs_setup) return <Navigate to="/setup" replace />
@@ -55,7 +59,7 @@ export function RequireSession() {
     const to = here === '/' ? '/login' : `/login?next=${encodeURIComponent(here)}`
     return <Navigate to={to} replace />
   }
-  if (isScreen) return null
+  if (shouldLeave) return null
   return <Outlet />
 }
 

@@ -161,7 +161,7 @@ function HealthSummary({ instances, synced }: { instances: Instance[]; synced: b
   )
 }
 
-function HubSummary({ instanceCount }: { instanceCount: number }) {
+function HubSummary({ instanceCount }: { instanceCount: number | null }) {
   const { t, i18n } = useTranslation()
   const build = useLiveStore(selectBuild)
   const connected = useLiveStore(selectConnected)
@@ -215,7 +215,7 @@ function HubSummary({ instanceCount }: { instanceCount: number }) {
       v: lastBackup === undefined ? unknown : lastBackup === null ? t('overview.hub.noBackup') : formatDateTime(lastBackup, i18n.language),
     },
     { k: t('overview.hub.timezone'), v: settings?.timezone || unknown },
-    { k: t('overview.hub.instances'), v: String(instanceCount) },
+    { k: t('overview.hub.instances'), v: instanceCount === null ? unknown : String(instanceCount) },
     { k: t('overview.hub.agents'), v: <span className="text-muted-foreground">{t('overview.hub.agentsLater')}</span> },
   ]
   return (
@@ -361,7 +361,7 @@ export function OverviewPage() {
             <HealthSummary instances={instances} synced={synced} />
           </Cell>
           <Cell no="01.2" title={t('overview.hub.title')} meta={window.location.host} className="mobile:hidden">
-            <HubSummary instanceCount={instances.length} />
+            <HubSummary instanceCount={synced ? instances.length : null} />
           </Cell>
           <Cell no="01.3" title={t('overview.attention.title')} meta={synced ? t('overview.attention.meta', { count: attentionCount }) : undefined}>
             <Attention instances={instances} now={now} synced={synced} onOpen={(i) => setOpenId(i.id)} onRetry={(i) => void manager.actions.run(i)} />

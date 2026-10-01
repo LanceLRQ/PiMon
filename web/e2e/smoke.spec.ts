@@ -1,4 +1,6 @@
 import type { Browser, BrowserContext, Page, TestInfo } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { collectConsoleErrors, findOverflow } from './support/checks.ts'
 import { expect, setupCode, test } from './support/fixtures.ts'
 
@@ -257,4 +259,30 @@ test.describe('逐页布局（登录与各管理页，逐尺寸逐主题）', ()
       }),
     )
   }
+})
+
+test.describe('屏幕会话', () => {
+  test('用屏幕令牌链接访问后停在 /screen 占位页，不会反复整页刷新', async ({ browser, baseURL }) => {
+    const dataDir = process.env.PIMON_E2E_DATA_DIR
+    if (!dataDir) throw new Error('缺少 PIMON_E2E_DATA_DIR：hub 应由 globalSetup 启动')
+    const token = readFileSync(path.join(dataDir, 'screen.token'), 'utf8').trim()
+    const context = await browser.newContext({ baseURL, locale: 'zh-CN' })
+    try {
+      const page = await context.newPage()
+      const navigations: string[] = []
+      page.on('framenavigated', (frame) => {
+        if (frame === page.mainFrame()) navigations.push(frame.url())
+      })
+      await page.goto(`/screen/auth?token=${encodeURIComponent(token)}`)
+      await expect(page).toHaveURL(/\/screen$/)
+      await expect(page.getByText('屏幕端将在 M1d 提供')).toBeVisible()
+      // 若存在刷新循环，等待期间会不断产生新的主框架导航
+      const settled = navigations.length
+      await page.waitForTimeout(2000)
+      expect(navigations.length, `稳定后仍有导航：${navigations.join(' → ')}`).toBe(settled)
+      await expect(page.getByText('屏幕端将在 M1d 提供')).toBeVisible()
+    } finally {
+      await context.close()
+    }
+  })
 })

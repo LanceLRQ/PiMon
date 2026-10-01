@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { liveStore } from '@/store/live-store'
 import type { InstanceDetail, Report } from '@/types/generated'
-import { fixtureNow, makeInstance } from './fixtures'
+import { fixtureNow, makeInstance } from './instances.fixtures'
 import { InstancesPage } from './InstancesPage'
 import { apiError, json, mockApi, patchInstance, renderWithApp, seedStore } from './test-utils'
 

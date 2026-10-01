@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { prototypeInstances, makeInstance } from './fixtures'
+import { prototypeInstances, makeInstance } from './instances.fixtures'
 import {
   attentionStates,
   filterInstances,
