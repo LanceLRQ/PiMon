@@ -1048,5 +1048,24 @@
     "ambient": "Ambient",
     "mission-control": "Mission Control",
     "industrial": "Industrial"
+  },
+  "screenWidget": {
+    "unknown": "Unknown",
+    "unconfigured": "Not configured",
+    "broken": "Broken reference",
+    "stale": "Stale",
+    "offline": "Offline",
+    "maintenance": "Maintenance",
+    "templatePending": "This template will be available in a later version",
+    "never": "Never",
+    "textEmpty": "No text set",
+    "more": "+{{n}}",
+    "level": {
+      "ok": "Normal",
+      "warning": "Warning",
+      "critical": "Critical",
+      "unknown": "Unknown",
+      "error": "Collection failed"
+    }
   }
 }

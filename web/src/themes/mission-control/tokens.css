@@ -39,6 +39,9 @@
   --primary-foreground: var(--p-bg);
   --ring: var(--p-ring);
   --surface-raised: var(--p-panel-hi);
+
+  /* faint 只用于装饰或大号文字（>=18px 或 >=14px 粗体），对比度口径 >=3；
+     承载信息的小字（时间戳、单位、标签）一律用 --muted-foreground（>=4.5，Ruling 42） */
   --foreground-faint: var(--p-faint);
 
   /* L2 状态：色 + 形 + 强调 */

@@ -1048,5 +1048,24 @@
     "ambient": "氛围",
     "mission-control": "任务控制",
     "industrial": "工业面板"
+  },
+  "screenWidget": {
+    "unknown": "未知",
+    "unconfigured": "未配置",
+    "broken": "引用失效",
+    "stale": "过期",
+    "offline": "离线",
+    "maintenance": "维护中",
+    "templatePending": "模板将在后续版本提供",
+    "never": "从未",
+    "textEmpty": "未设置文本",
+    "more": "+{{n}}",
+    "level": {
+      "ok": "正常",
+      "warning": "警告",
+      "critical": "严重",
+      "unknown": "未知",
+      "error": "采集失败"
+    }
   }
 }

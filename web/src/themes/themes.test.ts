@@ -82,6 +82,8 @@ const textPairs: [string, string, number][] = [
   ['--muted-foreground', '--background', 4.5],
   ['--muted-foreground', '--card', 4.5],
   ['--muted-foreground', '--muted', 4.5],
+  // Ruling 42：承载信息的小字（时间戳、单位、标签）用 muted-foreground，落在详情层与横幅底上也要够
+  ['--muted-foreground', '--surface-raised', 4.5],
   ['--primary-foreground', '--primary', 4.5],
   ...statusLevels.map((s): [string, string, number] => [`--status-${s}-foreground`, `--status-${s}-color`, 4.5]),
   ['--foreground', '--status-warning-bg', 4.5],
@@ -239,6 +241,13 @@ describe('降低特效与聚合入口', () => {
       expect(css).toMatch(new RegExp(`${n}:\\s*none`))
     }
     expect(css).toMatch(/--motion-duration:\s*0ms/)
+  })
+
+  it('同一元素与祖先两种写法都被覆盖', () => {
+    const css = effectsCss.replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(css).toContain('[data-theme][data-reduce-effects]')
+    expect(css).toContain('[data-reduce-effects] [data-theme]')
+    expect(effectsCss).toMatch(/同一元素上/)
   })
 
   it('index.css 聚合三个主题与降低特效，且降低特效在最后', () => {

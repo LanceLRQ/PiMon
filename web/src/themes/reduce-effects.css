@@ -1,5 +1,7 @@
 /* 降低特效（设计 10.5）：在屏幕根或编辑器画布上加 data-reduce-effects 属性即开启。
-   选择器覆盖「同一元素上同时带两个属性」与「属性在祖先上」两种写法，权重不低于主题块。 */
+   约定：data-reduce-effects 与 data-theme 写在同一元素上（模板的 ThemeRoot 就是这样渲染的）。
+   同时保留祖先写法的覆盖规则（[data-reduce-effects] [data-theme]），由 themes.test.ts 断言两种写法都在；
+   两者权重都不低于主题块。运行时读数（readThemeRuntime）沿祖先查找 data-reduce-effects，行为一致。 */
 :root[data-theme][data-reduce-effects],
 /* stylelint-disable-next-line no-descending-specificity */
 [data-theme][data-reduce-effects],
