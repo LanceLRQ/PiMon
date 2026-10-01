@@ -299,6 +299,7 @@
     "inSeconds": "in {{n}}s",
     "inMinutes": "in {{n}} min",
     "inHours": "in {{n}} h",
+    "inHoursMinutes": "in {{h}} h {{m}} min",
     "inDays": "in {{n}} d",
     "uptimeDays": "{{d}}d {{h}}h",
     "uptimeHours": "{{h}}h {{m}}m",

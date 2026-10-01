@@ -299,6 +299,7 @@
     "inSeconds": "{{n}} 秒后",
     "inMinutes": "{{n}} 分钟后",
     "inHours": "{{n}} 小时后",
+    "inHoursMinutes": "{{h}} 小时 {{m}} 分后",
     "inDays": "{{n}} 天后",
     "uptimeDays": "{{d}} 天 {{h}} 小时",
     "uptimeHours": "{{h}} 小时 {{m}} 分",

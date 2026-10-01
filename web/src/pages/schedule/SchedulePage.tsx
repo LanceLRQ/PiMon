@@ -6,7 +6,7 @@ import { http } from '@/api/client'
 import { isApiError } from '@/api/errors'
 import { UnsavedGuard } from '@/app/unsaved-guard'
 import { translateErrorValue } from '@/i18n/errors'
-import { parseTime, useNow } from '@/lib/time'
+import { formatInMinutes, parseTime, useNow } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/lib/use-mobile'
 import { effectiveTouch } from '@/pages/screens/touch'
@@ -312,7 +312,7 @@ export function SchedulePage() {
                 </span>
                 <span>
                   {next
-                    ? t('schedule.tl.next', { at: formatHM(next.at), theme: themeLabel(next.theme), in: t(next.inMinutes >= 60 ? 'time.inHours' : 'time.inMinutes', { n: next.inMinutes >= 60 ? Math.floor(next.inMinutes / 60) : next.inMinutes }) })
+                    ? t('schedule.tl.next', { at: formatHM(next.at), theme: themeLabel(next.theme), in: formatInMinutes(t, next.inMinutes) })
                     : t('schedule.tl.none')}
                 </span>
               </>

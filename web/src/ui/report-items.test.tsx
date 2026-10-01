@@ -62,7 +62,7 @@ describe('数据项按类型渲染', () => {
     expect(screen.getByText('剩余 72%')).toBeInTheDocument()
     expect(screen.getByRole('meter')).toHaveAttribute('aria-valuenow', '72')
     expect(screen.getByText(/已用 28 次 \/ 总量 100 次/)).toBeInTheDocument()
-    expect(screen.getByText(/1 小时后/)).toBeInTheDocument()
+    expect(screen.getByText(/1 小时 15 分后/)).toBeInTheDocument()
   })
 
   it('quota 没有任何字段时显示未知', () => {

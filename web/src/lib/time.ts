@@ -28,13 +28,24 @@ export function formatAgo(t: TFunction, nowMs: number, thenMs: number | null): s
   return t('time.daysAgo', { n: Math.floor(sec / 86400) })
 }
 
+// 「N 分钟后 / N 小时 M 分后 / N 小时后」：不足 2 小时时带上分钟，不把 1 小时 58 分说成「1 小时后」。
+// 2 小时及以上按整小时向下取整。
+export function formatInMinutes(t: TFunction, minutes: number): string {
+  const m = Math.max(0, Math.floor(minutes))
+  if (m < 60) return t('time.inMinutes', { n: m })
+  if (m < 120) {
+    const rest = m - 60
+    return rest === 0 ? t('time.inHours', { n: 1 }) : t('time.inHoursMinutes', { h: 1, m: rest })
+  }
+  return t('time.inHours', { n: Math.floor(m / 60) })
+}
+
 // 「N 分钟/小时/天后」，用于额度重置与到期；已过去的时刻显示「已过」
 export function formatIn(t: TFunction, nowMs: number, thenMs: number): string {
   const sec = Math.floor((thenMs - nowMs) / 1000)
   if (sec <= 0) return t('time.passed')
   if (sec < 60) return t('time.inSeconds', { n: sec })
-  if (sec < 3600) return t('time.inMinutes', { n: Math.floor(sec / 60) })
-  if (sec < 86400) return t('time.inHours', { n: Math.floor(sec / 3600) })
+  if (sec < 86400) return formatInMinutes(t, Math.floor(sec / 60))
   return t('time.inDays', { n: Math.floor(sec / 86400) })
 }
 
