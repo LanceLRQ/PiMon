@@ -117,6 +117,12 @@ describe('应用外壳与会话守卫', () => {
     await waitFor(() => expect(document.querySelector('[data-screen-root]')).not.toBeNull())
   })
 
+  it('没有会话访问 /screen：显示令牌失效页，不跳登录页也不跳首次设置', async () => {
+    await mount({ session: { authenticated: false, needs_setup: false }, path: '/screen' })
+    expect(await screen.findByRole('heading', { name: '屏幕令牌失效' })).toBeInTheDocument()
+    expect(screen.getByTestId('loc')).toHaveTextContent(/^\/screen$/)
+  })
+
   it('屏幕会话访问 /screens（管理页，与 /screen 前缀相近）仍跳 /screen', async () => {
     const redirect = vi.fn()
     await mount({ session: { authenticated: true, kind: 'screen', needs_setup: false }, path: '/screens', redirectExternal: redirect })

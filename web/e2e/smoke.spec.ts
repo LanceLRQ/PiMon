@@ -261,14 +261,19 @@ test.describe('逐页布局（登录与各管理页，逐尺寸逐主题）', ()
   }
 })
 
+function screenToken(): string {
+  const dataDir = process.env.PIMON_E2E_DATA_DIR
+  if (!dataDir) throw new Error('缺少 PIMON_E2E_DATA_DIR：hub 应由 globalSetup 启动')
+  return readFileSync(path.join(dataDir, 'screen.token'), 'utf8').trim()
+}
+
 test.describe('屏幕会话', () => {
-  test('用屏幕令牌链接访问后停在 /screen 屏幕端应用，不会反复整页刷新', async ({ browser, baseURL }) => {
-    const dataDir = process.env.PIMON_E2E_DATA_DIR
-    if (!dataDir) throw new Error('缺少 PIMON_E2E_DATA_DIR：hub 应由 globalSetup 启动')
-    const token = readFileSync(path.join(dataDir, 'screen.token'), 'utf8').trim()
-    const context = await browser.newContext({ baseURL, locale: 'zh-CN' })
+  test('用屏幕令牌链接访问后停在 /screen，看到网格与默认首页小组件，不反复刷新，console 零报错', async ({ browser, baseURL }) => {
+    const token = screenToken()
+    const context = await browser.newContext({ baseURL, locale: 'zh-CN', viewport: { width: 1024, height: 600 } })
     try {
       const page = await context.newPage()
+      const errors = collectConsoleErrors(page)
       const navigations: string[] = []
       page.on('framenavigated', (frame) => {
         if (frame === page.mainFrame()) navigations.push(frame.url())
@@ -276,13 +281,44 @@ test.describe('屏幕会话', () => {
       await page.goto(`/screen/auth?token=${encodeURIComponent(token)}`)
       await expect(page).toHaveURL(/\/screen$/)
       await expect(page.locator('[data-screen-root]')).toBeVisible()
+      await expect(page.locator('[data-screen-grid]')).toBeVisible()
+      // 默认首页至少有时钟小组件
+      await expect(page.locator('[data-widget-id] .tpl-clock').first()).toBeVisible()
+      expect(await page.locator('[data-widget-id]').count()).toBeGreaterThan(1)
+      // 已连上中枢：没有断线角标，也没有令牌失效页
+      await expect(page.locator('[data-disconnect-badge]')).toHaveCount(0)
+      await expect(page.getByRole('heading', { name: '屏幕令牌失效' })).toHaveCount(0)
       // 若存在刷新循环，等待期间会不断产生新的主框架导航
       const settled = navigations.length
       await page.waitForTimeout(2000)
       expect(navigations.length, `稳定后仍有导航：${navigations.join(' → ')}`).toBe(settled)
-      await expect(page.locator('[data-screen-root]')).toBeVisible()
+      expect(errors).toEqual([])
     } finally {
       await context.close()
+    }
+  })
+
+  test('轮换屏幕令牌后，已打开的屏幕转为「屏幕令牌失效」页', async ({ browser, baseURL }) => {
+    const token = screenToken()
+    const screenContext = await browser.newContext({ baseURL, locale: 'zh-CN', viewport: { width: 1024, height: 600 } })
+    const adminContext = await browser.newContext({ baseURL, locale: 'zh-CN' })
+    try {
+      const page = await screenContext.newPage()
+      await page.goto(`/screen/auth?token=${encodeURIComponent(token)}`)
+      await expect(page.locator('[data-screen-grid]')).toBeVisible()
+
+      await apiLogin(adminContext, baseURL!)
+      const res = await adminContext.request.post('/api/screen/token/reset', { headers: originHeaders(baseURL!) })
+      expect(res.status()).toBe(204)
+
+      // 旧会话被吊销：WebSocket 断开、重连的握手被拒，外壳重新查询会话后显示失效页
+      await expect(page.getByRole('heading', { name: '屏幕令牌失效' })).toBeVisible({ timeout: 20_000 })
+      await expect(page.getByText(/重启 kiosk/)).toBeVisible()
+      // 没有被带去登录页
+      await expect(page).toHaveURL(/\/screen$/)
+    } finally {
+      await screenContext.close()
+      await adminContext.close()
     }
   })
 })
