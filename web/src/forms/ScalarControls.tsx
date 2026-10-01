@@ -36,15 +36,13 @@ export function NumberControl({ field, value, onChange, id, invalid, describedBy
     <div className="flex flex-wrap items-center gap-2.5">
       <Input
         id={id}
-        type="number"
         inputMode="decimal"
+        spellCheck={false}
         value={value}
         invalid={invalid}
         aria-describedby={describedBy}
         onChange={(e) => onChange(e.target.value)}
         className="w-[190px] font-mono mobile:w-full"
-        min={field.min}
-        max={field.max}
       />
       {(range || def) && (
         <span className="font-mono text-[11.5px] text-muted-foreground">{[range, def].filter(Boolean).join(' · ')}</span>
@@ -69,19 +67,14 @@ export function EnumControl({ field, value, onChange, id, invalid, describedBy }
   const options = field.options ?? []
   // 选项少且名称短时用分段选择；名称较长（会折行）改用下拉
   if (options.length > 0 && options.length <= 4 && options.every((o) => [...o.title].length <= 10)) {
-    return (
-      <Segmented
-        ariaLabel={field.title}
-        value={value}
-        onChange={onChange}
-        className="max-w-full flex-wrap"
-        options={options.map((o) => ({ value: o.value, label: o.title, title: o.title }))}
-      />
-    )
+    // 非必填时多给一个「未设置」项，才能取消已选的值
+    const choices = options.map((o) => ({ value: o.value, label: o.title, title: o.title }))
+    if (!field.required) choices.push({ value: '', label: t('form.enumNone'), title: t('form.enumNone') })
+    return <Segmented ariaLabel={field.title} value={value} onChange={onChange} className="max-w-full flex-wrap" options={choices} />
   }
   return (
     <Select id={id} value={value} invalid={invalid} aria-describedby={describedBy} onChange={(e) => onChange(e.target.value)} className="max-w-[320px]">
-      {!field.required && <option value="">{t('form.enumNone')}</option>}
+      {(!field.required || value === '') && <option value="">{t('form.enumNone')}</option>}
       {options.map((o) => (
         <option key={o.value} value={o.value}>
           {o.title}

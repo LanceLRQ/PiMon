@@ -1,7 +1,7 @@
 import { ChevronDown, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useLocation, useSearchParams } from 'react-router'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { translateErrorValue } from '@/i18n/errors'
 import { FormContext, type FormContextValue } from '@/forms/context'
 import { cn } from '@/lib/utils'
@@ -33,8 +33,10 @@ export function InstanceEditor({ mode, instanceId }: InstanceEditorProps) {
   const plugins = usePlugins()
   const proxyList = useProxyList()
   const location = useLocation()
+  const navigate = useNavigate()
   const [params] = useSearchParams()
-  const [outcome, setOutcome] = useState<TestOutcome | null>(() => (location.state as { outcome?: TestOutcome } | null)?.outcome ?? null)
+  const [outcome, setOutcome] = useState<TestOutcome | null>(null)
+  const [autoTest, setAutoTest] = useState(() => (location.state as { autoTest?: boolean } | null)?.autoTest === true)
   const [detailState, setDetail] = useInstanceDetail(mode === 'edit' ? instanceId : undefined)
   const [selectedId, setSelectedId] = useState<string | null>(params.get('plugin'))
   const [catalogOpen, setCatalogOpen] = useState(selectedId === null)
@@ -66,7 +68,7 @@ export function InstanceEditor({ mode, instanceId }: InstanceEditorProps) {
 
   let body: React.ReactNode
   if (plugins.error) {
-    body = <Notice tone="crit">{t('editor.config.pluginsFailed')}：{translateErrorValue(i18n, plugins.error)}</Notice>
+    body = <Notice tone="crit">{t('editor.withDetail', { summary: t('editor.config.pluginsFailed'), detail: translateErrorValue(i18n, plugins.error) })}</Notice>
   } else if (!all) {
     body = <Notice>{t('shell.loading')}</Notice>
   } else if (mode === 'edit' && detailState.kind === 'loading') {
@@ -75,7 +77,7 @@ export function InstanceEditor({ mode, instanceId }: InstanceEditorProps) {
     const notFound = isApiError(detailState.error) && detailState.error.code === 'instance.not_found'
     body = (
       <Notice tone="crit">
-        {notFound ? t('editor.config.notFound') : `${t('editor.config.loadFailed')}：${translateErrorValue(i18n, detailState.error)}`}{' '}
+        {notFound ? t('editor.config.notFound') : t('editor.withDetail', { summary: t('editor.config.loadFailed'), detail: translateErrorValue(i18n, detailState.error) })}{' '}
         <Link to="/instances" className="underline underline-offset-2">
           {t('editor.back')}
         </Link>
@@ -113,6 +115,12 @@ export function InstanceEditor({ mode, instanceId }: InstanceEditorProps) {
         detail={detail}
         outcome={outcome}
         onOutcome={setOutcome}
+        autoTest={autoTest}
+        onAutoTestStarted={() => {
+          setAutoTest(false)
+          // 清掉路由 state，刷新后不会再自动运行
+          navigate(location.pathname, { replace: true, state: null })
+        }}
         onDetail={(d) => {
           setDetail(d)
           setFormVersion((v) => v + 1)

@@ -607,7 +607,10 @@
       "failedSaved": "The instance is saved, but this collection failed; the hub retries with backoff.",
       "failedNotSaved": "The test did not run.",
       "stale": "This is retained old data.",
-      "summary": "Summary"
-    }
+      "summary": "Summary",
+      "busyTitle": "Collecting",
+      "busy": "The instance is saved; it is being collected right now, try the test again shortly."
+    },
+    "withDetail": "{{summary}}: {{detail}}"
   }
 }

@@ -95,7 +95,7 @@ describe('自动表单：每种字段类型的渲染与取值', () => {
     // 控件渲染
     expect(screen.getByLabelText(/^地址/)).toHaveValue('')
     expect(screen.getByRole('radio', { name: 'GET' })).toHaveAttribute('aria-checked', 'true') // enum 少量选项
-    expect(screen.getByLabelText(/^重试次数/)).toHaveValue(3)
+    expect(screen.getByLabelText(/^重试次数/)).toHaveValue('3')
     expect(screen.getByLabelText(/^超时/)).toHaveValue('10s')
     expect(screen.getByRole('switch', { name: '跟随重定向' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByLabelText(/^备注/).tagName).toBe('TEXTAREA')
@@ -520,5 +520,229 @@ describe('编辑页状态', () => {
     await renderWithApp(<InstanceNewPage />, { lng: 'en' })
     expect(await screen.findByText('Search plugin name or id', { selector: 'input' }).catch(() => screen.getByPlaceholderText('Search plugin name or id'))).toBeDefined()
     expect(screen.getByText('New instance')).toBeInTheDocument()
+  })
+})
+
+describe('列表、键值与行状态', () => {
+  async function fillHosts(user: ReturnType<typeof userEvent.setup>, rows: string[]) {
+    for (let i = 0; i < rows.length; i++) {
+      if (i > 0) await user.click(screen.getAllByRole('button', { name: '添加一项' })[1])
+      if (rows[i]) await user.type(screen.getByLabelText(`主机列表 第 ${i + 1} 项`), rows[i])
+    }
+  }
+  const invalidRows = () => [1, 2, 3].map((n) => screen.queryByLabelText(`主机列表 第 ${n} 项`)?.getAttribute('aria-invalid') === 'true')
+
+  it('list 中间有空行时，客户端校验标红的是真正出错的行', async () => {
+    const user = userEvent.setup()
+    await mountNew()
+    await pickKitchen(user)
+    await user.type(screen.getByLabelText(/^实例名称/), 'x')
+    await user.type(screen.getByLabelText(/^地址/), 'https://a.example')
+    await fillHosts(user, ['a', '', 'B1'])
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await screen.findByText('格式不符合要求')
+    expect(invalidRows()).toEqual([false, false, true])
+  })
+
+  it('list 中间有空行时，服务端按压缩后下标返回的错误也标到正确的行', async () => {
+    const user = userEvent.setup()
+    await mountNew((req) => {
+      if (req.method === 'POST' && req.url === '/api/instances') return apiError(400, 'validation.failed', { fields: { 'hosts[1]': 'pattern_mismatch' } })
+    })
+    await pickKitchen(user)
+    await user.type(screen.getByLabelText(/^实例名称/), 'x')
+    await user.type(screen.getByLabelText(/^地址/), 'https://a.example')
+    await fillHosts(user, ['a', '', 'ok'])
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await screen.findByText('格式不符合要求')
+    expect(invalidRows()).toEqual([false, false, true])
+  })
+
+  it('密钥 kv 只填键名、值留空：该行值框标红并阻止提交；键名首尾空格不影响定位', async () => {
+    const user = userEvent.setup()
+    const api = await mountNew()
+    await pickKitchen(user)
+    await user.type(screen.getByLabelText(/^实例名称/), 'x')
+    await user.type(screen.getByLabelText(/^地址/), 'https://a.example')
+    await user.type(screen.getByLabelText('第 1 行名称'), ' X-New ')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(screen.getByLabelText('第 1 行的值')).toHaveAttribute('aria-invalid', 'true'))
+    expect(api.calls.some((c) => c.method === 'POST' && c.url === '/api/instances')).toBe(false)
+  })
+
+  it('kv 重复键：重复的那一行键名标红', async () => {
+    const user = userEvent.setup()
+    await mountNew()
+    await pickKitchen(user)
+    await user.type(screen.getByLabelText(/^实例名称/), 'x')
+    await user.type(screen.getByLabelText(/^地址/), 'https://a.example')
+    await user.type(screen.getByLabelText('第 1 行名称'), 'A')
+    await user.type(screen.getByLabelText('第 1 行的值'), '1')
+    await user.click(screen.getAllByRole('button', { name: '添加一项' })[0])
+    await user.type(screen.getByLabelText('第 2 行名称'), 'A')
+    await user.type(screen.getByLabelText('第 2 行的值'), '2')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(screen.getByLabelText('第 2 行名称')).toHaveAttribute('aria-invalid', 'true'))
+  })
+
+  it('object_list 删中间行后，剩余行的已设置密钥仍带各自的原下标；行内控件状态不错位', async () => {
+    const user = userEvent.setup()
+    const detail = makeDetail({
+      config: {
+        url: 'https://a.example',
+        mode: 'open',
+        accounts: [
+          { user: 'u0', password: { set: true, ref: 0 } },
+          { user: 'u1', password: { set: true, ref: 1 } },
+          { user: 'u2', password: { set: true, ref: 2 } },
+        ],
+      },
+    })
+    const api = await mountEdit(detail, (req) => {
+      if (req.method === 'PUT') return json(200, detail)
+    })
+    await screen.findByLabelText(/^地址/)
+    // 第 3 行的密码框切到明文显示，删掉第 2 行后它应仍是明文（状态跟着行走，不跟着位置走）
+    const pwBefore = screen.getAllByLabelText(/^密码/)
+    await user.click(within(pwBefore[2].parentElement as HTMLElement).getByRole('button', { name: '显示' }))
+    expect(pwBefore[2]).toHaveAttribute('type', 'text')
+    await user.click(screen.getByRole('button', { name: '删除第 2 项' }))
+    const pwAfter = screen.getAllByLabelText(/^密码/)
+    expect(pwAfter).toHaveLength(2)
+    expect(pwAfter[0]).toHaveAttribute('type', 'password')
+    expect(pwAfter[1]).toHaveAttribute('type', 'text')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(lastBody(api.calls, 'PUT', '/api/instances/i1')).toBeDefined())
+    expect((lastBody(api.calls, 'PUT', '/api/instances/i1').config as Record<string, unknown>).accounts).toEqual([
+      { user: 'u0', password: { set: true, ref: 0 } },
+      { user: 'u2', password: { set: true, ref: 2 } },
+    ])
+  })
+})
+
+describe('enum 与 number', () => {
+  const plugin = {
+    ...kitchenPlugin,
+    config_schema: [
+      { key: 'req', type: 'enum', title: '必选项', required: true, options: [{ value: 'a', title: 'A' }, { value: 'b', title: 'B' }] },
+      { key: 'opt', type: 'enum', title: '可选项', required: false, options: [{ value: 'x', title: 'X' }, { value: 'y', title: 'Y' }] },
+      { key: 'n', type: 'number', title: '数量', required: false, default: 3 },
+    ],
+  }
+  const mount = () =>
+    mountNew((req) => {
+      if (req.method === 'GET' && req.url.startsWith('/api/plugins')) return json(200, { ...editorPlugins, plugins: [plugin] })
+      if (req.method === 'POST' && req.url === '/api/instances') return json(200, makeDetail({ id: 'n' }))
+    })
+
+  it('必填 enum 没有默认值时不预选，提交报必填；非必填 enum 可取消选择', async () => {
+    const user = userEvent.setup()
+    const api = await mount()
+    await user.click(await screen.findByRole('button', { name: /^厨房水槽/ }))
+    await user.type(await screen.findByLabelText(/^实例名称/), 'x')
+    const group = screen.getByRole('radiogroup', { name: '必选项' })
+    expect(within(group).queryByRole('radio', { checked: true })).toBeNull()
+    await user.click(screen.getByRole('radio', { name: 'X' }))
+    await user.click(screen.getByRole('radio', { name: '未选择' }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await screen.findByText('必填项不能为空')
+    expect(api.calls.some((c) => c.method === 'POST' && c.url === '/api/instances')).toBe(false)
+    await user.click(within(group).getByRole('radio', { name: 'B' }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(lastBody(api.calls, 'POST', '/api/instances')).toBeDefined())
+    expect((lastBody(api.calls, 'POST', '/api/instances').config as Record<string, unknown>)).toEqual({ req: 'b', n: 3 })
+  })
+
+  it('数字框里输入非法文本报格式不正确，而不是回落默认值', async () => {
+    const user = userEvent.setup()
+    const api = await mount()
+    await user.click(await screen.findByRole('button', { name: /^厨房水槽/ }))
+    await user.type(await screen.findByLabelText(/^实例名称/), 'x')
+    await user.click(screen.getByRole('radio', { name: 'A' }))
+    const n = screen.getByLabelText(/^数量/)
+    await user.clear(n)
+    await user.type(n, '1e')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByText('格式不正确')).toBeInTheDocument()
+    expect(api.calls.some((c) => c.method === 'POST' && c.url === '/api/instances')).toBe(false)
+  })
+})
+
+describe('保存并测试：补充', () => {
+  it('该实例正在采集（run.busy）单独提示，不当作采集失败', async () => {
+    const user = userEvent.setup()
+    await mountEdit(makeDetail(), (req) => {
+      if (req.method === 'PUT') return json(200, makeDetail())
+      if (req.method === 'POST' && req.url.endsWith('/run')) return apiError(409, 'run.busy')
+    })
+    await screen.findByLabelText(/^地址/)
+    await user.click(screen.getByRole('button', { name: '保存并测试' }))
+    expect(await screen.findByText(/实例已保存；该实例正在采集中/)).toBeInTheDocument()
+    expect(screen.queryByText(/实例已保存，但本次采集失败/)).toBeNull()
+  })
+
+  it('新建后先创建并立即切到编辑页，再在编辑页发起运行；路由 state 用后即清', async () => {
+    const user = userEvent.setup()
+    const created = makeDetail({ id: 'n9', name: '新的' })
+    const api = await mountNew((req) => {
+      if (req.method === 'POST' && req.url === '/api/instances') return json(200, created)
+      if (req.method === 'GET' && req.url === '/api/instances/n9') return json(200, created)
+      if (req.method === 'POST' && req.url === '/api/instances/n9/run') return new Promise<Response>(() => {}) // 一直不返回：模拟运行中途中断
+    })
+    await pickKitchen(user)
+    await user.type(screen.getByLabelText(/^实例名称/), '新的')
+    await user.type(screen.getByLabelText(/^地址/), 'https://a.example')
+    await user.click(screen.getByRole('button', { name: '保存并测试' }))
+    await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('/instances/n9/edit'))
+    expect(await screen.findByText(/正在采集，请稍候/)).toBeInTheDocument()
+    expect(api.calls.filter((c) => c.method === 'POST' && c.url === '/api/instances')).toHaveLength(1)
+  })
+
+  it('保存并测试的运行超时随插件 timeout 变化：timeout 40s → 90s', async () => {
+    const user = userEvent.setup()
+    const slow = { ...kitchenPlugin, timeout_seconds: 40 }
+    const spy = vi.spyOn(globalThis, 'setTimeout')
+    await mountEdit(makeDetail(), (req) => {
+      if (req.method === 'GET' && req.url.startsWith('/api/plugins')) return json(200, { ...editorPlugins, plugins: [slow] })
+      if (req.method === 'PUT') return json(200, makeDetail())
+      if (req.method === 'POST' && req.url.endsWith('/run')) return apiError(502, 'run.failed', { message: 'x' })
+    })
+    await screen.findByLabelText(/^地址/)
+    await user.click(screen.getByRole('button', { name: '保存并测试' }))
+    await screen.findByText(/实例已保存，但本次采集失败/)
+    expect(spy.mock.calls.some((c) => c[1] === 90_000)).toBe(true)
+    spy.mockRestore()
+  })
+})
+
+describe('lookup：竞态', () => {
+  it('旧请求晚到的响应被丢弃，不覆盖新输入的候选', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const resolvers: ((r: Response) => void)[] = []
+    await mountNew((req) => {
+      if (req.method === 'POST' && req.url.includes('/lookup/city')) return new Promise<Response>((res) => resolvers.push(res))
+    })
+    await pickKitchen(user)
+    const box = screen.getByLabelText('城市')
+    await user.type(box, 'a')
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350)
+    })
+    await user.type(box, 'b')
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350)
+    })
+    expect(resolvers).toHaveLength(2)
+    // 新请求先返回，旧请求后返回
+    await act(async () => {
+      resolvers[1](json(200, { candidates: [{ value: 'new', label: '新结果' }] }))
+    })
+    expect(await screen.findByText('新结果')).toBeInTheDocument()
+    await act(async () => {
+      resolvers[0](json(200, { candidates: [{ value: 'old', label: '旧结果' }] }))
+    })
+    expect(screen.queryByText('旧结果')).toBeNull()
+    expect(screen.getByText('新结果')).toBeInTheDocument()
   })
 })

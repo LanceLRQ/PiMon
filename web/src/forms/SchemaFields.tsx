@@ -4,7 +4,7 @@ import { Button } from '@/ui/button'
 import { cn } from '@/lib/utils'
 import { initialValues, visibleKeys } from './build'
 import { FieldControl } from './FieldControl'
-import { errorAt, joinPath, type ControlProps, type ErrorMap, type Field, type FormValues, type ObjectRow } from './model'
+import { errorAt, joinPath, newRowId, type ControlProps, type ErrorMap, type Field, type FormValues, type ObjectRow } from './model'
 
 interface SchemaFieldsProps {
   fields: Field[]
@@ -156,7 +156,7 @@ function ObjectListControl({ field, value, onChange, path, errors, onEdit }: Obj
     <div className="flex flex-col gap-2.5">
       {value.length === 0 && <p className="text-[12.5px] text-muted-foreground">{t('form.objectEmpty')}</p>}
       {value.map((row, i) => (
-        <fieldset key={i} className="min-w-0 rounded-[2px] border border-line-strong">
+        <fieldset key={row.id} className="min-w-0 rounded-[2px] border border-line-strong">
           <legend className="sr-only">{t('form.objectRow', { n: i + 1 })}</legend>
           <div className="flex items-center gap-1 border-b border-border bg-panel-2 px-2.5 py-1">
             <span className="font-mono text-[11.5px] text-ink-2">#{i + 1}</span>
@@ -190,7 +190,7 @@ function ObjectListControl({ field, value, onChange, path, errors, onEdit }: Obj
           <SchemaFields
             fields={subs}
             values={row.values}
-            onChange={(vals) => onChange(value.map((r, j) => (j === i ? { values: vals } : r)))}
+            onChange={(vals) => onChange(value.map((r, j) => (j === i ? { ...r, values: vals } : r)))}
             errors={errors}
             onEdit={onEdit}
             prefix={`${path}[${i}]`}
@@ -205,7 +205,7 @@ function ObjectListControl({ field, value, onChange, path, errors, onEdit }: Obj
         className="w-fit rounded-[2px]"
         onClick={() => {
           onEdit(path)
-          onChange([...value, { values: initialValues(subs, {}) }])
+          onChange([...value, { id: newRowId(), values: initialValues(subs, {}) }])
         }}
       >
         <Plus /> {t('form.addRow')}

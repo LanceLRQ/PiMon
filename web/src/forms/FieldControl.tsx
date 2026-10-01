@@ -1,6 +1,6 @@
 import { ListControl, KvControl } from './CollectionControls'
 import { LookupControl } from './LookupControl'
-import type { ControlProps, ErrorMap, KvEntry, LookupValue, SecretValue } from './model'
+import type { ControlProps, ErrorMap, KvEntry, ListItem, LookupValue, SecretValue } from './model'
 import { ProxyControl } from './ProxyControl'
 import { BooleanControl, DurationControl, EnumControl, NumberControl, StringControl, TextControl } from './ScalarControls'
 import { SecretControl } from './SecretControls'
@@ -35,7 +35,7 @@ export function FieldControl(props: FieldControlProps) {
     case 'duration':
       return <DurationControl {...(p as ControlProps<string>)} />
     case 'list':
-      return <ListControl {...(p as ControlProps<string[]>)} errors={errors} />
+      return <ListControl {...(p as ControlProps<ListItem[]>)} errors={errors} />
     case 'kv':
       return <KvControl {...(p as ControlProps<KvEntry[]>)} errors={errors} />
     case 'lookup':

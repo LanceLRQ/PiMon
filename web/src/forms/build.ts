@@ -6,9 +6,11 @@ import {
   type Field,
   type FormValues,
   type KvEntry,
+  type ListItem,
   type LookupValue,
   type ObjectRow,
   type SecretValue,
+  newRowId,
 } from './model'
 
 // ---- 载入：服务端配置 -> 表单状态 ----
@@ -58,9 +60,7 @@ export function initialValue(f: Field, raw: unknown, opts: InitOptions): unknown
     case 'boolean':
       return typeof raw === 'boolean' ? raw : f.default === true
     case 'enum': {
-      const v = str(raw, f.default)
-      if (v === '' && f.required && f.options?.length) return f.options[0].value
-      return v
+      return str(raw, f.default)
     }
     case 'secret':
     case 'secret_url':
@@ -69,12 +69,13 @@ export function initialValue(f: Field, raw: unknown, opts: InitOptions): unknown
       return raw === undefined || raw === null || raw === '' ? null : ({ value: raw, label: lookupLabel(raw) } satisfies LookupValue)
     case 'list': {
       const v = Array.isArray(raw) ? raw : Array.isArray(f.default) ? f.default : []
-      return v.filter((x): x is string => typeof x === 'string')
+      return v.filter((x): x is string => typeof x === 'string').map((text): ListItem => ({ id: newRowId(), text }))
     }
     case 'kv': {
       if (!isRecord(raw)) return [] as KvEntry[]
       return Object.entries(raw).map(
         ([key, v]): KvEntry => ({
+          id: newRowId(),
           key,
           origKey: key,
           value: !f.secret_values && typeof v === 'string' ? v : '',
@@ -84,7 +85,7 @@ export function initialValue(f: Field, raw: unknown, opts: InitOptions): unknown
     }
     case 'object_list': {
       const rows = Array.isArray(raw) ? raw : []
-      return rows.map((r): ObjectRow => ({ values: initialValues(f.fields ?? [], isRecord(r) ? r : {}, opts) }))
+      return rows.map((r): ObjectRow => ({ id: newRowId(), values: initialValues(f.fields ?? [], isRecord(r) ? r : {}, opts) }))
     }
     default:
       return str(raw, f.default)
@@ -222,7 +223,7 @@ function buildField(f: Field, raw: unknown, path: string, inRow: boolean, errs: 
       return { effective: lv.value, send: lv.value }
     }
     case 'list': {
-      const items = ((raw as string[] | undefined) ?? []).map((s) => s.trim()).filter((s) => s !== '')
+      const items = ((raw as ListItem[] | undefined) ?? []).map((i) => i.text.trim()).filter((s) => s !== '')
       if (items.length === 0) return skip
       if (outOfRange(f, items.length)) return fail('out_of_range')
       const re = compiled(f.pattern)
@@ -258,8 +259,13 @@ function buildKv(f: Field, entries: KvEntry[], path: string, errs: ErrorMap): Bu
     const key = e.key.trim()
     const hasValue = secretOnly ? e.secret.text !== '' || e.secret.set : e.value !== ''
     if (key === '' && !hasValue) continue
-    if (key === '' || seen.has(key)) {
+    if (key === '') {
       errs[path] = 'invalid'
+      ok = false
+      continue
+    }
+    if (seen.has(key)) {
+      errs[`${path}.${key}`] = 'duplicate'
       ok = false
       continue
     }
@@ -275,7 +281,9 @@ function buildKv(f: Field, entries: KvEntry[], path: string, errs: ErrorMap): Bu
       errs[`${path}.${key}`] = 'required'
       ok = false
     } else {
-      out[key] = ''
+      // 新键没有旧值可保留，值留空等于没填
+      errs[`${path}.${key}`] = 'required'
+      ok = false
     }
   }
   const n = Object.keys(out).length

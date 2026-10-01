@@ -15,7 +15,19 @@ export interface SecretValue {
   ref?: number
 }
 
+let rowSeq = 0
+// 列表、键值、对象列表的行需要稳定 id，重排或删行后行内控件状态才不会错位
+export function newRowId(): string {
+  return `row${++rowSeq}`
+}
+
+export interface ListItem {
+  id: string
+  text: string
+}
+
 export interface KvEntry {
+  id: string
   key: string
   // 非密钥值
   value: string
@@ -26,6 +38,7 @@ export interface KvEntry {
 }
 
 export interface ObjectRow {
+  id: string
   values: FormValues
 }
 

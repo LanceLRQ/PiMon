@@ -4,6 +4,7 @@ import { parseDurationSeconds, formatDurationSeconds } from './duration'
 import type { Field } from './model'
 import { checkUrl } from './url'
 
+const li = (texts: string[]) => texts.map((text, i) => ({ id: `t${i}`, text }))
 const f = (over: Partial<Field> & Pick<Field, 'key' | 'type'>): Field => ({ title: over.key, required: false, ...over })
 
 describe('字段类型的初始值与提交值', () => {
@@ -145,8 +146,8 @@ describe('duration', () => {
 describe('list / kv', () => {
   it('list：丢弃空项、逐项 pattern 校验并给出下标路径', () => {
     const fields = [f({ key: 'hosts', type: 'list', pattern: '^[a-z]+$' })]
-    expect(buildConfig(fields, { hosts: ['a', ' ', 'b'] }).config).toEqual({ hosts: ['a', 'b'] })
-    expect(buildConfig(fields, { hosts: ['a', 'B1'] }).errors).toEqual({ 'hosts[1]': 'pattern_mismatch' })
+    expect(buildConfig(fields, { hosts: li(['a', ' ', 'b']) }).config).toEqual({ hosts: ['a', 'b'] })
+    expect(buildConfig(fields, { hosts: li(['a', 'B1']) }).errors).toEqual({ 'hosts[1]': 'pattern_mismatch' })
   })
 
   it('kv 密钥值：未改保留标记、改键名要求重填、新输入提交明文', () => {
@@ -168,13 +169,28 @@ describe('list / kv', () => {
   it('kv 普通值与重复键', () => {
     const fields = [f({ key: 'labels', type: 'kv' })]
     const init = [
-      { key: 'a', value: '1', secret: { text: '', set: false }, origKey: '' },
-      { key: 'a', value: '2', secret: { text: '', set: false }, origKey: '' },
+      { id: 'a', key: 'a', value: '1', secret: { text: '', set: false }, origKey: '' },
+      { id: 'b', key: ' a ', value: '2', secret: { text: '', set: false }, origKey: '' },
     ]
-    expect(buildConfig(fields, { labels: init }).errors).toEqual({ labels: 'invalid' })
-    expect(buildConfig(fields, { labels: [init[0], { key: '', value: '', secret: { text: '', set: false }, origKey: '' }] }).config).toEqual({
+    expect(buildConfig(fields, { labels: init }).errors).toEqual({ 'labels.a': 'duplicate' })
+    expect(buildConfig(fields, { labels: [init[0], { id: 'c', key: '', value: '', secret: { text: '', set: false }, origKey: '' }] }).config).toEqual({
       labels: { a: '1' },
     })
+  })
+})
+
+describe('kv 新键与 enum', () => {
+  it('密钥 kv 新键值留空：没有旧值可保留，报该键 required', () => {
+    const fields = [f({ key: 'headers', type: 'kv', secret_values: true })]
+    const entry = { id: 'x', key: 'X-New', value: '', origKey: '', secret: { text: '', set: false } }
+    expect(buildConfig(fields, { headers: [entry] }).errors).toEqual({ 'headers.X-New': 'required' })
+  })
+
+  it('必填且没有默认值的 enum 不自动选第一项，缺省即 required', () => {
+    const fields = [f({ key: 'e', type: 'enum', required: true, options: [{ value: 'a', title: 'a' }] })]
+    const init = initialValues(fields, undefined)
+    expect(init.e).toBe('')
+    expect(buildConfig(fields, init).errors).toEqual({ e: 'required' })
   })
 })
 

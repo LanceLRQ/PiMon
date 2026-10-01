@@ -607,7 +607,10 @@
       "failedSaved": "实例已保存，但本次采集失败；中枢会按退避策略重试。",
       "failedNotSaved": "本次测试没有执行。",
       "stale": "这是保留的旧数据。",
-      "summary": "摘要"
-    }
+      "summary": "摘要",
+      "busyTitle": "正在采集中",
+      "busy": "实例已保存；该实例正在采集中，请稍后再测。"
+    },
+    "withDetail": "{{summary}}：{{detail}}"
   }
 }

@@ -37,19 +37,28 @@ export function TestResult({ outcome, outputs }: TestResultProps) {
   }
   const time = formatDateTime(outcome.at, i18n.language)
   if (outcome.phase === 'failed') {
+    const busy = outcome.code === 'run.busy'
     return (
       <div role="alert" className="pb-4">
         <div className="flex items-center gap-2.5 p-4">
-          <StatusShape state="error" size={16} />
-          <span className="text-[17px] font-medium text-status-crit">{t('status.error')}</span>
+          <StatusShape state={busy ? 'unknown' : 'error'} size={16} />
+          <span className={busy ? 'text-[17px] font-medium' : 'text-[17px] font-medium text-status-crit'}>
+            {busy ? t('editor.result.busyTitle') : t('status.error')}
+          </span>
           <span className="ml-auto text-right font-mono text-[11.5px] text-muted-foreground">{time}</span>
         </div>
-        <pre className="mx-4 mb-3 max-h-48 overflow-auto rounded-[2px] border border-status-crit bg-card p-2.5 font-mono text-[12px] leading-[1.55] break-words whitespace-pre-wrap text-status-crit">
-          {outcome.message}
-        </pre>
-        <p className="mx-4 text-[12px] leading-[1.55] text-muted-foreground">
-          {outcome.saved ? t('editor.result.failedSaved') : t('editor.result.failedNotSaved')}
-        </p>
+        {busy ? (
+          <p className="mx-4 text-[12.5px] leading-[1.55]">{t('editor.result.busy')}</p>
+        ) : (
+          <>
+            <pre className="mx-4 mb-3 max-h-48 overflow-auto rounded-[2px] border border-status-crit bg-card p-2.5 font-mono text-[12px] leading-[1.55] break-words whitespace-pre-wrap text-status-crit">
+              {outcome.message}
+            </pre>
+            <p className="mx-4 text-[12px] leading-[1.55] text-muted-foreground">
+              {outcome.saved ? t('editor.result.failedSaved') : t('editor.result.failedNotSaved')}
+            </p>
+          </>
+        )}
       </div>
     )
   }

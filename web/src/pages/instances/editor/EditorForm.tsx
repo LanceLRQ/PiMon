@@ -35,6 +35,9 @@ interface EditorFormProps {
   onOutcome: (o: TestOutcome | null) => void
   // 编辑保存成功后用服务端返回的详情重置表单
   onDetail: (d: InstanceDetail) => void
+  // 新建后跳到编辑页时自动运行一次测试
+  autoTest: boolean
+  onAutoTestStarted: () => void
 }
 
 interface IntervalState {
@@ -53,7 +56,7 @@ function topKey(path: string): string {
 }
 
 // 配置表单（中栏）与保存区（右栏）。状态在这里；换插件或保存后由上层通过 key 重建。
-export function EditorForm({ mode, plugin, detail, outcome, onOutcome, onDetail }: EditorFormProps) {
+export function EditorForm({ mode, plugin, detail, outcome, onOutcome, onDetail, autoTest, onAutoTestStarted }: EditorFormProps) {
   const { t, i18n } = useTranslation()
   const toast = useToast()
   const navigate = useNavigate()
@@ -113,7 +116,7 @@ export function EditorForm({ mode, plugin, detail, outcome, onOutcome, onDetail 
   const describe = (err: unknown): string => {
     let text = translateErrorValue(i18n, err)
     if (isApiError(err) && typeof err.details.message === 'string' && (err.code === 'run.failed' || err.code === 'run.timeout')) {
-      text += `：${err.details.message}`
+      text = t('editor.withDetail', { summary: text, detail: err.details.message })
     }
     return text
   }
@@ -153,26 +156,43 @@ export function EditorForm({ mode, plugin, detail, outcome, onOutcome, onDetail 
       else onDetail(saved)
       return
     }
+    if (mode === 'new') {
+      // 创建成功即切到编辑页再运行：中途刷新或中断也不会重复创建
+      setBusy(null)
+      toast.show(t('editor.save.saved', { name: saved.name }))
+      navigate(`/instances/${saved.id}/edit`, { replace: true, state: { autoTest: true } })
+      return
+    }
+    await runTest(saved)
+    setBusy(null)
+    onDetail(saved)
+  }
+
+  // 运行一次采集并展示结果；实例此时已保存
+  const runTest = async (saved: InstanceDetail) => {
     onOutcome({ phase: 'running' })
     const started = Date.now()
-    let result: TestOutcome
     try {
       const res = await http.post<InstanceRunResult>(`/api/instances/${saved.id}/run`, undefined, { timeoutMs: runTimeoutMs(plugin) })
-      result = { phase: 'ok', instance: res.instance, report: res.report, at: Date.now(), wallMs: Date.now() - started }
+      onOutcome({ phase: 'ok', instance: res.instance, report: res.report, at: Date.now(), wallMs: Date.now() - started })
       toast.show(t('editor.save.savedTested', { name: saved.name }))
     } catch (err) {
-      result = { phase: 'failed', code: isApiError(err) ? err.code : 'internal', message: describe(err), saved: true, at: Date.now() }
+      onOutcome({ phase: 'failed', code: isApiError(err) ? err.code : 'internal', message: describe(err), saved: true, at: Date.now() })
       toast.show(t('editor.save.saved', { name: saved.name }))
     }
-    setBusy(null)
-    if (mode === 'new') {
-      // 新建后切到编辑页，结果随路由带过去
-      navigate(`/instances/${saved.id}/edit`, { replace: true, state: { outcome: result } })
-    } else {
-      onOutcome(result)
-      onDetail(saved)
-    }
   }
+
+  // 新建后跳转过来：自动运行一次测试（只触发一次）
+  const autoStarted = useRef(false)
+  useEffect(() => {
+    if (autoTest && detail && !autoStarted.current) {
+      autoStarted.current = true
+      onAutoTestStarted()
+      setBusy('test')
+      void runTest(detail).finally(() => setBusy(null))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在挂载时按进入方式触发一次
+  }, [])
 
   const requiredCount = fields.filter((f) => f.required).length
 
@@ -202,7 +222,7 @@ export function EditorForm({ mode, plugin, detail, outcome, onOutcome, onDetail 
                 <ul className="mt-0.5 font-mono text-[12px]">
                   {unmapped.map(([k, v]) => (
                     <li key={k}>
-                      {k}：{t(`form.errors.${v}`, { defaultValue: v })}
+                      {t('editor.withDetail', { summary: k, detail: t(`form.errors.${v}`, { defaultValue: v }) })}
                     </li>
                   ))}
                 </ul>
