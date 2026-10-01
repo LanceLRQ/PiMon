@@ -66,9 +66,7 @@
       "unknown": "Unknown"
     },
     "weather": {
-      "weather": {
-        "city_required": "Please choose a city"
-      }
+      "city_required": "Please choose a city"
     }
   },
   "placeholder": {

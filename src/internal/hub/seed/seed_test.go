@@ -2,6 +2,7 @@ package seed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -23,9 +24,13 @@ import (
 type fakeInstances struct {
 	list    []model.Instance
 	created []model.InstanceInput
+	listErr error
 }
 
 func (f *fakeInstances) List(context.Context) ([]model.Instance, error) {
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
 	return append([]model.Instance(nil), f.list...), nil
 }
 
@@ -232,5 +237,20 @@ func TestSeedLayoutOmitsReachWhenInstanceMissing(t *testing.T) {
 		if w.Source == model.WidgetSourceAggregate {
 			t.Fatalf("没有 net-reach 实例时不应放聚合小组件: %+v", w)
 		}
+	}
+}
+
+// 读不到实例列表时不提供种子（而不是给出残缺布局），Run 则返回错误且不写任何东西。
+func TestLayoutUnavailableWhenInstanceListFails(t *testing.T) {
+	f := newFixture(t)
+	f.inst.listErr = errors.New("读实例失败")
+	if l, ok := f.seeder.Layout(model.Grid{Cols: 8, Rows: 5}); ok {
+		t.Fatalf("读实例失败时应 ok=false: %+v", l)
+	}
+	if err := f.seeder.Run(context.Background()); err == nil {
+		t.Fatal("Run 应返回错误")
+	}
+	if st, _ := f.layout.Current(context.Background()); st.Version != 0 {
+		t.Fatalf("不应写入布局: %+v", st)
 	}
 }

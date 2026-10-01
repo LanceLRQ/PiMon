@@ -525,7 +525,7 @@ func TestNoCityReportsUnknownSetup(t *testing.T) {
 		t.Fatalf("status = %q，期望 unknown", rep.Status)
 	}
 	it := rep.Find("setup")
-	if it == nil || it.Type != report.TypeState || it.State != report.StatusUnknown || it.Text != "weather.city_required" {
+	if it == nil || it.Type != report.TypeState || it.State != report.StatusUnknown || it.Text != "city_required" {
 		t.Fatalf("setup 项不符: %+v", it)
 	}
 	if err := rep.Validate(nil); err != nil {

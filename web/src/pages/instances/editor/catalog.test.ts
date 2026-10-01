@@ -23,7 +23,7 @@ describe('插件文本的 i18n 键', () => {
     ['hub-self', ['online']],
     ['hub-self', ['offline']],
     ['hub-self', ['unknown']],
-    ['weather', ['weather', 'city_required']],
+    ['weather', ['city_required']],
   ])('plugin.%s.%j 在中英文里都有文案', (id, key) => {
     for (const tree of [zh, en]) {
       const v = lookup(tree, ['plugin', id, ...key])

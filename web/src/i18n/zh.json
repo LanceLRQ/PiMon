@@ -66,9 +66,7 @@
       "unknown": "未知"
     },
     "weather": {
-      "weather": {
-        "city_required": "请选择城市"
-      }
+      "city_required": "请选择城市"
     }
   },
   "placeholder": {

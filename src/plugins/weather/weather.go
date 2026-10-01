@@ -318,8 +318,8 @@ func (p *plugin) autoLocate(ctx context.Context) (location, error) {
 // errNoCity 表示既没有选城市也没有开启自动定位；这不是采集失败，而是尚未配置完成。
 var errNoCity = errors.New("未选择城市 / No city chosen")
 
-// cityRequiredKey 是未选城市提示的 i18n 键（前端按 plugin.weather.<文本> 查找）。
-const cityRequiredKey = "weather.city_required"
+// cityRequiredKey 是未选城市提示的 i18n 键（前端按 plugin.weather.<文本> 查找，即 plugin.weather.city_required）。
+const cityRequiredKey = "city_required"
 
 // setupReport 是未选城市时的报告：状态未知，并给出 setup 项供模板显示「请选择城市」占位。
 func setupReport(now time.Time) *report.Report {

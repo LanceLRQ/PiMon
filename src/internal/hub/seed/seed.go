@@ -5,6 +5,7 @@ package seed
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/screens"
@@ -76,7 +77,7 @@ func (s *Seeder) Run(ctx context.Context) error {
 	}
 	layout, ok := s.Layout(defaultGrid)
 	if !ok {
-		return fmt.Errorf("缺少网格 %dx%d 的种子布局", defaultGrid.Cols, defaultGrid.Rows)
+		return fmt.Errorf("无法生成网格 %dx%d 的种子布局", defaultGrid.Cols, defaultGrid.Rows)
 	}
 	if _, err := s.cfg.Layouts.Save(ctx, 0, layout, screens.SaveOptions{Source: model.LayoutSourceSeed}); err != nil {
 		return fmt.Errorf("写入种子布局: %w", err)
@@ -143,7 +144,10 @@ func (s *Seeder) Layout(grid model.Grid) (model.Layout, bool) {
 	}
 	ids, err := s.earliestByPlugin(context.Background())
 	if err != nil {
-		ids = map[string]string{}
+		// 读不到实例时宁可不给种子，也不生成一份聚合缺失、全是占位的残缺布局；
+		// 启动路径（Run）与自动选网格路径都因此保持一致：本次不换布局，下次再试。
+		slog.Warn("读取实例列表失败，本次不提供种子布局", "grid", fmt.Sprintf("%dx%d", grid.Cols, grid.Rows), "err", err)
+		return model.Layout{}, false
 	}
 	home, reachTitle := "首页", "网络连通总览"
 	if s.lang() == "en" {

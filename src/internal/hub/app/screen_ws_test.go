@@ -13,6 +13,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
@@ -269,4 +270,30 @@ func TestSeedOnFreshDatabaseAndSecondOpen(t *testing.T) {
 	if st2, _ := b.screens.Current(ctx); st2.Version != 2 {
 		t.Fatalf("第二次启动不应再写布局: %+v", st2)
 	}
+}
+
+// 种子失败（这里让布局表读取失败）只记 warn，hub 仍能完成装配并启动。
+func TestOpenSurvivesSeedFailure(t *testing.T) {
+	cfg := testConfig(t)
+	first, err := Open(context.Background(), cfg, testOpts()...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.Open(cfg.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP TABLE layout_versions`); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+
+	a, err := Open(context.Background(), cfg, testOpts()...)
+	if err != nil {
+		t.Fatalf("种子失败不应阻止启动: %v", err)
+	}
+	_ = a.Close()
 }

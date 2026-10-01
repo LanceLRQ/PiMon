@@ -183,8 +183,9 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		Language: func() string { return st.Get().Language },
 	})
 	a.screens.UseSeedLayouts(seeder.Layout)
+	// 种子只是辅助数据且幂等：失败不阻止启动（管理端仍可进入修复），下次启动会重试。
 	if err := seeder.Run(ctx); err != nil {
-		return fmt.Errorf("写入种子数据: %w", err)
+		slog.Warn("写入种子数据失败，已跳过，下次启动重试", "err", err)
 	}
 	// 实例与设置的变化经广播中心合并后推给 UI WebSocket 的订阅者。
 	a.ws = ws.New(ws.Config{
