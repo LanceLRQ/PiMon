@@ -59,6 +59,18 @@
     "notFound": "Page not found",
     "versionUpdated": "The hub was upgraded. Reload the page to load the new version."
   },
+  "plugin": {
+    "hub-self": {
+      "online": "Online",
+      "offline": "Offline",
+      "unknown": "Unknown"
+    },
+    "weather": {
+      "weather": {
+        "city_required": "Please choose a city"
+      }
+    }
+  },
   "placeholder": {
     "pending": "This page will be implemented in a later task.",
     "m1d": "This page will be implemented in M1d."

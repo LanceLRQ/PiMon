@@ -1,9 +1,25 @@
 id: core
 version: 1.0.0
 api_version: 1
-name: {zh: 核心占位, en: Core placeholder}
+name: {zh: 核心, en: Core}
 kind: source
 runtime: builtin
 runs_on: [hub]
 interval: 300s
 timeout: 10s
+# 时钟与文本的内容由前端合成（时钟按全局时区取服务器时间，文本取小组件选项），不绑定数据项。
+# 通用与聚合小组件不在这里声明，由 hub 的小组件目录提供。
+widgets:
+  - id: clock
+    name: {zh: 时钟, en: Clock}
+    sizes:
+      1x1: {template: clock, bind: {}}
+      2x1: {template: clock, bind: {}}
+      4x2: {template: clock, bind: {}}
+  - id: text
+    name: {zh: 文本, en: Text}
+    sizes:
+      2x1: {template: text, bind: {}}
+      2x2: {template: text, bind: {}}
+      4x1: {template: text, bind: {}}
+      4x2: {template: text, bind: {}}

@@ -39,7 +39,8 @@ type ScreenDataSource interface {
 }
 
 // ScreenSink 接收屏幕会话上报的信息与在线状态，由 screenstate.Service 实现。
-// 方法在持有广播锁时被调用，必须非阻塞，且不得回调 Hub。
+// ReportViewport、ReportCoarsePointer、ReportCurrentScreen 在会话读循环里调用；
+// 只有 SetScreenOnline 会在持有广播锁时被调用。所有方法都必须非阻塞，且不得回调 Hub。
 type ScreenSink interface {
 	ReportViewport(v model.Viewport)
 	ReportCoarsePointer(coarse bool)
@@ -148,26 +149,29 @@ func (h *Hub) screenLeftLocked() {
 }
 
 // screenSnapshotLocked 按订阅集合与角色填充 snapshot 里的屏幕相关字段。须持有 bmu。
-func (h *Hub) screenSnapshotLocked(ctx context.Context, c *client, set map[string]bool, snap *ui.Snapshot) error {
+// 布局读取或解析失败只记 warn 并把对应字段留空（与 screenRefreshLocked 的降级一致），
+// 不让整条连接建立失败；之后的对账会补推。
+func (h *Hub) screenSnapshotLocked(ctx context.Context, c *client, set map[string]bool, snap *ui.Snapshot) {
 	if set[ui.TopicScreenState] && h.cfg.ScreenState != nil {
 		st := h.cfg.ScreenState.State()
 		snap.ScreenState = &st
 	}
 	admin := c.kind == auth.KindAdmin
 	if h.cfg.Layouts == nil {
-		return nil
+		return
 	}
 	if set[ui.TopicLayout] && admin {
-		cur, err := h.cfg.Layouts.Current(ctx)
-		if err != nil {
-			return err
+		if cur, err := h.cfg.Layouts.Current(ctx); err != nil {
+			slog.Warn("读取当前布局失败，snapshot 的 layout 留空", "err", err)
+		} else {
+			snap.Layout = &cur
 		}
-		snap.Layout = &cur
 	}
 	if (set[ui.TopicLayout] && !admin) || set[ui.TopicScreenData] {
 		resolved, err := h.cfg.Layouts.Resolve(ctx, h.cfg.Settings.Get().Language)
 		if err != nil {
-			return err
+			slog.Warn("解析屏幕布局失败，snapshot 的布局与数据留空", "err", err)
+			return
 		}
 		if set[ui.TopicLayout] && !admin {
 			snap.ResolvedLayout = &resolved
@@ -177,7 +181,6 @@ func (h *Hub) screenSnapshotLocked(ctx context.Context, c *client, set map[strin
 			snap.ScreenData = &data
 		}
 	}
-	return nil
 }
 
 // collectDataLocked 读取实例数据；prev 非 nil 时只返回与上次广播不同的，并更新 prev。读取失败的实例被跳过。

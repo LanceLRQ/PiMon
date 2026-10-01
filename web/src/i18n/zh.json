@@ -59,6 +59,18 @@
     "notFound": "页面不存在",
     "versionUpdated": "中枢已升级，请手动刷新页面以加载新版本"
   },
+  "plugin": {
+    "hub-self": {
+      "online": "在线",
+      "offline": "离线",
+      "unknown": "未知"
+    },
+    "weather": {
+      "weather": {
+        "city_required": "请选择城市"
+      }
+    }
+  },
   "placeholder": {
     "pending": "页面内容将在后续任务中实现。",
     "m1d": "此页面将在 M1d 实现。"

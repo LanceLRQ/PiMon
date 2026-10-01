@@ -327,9 +327,7 @@ func (h *Hub) resubscribeLocked(ctx context.Context, c *client, topics []string)
 			snap.ScreenSettings = &ss
 		}
 	}
-	if err := h.screenSnapshotLocked(ctx, c, set, &snap); err != nil {
-		return err
-	}
+	h.screenSnapshotLocked(ctx, c, set, &snap)
 	raw, err := json.Marshal(snap)
 	if err != nil {
 		return err

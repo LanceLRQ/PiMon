@@ -22,6 +22,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/screenstate"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/sdnotify"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/seed"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/system"
@@ -175,6 +176,15 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	})
 	if err := a.instances.Load(ctx); err != nil {
 		return fmt.Errorf("恢复实例状态: %w", err)
+	}
+	// 种子数据：布局从无到有时创建默认实例与默认首页；三份种子布局同时供自动选择网格取用。
+	seeder := seed.New(seed.Config{
+		Instances: a.instances, Layouts: a.screens,
+		Language: func() string { return st.Get().Language },
+	})
+	a.screens.UseSeedLayouts(seeder.Layout)
+	if err := seeder.Run(ctx); err != nil {
+		return fmt.Errorf("写入种子数据: %w", err)
 	}
 	// 实例与设置的变化经广播中心合并后推给 UI WebSocket 的订阅者。
 	a.ws = ws.New(ws.Config{

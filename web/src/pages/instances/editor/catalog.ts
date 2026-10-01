@@ -41,7 +41,10 @@ export function pluginIcon(p: PluginInfo): LucideIcon {
   return iconOf[p.id] ?? Puzzle
 }
 
-// 只有数据源插件能创建监控实例
+// 新建实例目录里隐藏的插件：core 由种子数据创建，用户不必也不应手动新建。
+export const hiddenFromCatalog: ReadonlySet<string> = new Set(['core'])
+
+// 只有数据源插件能创建监控实例，隐藏的插件除外
 export function creatablePlugins(list: PluginInfo[]): PluginInfo[] {
-  return list.filter((p) => p.kind === 'source')
+  return list.filter((p) => p.kind === 'source' && !hiddenFromCatalog.has(p.id))
 }

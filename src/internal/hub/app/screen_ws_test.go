@@ -13,7 +13,6 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
-	"github.com/LanceLRQ/PiMon/src/internal/hub/screens"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
@@ -128,14 +127,14 @@ func TestLayoutSaveReachesAdminAndScreenSessions(t *testing.T) {
 		t.Fatalf("屏幕 snapshot 缺少布局或状态: %v", snap)
 	}
 
-	f.putLayout(0, emptyLayout(8, 5)) // 不推进时钟：立即推送
+	f.putLayout(1, emptyLayout(8, 5)) // 库里已有种子 v1；不推进时钟：立即推送
 
 	a := readWS(t, admin)
-	if a["entity"] != "layout" || a["layout"].(map[string]any)["version"] != float64(1) || a["resolved_layout"] != nil {
+	if a["entity"] != "layout" || a["layout"].(map[string]any)["version"] != float64(2) || a["resolved_layout"] != nil {
 		t.Fatalf("管理员应收到原始布局: %v", a)
 	}
 	s := readWS(t, screen)
-	if s["entity"] != "layout" || s["resolved_layout"].(map[string]any)["version"] != float64(1) || s["layout"] != nil {
+	if s["entity"] != "layout" || s["resolved_layout"].(map[string]any)["version"] != float64(2) || s["layout"] != nil {
 		t.Fatalf("屏幕应收到解析后布局: %v", s)
 	}
 }
@@ -196,10 +195,7 @@ func TestHubSelfScreenOnlineFollowsScreenSessions(t *testing.T) {
 
 func TestFirstViewportAdoptionAutoSelectsGridOnSeedLayout(t *testing.T) {
 	f := newScreenFixture(t)
-	f.a.screens.UseSeedLayouts(func(g model.Grid) (model.Layout, bool) { return emptyLayout(g.Cols, g.Rows), true })
-	if _, err := f.a.screens.Save(context.Background(), 0, emptyLayout(8, 5), screens.SaveOptions{Source: model.LayoutSourceSeed}); err != nil {
-		t.Fatal(err)
-	}
+	// 启动时已写入种子 v1（8x5），并注入了三份真种子。
 	screen, _ := f.dial(f.screen)
 
 	f.send(screen, ui.ClientMessage{Type: ui.TypeViewportReport, Viewport: &model.Viewport{W: 1280, H: 720, DPR: 1}})
@@ -212,14 +208,65 @@ func TestFirstViewportAdoptionAutoSelectsGridOnSeedLayout(t *testing.T) {
 	if st.Source != model.LayoutSourceAuto || st.Layout.Grid != (model.Grid{Cols: 10, Rows: 6}) {
 		t.Fatalf("当前布局 = %+v", st)
 	}
-	// 屏幕会话收到换网格后的解析后布局。
+	// 屏幕会话收到换网格后的解析后布局（之前可能先收到同版本网格的展示状态重推）。
 	for {
 		m := readWS(t, screen)
-		if m["entity"] == "layout" {
-			if g := m["resolved_layout"].(map[string]any)["grid"].(map[string]any); g["cols"] != float64(10) {
-				t.Fatalf("grid = %v", g)
+		if m["entity"] != "layout" {
+			continue
+		}
+		rl := m["resolved_layout"].(map[string]any)
+		if rl["grid"].(map[string]any)["cols"] == float64(10) {
+			if rl["version"] != float64(2) {
+				t.Fatalf("version = %v", rl["version"])
 			}
 			break
 		}
+	}
+}
+
+// 全新库启动后种子实例与 8x5 种子布局齐全，再次启动不重复创建；
+// 种子函数已接入：按显示器自动选择网格能换成 6x4。
+func TestSeedOnFreshDatabaseAndSecondOpen(t *testing.T) {
+	cfg := testConfig(t)
+	a := openApp(t, cfg)
+	ctx := context.Background()
+
+	list, err := a.instances.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plugins := map[string]int{}
+	for _, in := range list {
+		plugins[in.PluginID]++
+	}
+	for _, id := range []string{"core", "weather", "host-metrics", "net-reach"} {
+		if plugins[id] != 1 {
+			t.Fatalf("种子实例 %s 数量 = %d，实例: %v", id, plugins[id], plugins)
+		}
+	}
+	st, err := a.screens.Current(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Version != 1 || st.Source != model.LayoutSourceSeed || st.Layout.Grid != (model.Grid{Cols: 8, Rows: 5}) || len(st.Broken) != 0 {
+		t.Fatalf("v1 种子布局不符: %+v", st)
+	}
+
+	applied, err := a.screens.AutoSelectGrid(ctx, model.Viewport{W: 800, H: 480, DPR: 1})
+	if err != nil || !applied {
+		t.Fatalf("种子函数应已注入，自动选网格 applied=%v err=%v", applied, err)
+	}
+	if st, _ = a.screens.Current(ctx); st.Layout.Grid != (model.Grid{Cols: 6, Rows: 4}) || len(st.Broken) != 0 {
+		t.Fatalf("应换成 6x4: %+v", st)
+	}
+	_ = a.Close()
+
+	b := openApp(t, cfg)
+	list2, _ := b.instances.List(ctx)
+	if len(list2) != len(list) {
+		t.Fatalf("第二次启动不应重复创建实例: %d -> %d", len(list), len(list2))
+	}
+	if st2, _ := b.screens.Current(ctx); st2.Version != 2 {
+		t.Fatalf("第二次启动不应再写布局: %+v", st2)
 	}
 }

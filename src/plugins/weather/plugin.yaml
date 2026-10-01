@@ -35,6 +35,7 @@ outputs:
   - {key: tomorrow_condition, type: text,   title: {zh: 明日天气, en: Tomorrow condition}}
   - {key: tomorrow_icon,      type: text,   title: {zh: 明日天气图标, en: Tomorrow icon}}
   - {key: attribution,        type: text,   title: {zh: 数据署名, en: Attribution}}
+  - {key: setup,              type: state,  title: {zh: 配置状态, en: Setup status}}
 widgets:
   - id: temperature
     name: {zh: 当前温度, en: Temperature}
@@ -52,6 +53,20 @@ widgets:
           icon: {item: icon}
           attribution: {item: attribution}
       2x2:
+        template: weather
+        bind:
+          location: {item: location}
+          temperature: {item: temperature}
+          condition: {item: condition}
+          icon: {item: icon}
+          humidity: {item: humidity}
+          wind_speed: {item: wind_speed}
+          wind_direction: {item: wind_direction}
+          tomorrow_high: {item: tomorrow_high}
+          tomorrow_low: {item: tomorrow_low}
+          tomorrow_icon: {item: tomorrow_icon}
+          attribution: {item: attribution}
+      4x2:
         template: weather
         bind:
           location: {item: location}

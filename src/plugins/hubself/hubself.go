@@ -177,6 +177,7 @@ func (p *Plugin) diskItem(dir string) report.Item {
 // screenItem 屏幕离线只标 warning，不拉高整份报告的状态：
 // 没有屏幕连着属于正常的部署形态。
 // screenItem 输出屏幕在线项：来源未接入时为 unknown（未知显示为未知，Ruling 50）。
+// 文本 online、offline、unknown 同时是 i18n 键，前端按 plugin.hub-self.<文本> 翻译。
 func screenItem(online, known bool) report.Item {
 	if !known {
 		return report.Item{Key: keyScreenOnline, Type: report.TypeState, State: report.StatusUnknown, Text: "unknown"}

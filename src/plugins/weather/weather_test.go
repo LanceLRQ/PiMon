@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
+	"github.com/LanceLRQ/PiMon/src/pkg/plugin/manifest"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/proxy"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/proxy/proxytest"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
@@ -265,8 +266,8 @@ func TestOversizedResponseRejected(t *testing.T) {
 func TestConfigErrors(t *testing.T) {
 	f := newFake(t)
 	p := f.plugin()
-	if _, err := run(t, p, map[string]any{}, nil, nil, nil, ""); err == nil || !strings.Contains(err.Error(), "城市") {
-		t.Errorf("未选城市且未开自动定位应提示选择城市: %v", err)
+	if rep, err := run(t, p, map[string]any{}, nil, nil, nil, ""); err != nil || rep.Status != report.StatusUnknown {
+		t.Errorf("未选城市且未开自动定位应返回 unknown 报告: %v %+v", err, rep)
 	}
 	if _, err := run(t, p, map[string]any{"city": `{"name":"x","lat":91,"lon":0}`}, nil, nil, nil, ""); err == nil {
 		t.Error("纬度越界应报错")
@@ -512,4 +513,48 @@ func TestManifestIntervalDefaults(t *testing.T) {
 	if m.Timeout <= 0 || m.Timeout > 60*time.Second {
 		t.Errorf("timeout=%v", m.Timeout)
 	}
+}
+
+func TestNoCityReportsUnknownSetup(t *testing.T) {
+	f := newFake(t)
+	rep, err := run(t, f.plugin(), map[string]any{}, nil, nil, nil, "")
+	if err != nil {
+		t.Fatalf("未选城市不应是采集错误: %v", err)
+	}
+	if rep.Status != report.StatusUnknown {
+		t.Fatalf("status = %q，期望 unknown", rep.Status)
+	}
+	it := rep.Find("setup")
+	if it == nil || it.Type != report.TypeState || it.State != report.StatusUnknown || it.Text != "weather.city_required" {
+		t.Fatalf("setup 项不符: %+v", it)
+	}
+	if err := rep.Validate(nil); err != nil {
+		t.Fatal(err)
+	}
+	if f.forecast.Load() != 0 {
+		t.Error("未选城市不应请求预报")
+	}
+}
+
+func TestManifestDeclares4x2WeatherSlot(t *testing.T) {
+	m := mustManifest()
+	for _, w := range m.Widgets {
+		if w.ID != "weather" {
+			continue
+		}
+		var s2x2, s4x2 *manifest.WidgetSize
+		for i := range w.Sizes {
+			switch w.Sizes[i].Size {
+			case "2x2":
+				s2x2 = &w.Sizes[i]
+			case "4x2":
+				s4x2 = &w.Sizes[i]
+			}
+		}
+		if s2x2 == nil || s4x2 == nil || len(s4x2.Bind) != len(s2x2.Bind) {
+			t.Fatalf("weather 应保留 2x2 并新增槽相同的 4x2")
+		}
+		return
+	}
+	t.Fatal("缺少 weather 小组件")
 }

@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -21,19 +22,21 @@ type fakeLayouts struct {
 	state    model.LayoutState
 	resolved model.ResolvedLayout
 	lang     string
+	// curErr、resErr 非空时对应读取失败。
+	curErr, resErr error
 }
 
 func (f *fakeLayouts) Current(context.Context) (model.LayoutState, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.state, nil
+	return f.state, f.curErr
 }
 
 func (f *fakeLayouts) Resolve(_ context.Context, lang string) (model.ResolvedLayout, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.lang = lang
-	return f.resolved, nil
+	return f.resolved, f.resErr
 }
 
 // set 同时更新原始布局版本与解析后布局：每个 instance 一个占位小组件（引用该实例）。
@@ -442,5 +445,25 @@ func TestSettingsPatchCarriesScreenDisplaySettings(t *testing.T) {
 	sc := asMap(t, ss["screen"])
 	if sc["carousel_mode"] != "home_only" || sc["idle_home_seconds"] != float64(30) || sc["ui_scale"] != 1.5 || sc["input_mode"] != "none" {
 		t.Fatalf("屏幕设置应带显示参数: %v", ss)
+	}
+}
+
+// 布局读取失败时 snapshot 照常下发，对应字段留空，不让整条 WebSocket 建立失败。
+func TestSnapshotDegradesWhenLayoutReadFails(t *testing.T) {
+	h := newScreenHarness(t, inst("a", "x"))
+	h.layouts.mu.Lock()
+	h.layouts.curErr, h.layouts.resErr = errors.New("读布局失败"), errors.New("解析布局失败")
+	h.layouts.mu.Unlock()
+
+	admin := read(t, h.dial(adminToken))
+	if admin["type"] != string(ui.TypeSnapshot) || admin["layout"] != nil {
+		t.Fatalf("管理员 snapshot 应下发且 layout 留空: %v", admin)
+	}
+	screen := read(t, h.dial(screenToken))
+	if screen["type"] != string(ui.TypeSnapshot) || screen["resolved_layout"] != nil || screen["screen_data"] != nil {
+		t.Fatalf("屏幕 snapshot 应下发且布局与数据留空: %v", screen)
+	}
+	if st := asMap(t, screen["screen_state"]); st["mode"] != "on" {
+		t.Fatalf("其余字段不受影响: %v", st)
 	}
 }
