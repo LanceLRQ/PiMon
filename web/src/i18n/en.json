@@ -1110,5 +1110,121 @@
       "raspberryHost": "Pi address",
       "alsoTry": "Or try: {{urls}}"
     }
+  },
+  "layoutEd": {
+    "mobile": {
+      "title": "Edit the layout on a computer",
+      "body": "On a phone you can check the screen status, switch screens and turn it on or off.",
+      "remote": "Go to remote control"
+    },
+    "loading": "Loading layout…",
+    "loadFailed": "Could not load the layout: {{error}}",
+    "retry": "Retry",
+    "tabs": "Screen tabs",
+    "baseVersion": "Based on v{{version}}",
+    "grid": {
+      "label": "Grid",
+      "oob": "{{n}} out of bounds"
+    },
+    "screen": {
+      "online": "online",
+      "offline": "offline"
+    },
+    "template": {
+      "value": "Generic · Value",
+      "gauge": "Generic · Gauge",
+      "state": "Generic · State",
+      "chart": "Generic · Trend chart",
+      "list": "Generic · List",
+      "table": "Generic · Table",
+      "status-grid": "Aggregate · Status grid",
+      "clock": "Clock",
+      "text": "Text",
+      "weather": "Weather"
+    },
+    "lib": {
+      "title": "Widget library",
+      "search": "Search widgets / plugin id",
+      "tab": {
+        "plugin": "Plugin",
+        "generic": "Generic",
+        "aggregate": "Aggregate"
+      },
+      "none": "No matching widgets",
+      "add": "Add \"{{name}}\" to the canvas",
+      "hint": "Drag onto the canvas · snaps to the grid"
+    },
+    "stage": {
+      "occupied": "used {{used}}/{{total}}",
+      "preview": "Preview theme"
+    },
+    "canvas": {
+      "label": "Screen canvas",
+      "widget": "{{title}}, column {{col}} row {{row}}, {{size}}",
+      "noRoom": "No room"
+    },
+    "keys": {
+      "dragKey": "drag",
+      "drag": "move",
+      "move": "nudge by cell",
+      "delete": "delete",
+      "esc": "deselect"
+    },
+    "reject": {
+      "overlap": "No room: overlaps another widget",
+      "out_of_bounds": "No room: outside the grid",
+      "size_not_allowed": "That size is not declared for this widget",
+      "no_space": "There is no free spot on the canvas for it",
+      "gridShrink": "This grid would push {{n}} widget(s) out of bounds. Move or delete them first."
+    },
+    "insp": {
+      "title": "Inspector",
+      "metaWidget": "widget",
+      "metaScreen": "screen",
+      "screenHint": "Screen properties · no widget selected",
+      "summary": "Summary",
+      "grid": "Grid",
+      "widgets": "Widgets",
+      "occupied": "Occupied",
+      "source": "Source",
+      "binding": "Data binding",
+      "instance": "Instance",
+      "item": "Data item",
+      "pickInstance": "Pick an instance",
+      "pickItem": "Pick a data item",
+      "autoInstance": "Automatic (the plugin's earliest instance)",
+      "missingInstance": "(instance no longer exists)",
+      "addRef": "Add data item",
+      "removeRef": "Remove item {{n}}",
+      "size": "Size",
+      "sizeFrom": {
+        "plugin": "declared by plugin",
+        "catalog": "allowed by catalog"
+      },
+      "position": "Position",
+      "positionHint": "highlights the canvas rulers",
+      "col": "col",
+      "row": "row",
+      "left": "Move left",
+      "right": "Move right",
+      "up": "Move up",
+      "down": "Move down",
+      "display": "Display options",
+      "titleLabel": "Title",
+      "titlePlaceholder": "Leave empty for the default title",
+      "icon": "Icon",
+      "iconNone": "No icon",
+      "text": "Body text",
+      "threshold": "Manual threshold colouring",
+      "thresholdOff": "When off, the widget follows the data item's own state; numeric items stay neutral.",
+      "direction": "Trigger direction",
+      "above": "Above",
+      "aboveTitle": "Escalate when the value reaches or exceeds the threshold",
+      "below": "Below",
+      "belowTitle": "Escalate when the value reaches or falls below the threshold",
+      "warning": "Warning threshold",
+      "critical": "Critical threshold",
+      "remove": "Delete widget"
+    }
   }
 }

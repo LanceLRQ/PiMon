@@ -1110,5 +1110,121 @@
       "raspberryHost": "树莓派地址",
       "alsoTry": "也可以试试：{{urls}}"
     }
+  },
+  "layoutEd": {
+    "mobile": {
+      "title": "请用电脑编辑布局",
+      "body": "手机上可以查看屏幕状态、切换 screen、开关屏。",
+      "remote": "去远程操作"
+    },
+    "loading": "正在载入布局…",
+    "loadFailed": "布局载入失败：{{error}}",
+    "retry": "重试",
+    "tabs": "screen 标签",
+    "baseVersion": "基于 v{{version}}",
+    "grid": {
+      "label": "网格",
+      "oob": "{{n}} 个越界"
+    },
+    "screen": {
+      "online": "在线",
+      "offline": "离线"
+    },
+    "template": {
+      "value": "通用 · 数值",
+      "gauge": "通用 · 仪表",
+      "state": "通用 · 状态",
+      "chart": "通用 · 趋势图",
+      "list": "通用 · 列表",
+      "table": "通用 · 表格",
+      "status-grid": "聚合 · 状态格",
+      "clock": "时钟",
+      "text": "文本",
+      "weather": "天气"
+    },
+    "lib": {
+      "title": "小组件库",
+      "search": "搜索小组件 / 插件 id",
+      "tab": {
+        "plugin": "插件声明",
+        "generic": "通用",
+        "aggregate": "聚合"
+      },
+      "none": "没有匹配的小组件",
+      "add": "添加「{{name}}」到画布",
+      "hint": "拖到画布 · 按网格吸附"
+    },
+    "stage": {
+      "occupied": "占用 {{used}}/{{total}}",
+      "preview": "预览主题"
+    },
+    "canvas": {
+      "label": "屏幕画布",
+      "widget": "{{title}}，第 {{col}} 列第 {{row}} 行，{{size}}",
+      "noRoom": "放不下"
+    },
+    "keys": {
+      "dragKey": "拖拽",
+      "drag": "移动",
+      "move": "按格微调",
+      "delete": "删除",
+      "esc": "取消选中"
+    },
+    "reject": {
+      "overlap": "放不下：与其他小组件重叠",
+      "out_of_bounds": "放不下：超出网格",
+      "size_not_allowed": "该尺寸不在声明的尺寸之内",
+      "no_space": "画布上没有放得下它的空位",
+      "gridShrink": "缩小到这个网格会让 {{n}} 个小组件越界，请先移走或删除它们"
+    },
+    "insp": {
+      "title": "检查器",
+      "metaWidget": "小组件",
+      "metaScreen": "screen",
+      "screenHint": "screen 属性 · 未选中小组件",
+      "summary": "概要",
+      "grid": "网格",
+      "widgets": "小组件",
+      "occupied": "占用",
+      "source": "来源",
+      "binding": "数据绑定",
+      "instance": "实例",
+      "item": "数据项",
+      "pickInstance": "选择实例",
+      "pickItem": "选择数据项",
+      "autoInstance": "自动（该插件最早的实例）",
+      "missingInstance": "（实例已不存在）",
+      "addRef": "添加数据项",
+      "removeRef": "移除第 {{n}} 项",
+      "size": "尺寸",
+      "sizeFrom": {
+        "plugin": "插件声明",
+        "catalog": "目录允许"
+      },
+      "position": "位置",
+      "positionHint": "对应画布标尺高亮",
+      "col": "列",
+      "row": "行",
+      "left": "左移",
+      "right": "右移",
+      "up": "上移",
+      "down": "下移",
+      "display": "显示选项",
+      "titleLabel": "标题",
+      "titlePlaceholder": "留空使用默认标题",
+      "icon": "图标",
+      "iconNone": "不显示图标",
+      "text": "正文",
+      "threshold": "手动阈值配色",
+      "thresholdOff": "关闭时按数据项自身的状态着色，数值项保持中性色。",
+      "direction": "触发方向",
+      "above": "高于",
+      "aboveTitle": "值达到或超过阈值时升级",
+      "below": "低于",
+      "belowTitle": "值达到或低于阈值时升级",
+      "warning": "警告阈值",
+      "critical": "严重阈值",
+      "remove": "删除小组件"
+    }
   }
 }
