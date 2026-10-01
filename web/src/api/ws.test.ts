@@ -48,6 +48,8 @@ describe('LiveSocket', () => {
   let reload: Mock<() => void>
   let failed: Mock<() => void>
   let pageBuildValue: string | null
+  let stamp: number | null
+  let clock: number
   let sock: LiveSocket
 
   const last = () => FakeSocket.instances[FakeSocket.instances.length - 1]
@@ -60,12 +62,19 @@ describe('LiveSocket', () => {
     reload = vi.fn<() => void>()
     failed = vi.fn<() => void>()
     pageBuildValue = 'b1'
+    stamp = null
+    clock = 1_000_000
     sock = new LiveSocket({
       store,
       url: 'ws://hub/ws',
       createSocket: (u) => new FakeSocket(u) as unknown as WebSocket,
       reload,
       getPageBuild: () => pageBuildValue,
+      now: () => clock,
+      loadReloadStamp: () => stamp,
+      saveReloadStamp: (t) => {
+        stamp = t
+      },
       random: () => 1,
       onHandshakeFailed: failed,
     })
@@ -111,7 +120,10 @@ describe('LiveSocket', () => {
     last().open()
     vi.advanceTimersByTime(20_000)
     expect(last().sent).toEqual(['{"type":"ping"}'])
-    vi.advanceTimersByTime(40_000)
+    last().receive({ type: 'pong', server_time: '2026-10-01T00:00:00Z' })
+    vi.advanceTimersByTime(20_000)
+    last().receive({ type: 'pong', server_time: '2026-10-01T00:00:00Z' })
+    vi.advanceTimersByTime(20_000)
     expect(last().sent).toHaveLength(3)
   })
 
@@ -166,6 +178,38 @@ describe('LiveSocket', () => {
     last().open()
     last().drop()
     expect(failed).toHaveBeenCalledTimes(1)
+  })
+
+  it('刚因 build 不一致刷新过，冷却期内再次不一致不再刷新，改为标记版本过期', () => {
+    sock.start()
+    last().open()
+    last().receive(snap('b2'))
+    expect(reload).toHaveBeenCalledTimes(1)
+    expect(stamp).toBe(clock)
+    clock += 10_000
+    last().receive(snap('b2', ['a']))
+    expect(reload).toHaveBeenCalledTimes(1)
+    expect(store.getState().buildOutdated).toBe(true)
+    expect(store.getState().instances.map((i) => i.id)).toEqual(['a'])
+    clock += 60_000
+    last().receive(snap('b2'))
+    expect(reload).toHaveBeenCalledTimes(2)
+    last().receive(snap('b1'))
+    expect(store.getState().buildOutdated).toBe(false)
+  })
+
+  it('45 秒没收到任何消息判定连接已死：断开并重连；收到消息会重新计时', () => {
+    sock.start()
+    last().open()
+    vi.advanceTimersByTime(40_000)
+    last().receive({ type: 'pong', server_time: '2026-10-01T00:00:00Z' })
+    vi.advanceTimersByTime(40_000)
+    expect(store.getState().connected).toBe(true)
+    vi.advanceTimersByTime(5_000)
+    expect(store.getState().connected).toBe(false)
+    expect(failed).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1000)
+    expect(FakeSocket.instances).toHaveLength(2)
   })
 
   it('stop 后不再重连', () => {

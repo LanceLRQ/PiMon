@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { http } from '@/api/client'
 import type { SessionInfo } from '@/api/session'
 import { createI18n, languageStorageKey, type Language } from '@/i18n'
+import { useSession } from './session'
 import { liveStore } from '@/store/live-store'
 import type { Settings } from '@/types/generated'
 import type { Snapshot } from '@/types/protocol.generated'
@@ -53,11 +54,17 @@ async function mount({ session, path = '/', lng = 'zh', redirectExternal }: Setu
         <SessionProvider redirectExternal={redirectExternal}>
           <AppRoutes />
           <Probe />
+          <RefreshButton />
         </SessionProvider>
       </MemoryRouter>
     </I18nextProvider>,
   )
   return i18n
+}
+
+function RefreshButton() {
+  const { refresh } = useSession()
+  return <button onClick={() => void refresh()}>refresh-session</button>
 }
 
 const admin: SessionInfo = { authenticated: true, kind: 'admin', needs_setup: false }
@@ -144,6 +151,28 @@ describe('应用外壳与会话守卫', () => {
     )
     expect(await screen.findByRole('alert')).toHaveTextContent('无法获取登录状态')
     expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument()
+  })
+
+  it('已登录后会话刷新失败（hub 暂时不可达）：外壳保持，不显示会话错误页', async () => {
+    await mount({ session: admin, path: '/proxies' })
+    await screen.findByRole('heading', { name: '代理' })
+    fetchMock.mockRejectedValue(new TypeError('down'))
+    await userEvent.click(screen.getByRole('button', { name: 'refresh-session' }))
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([u]) => u === '/api/session').length).toBeGreaterThan(1))
+    await Promise.resolve()
+    expect(screen.getByRole('heading', { name: '代理' })).toBeInTheDocument()
+    expect(screen.queryByText(/无法获取登录状态/)).not.toBeInTheDocument()
+  })
+
+  it('手机端退出登录失败时显示错误', async () => {
+    await mount({ session: admin })
+    const bar = await screen.findByRole('navigation', { name: '手机导航' })
+    fetchMock.mockImplementation(async (u: string) =>
+      u === '/api/logout' ? json(500, { error: { code: 'internal', details: {} } }) : json(200, admin),
+    )
+    await userEvent.click(within(bar).getByRole('button', { name: '更多' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: '退出登录' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('中枢内部错误')
   })
 
   it('退出登录：请求 /api/logout 后回到登录页', async () => {

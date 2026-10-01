@@ -16,6 +16,8 @@ export interface LiveState {
   instances: Instance[]
   // 服务端时钟减本机时钟（毫秒），用于校正时钟偏差
   clockOffsetMs: number
+  // 中枢已升级但本页刷新被防循环机制拦下：外壳提示用户手动刷新
+  buildOutdated: boolean
   // 最近一条协议级错误（不影响连接）
   lastError: { code: string; details: Record<string, unknown> } | null
 }
@@ -29,6 +31,7 @@ export const initialLiveState: LiveState = {
   screenSettings: null,
   instances: [],
   clockOffsetMs: 0,
+  buildOutdated: false,
   lastError: null,
 }
 
@@ -39,6 +42,7 @@ export interface LiveStore {
   applyPatch(p: Patch): void
   applyServerTime(serverTime: string): void
   setConnected(connected: boolean): void
+  setBuildOutdated(outdated: boolean): void
   setError(error: LiveState['lastError']): void
   reset(): void
 }
@@ -108,6 +112,7 @@ export function createLiveStore(): LiveStore {
       if (offset !== null) set({ clockOffsetMs: offset })
     },
     setConnected: (connected) => set({ connected }),
+    setBuildOutdated: (buildOutdated) => set({ buildOutdated }),
     setError: (lastError) => set({ lastError }),
     reset() {
       state = initialLiveState
@@ -130,4 +135,5 @@ export function serverNow(store: LiveStore = liveStore): number {
 
 export const selectInstances = (s: LiveState) => s.instances
 export const selectSettings = (s: LiveState) => s.settings
+export const selectBuildOutdated = (s: LiveState) => s.buildOutdated
 export const selectConnected = (s: LiveState) => s.connected

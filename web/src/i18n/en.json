@@ -52,7 +52,8 @@
     "loading": "Loading",
     "sessionError": "Cannot read the session state. Check that the hub is running.",
     "retry": "Retry",
-    "notFound": "Page not found"
+    "notFound": "Page not found",
+    "versionUpdated": "The hub was upgraded. Reload the page to load the new version."
   },
   "placeholder": {
     "pending": "This page will be implemented in a later task.",

@@ -14,6 +14,25 @@ export function defaultSocketUrl(): string {
   return `${scheme}://${location.host}/ws`
 }
 
+const reloadStampKey = 'pimon.admin.build-reload'
+
+function loadStamp(): number | null {
+  try {
+    const v = sessionStorage.getItem(reloadStampKey)
+    return v ? Number(v) : null
+  } catch {
+    return null
+  }
+}
+
+function saveStamp(t: number) {
+  try {
+    sessionStorage.setItem(reloadStampKey, String(t))
+  } catch {
+    // 存储不可用时无法防循环，只能依赖冷却逻辑之外的行为
+  }
+}
+
 export interface LiveSocketOptions {
   store: LiveStore
   url?: string
@@ -24,6 +43,13 @@ export interface LiveSocketOptions {
   random?: () => number
   // 某次连接在握手阶段就失败（未收到 open）：很可能是会话失效，由外壳重新查询会话
   onHandshakeFailed?: () => void
+  // 防止 build 不一致时反复刷新：记录最近一次刷新时间（可注入便于测试）
+  now?: () => number
+  loadReloadStamp?: () => number | null
+  saveReloadStamp?: (t: number) => void
+  reloadCooldownMs?: number
+  // 超过该时长没收到任何服务端消息就判定连接已死并重连（半开连接）
+  silenceTimeoutMs?: number
   pingIntervalMs?: number
   baseDelayMs?: number
   maxDelayMs?: number
@@ -36,6 +62,7 @@ export class LiveSocket {
   private socket: WebSocket | null = null
   private pingTimer: ReturnType<typeof setInterval> | null = null
   private retryTimer: ReturnType<typeof setTimeout> | null = null
+  private watchdog: ReturnType<typeof setTimeout> | null = null
   private attempt = 0
   private stopped = true
 
@@ -46,6 +73,11 @@ export class LiveSocket {
       reload: () => location.reload(),
       getPageBuild: pageBuild,
       random: Math.random,
+      now: () => Date.now(),
+      loadReloadStamp: loadStamp,
+      saveReloadStamp: saveStamp,
+      reloadCooldownMs: 60_000,
+      silenceTimeoutMs: 45_000,
       pingIntervalMs: 20_000,
       baseDelayMs: 1_000,
       maxDelayMs: 30_000,
@@ -74,7 +106,8 @@ export class LiveSocket {
   private clearTimers() {
     if (this.pingTimer) clearInterval(this.pingTimer)
     if (this.retryTimer) clearTimeout(this.retryTimer)
-    this.pingTimer = this.retryTimer = null
+    if (this.watchdog) clearTimeout(this.watchdog)
+    this.pingTimer = this.retryTimer = this.watchdog = null
   }
 
   private connect() {
@@ -86,17 +119,34 @@ export class LiveSocket {
       this.attempt = 0
       this.opts.store.setConnected(true)
       this.pingTimer = setInterval(() => this.send({ type: 'ping' }), this.opts.pingIntervalMs)
+      this.armWatchdog(socket, () => opened)
     }
-    socket.onmessage = (ev) => this.handle(ev.data)
-    socket.onclose = () => {
+    socket.onmessage = (ev) => {
+      this.armWatchdog(socket, () => opened)
+      this.handle(ev.data)
+    }
+    socket.onclose = () => this.handleClosed(socket, opened)
+  }
+
+  // 静默看门狗：每收到一条消息就重新计时，超时说明连接已半开，主动关闭并走重连流程
+  private armWatchdog(socket: WebSocket, opened: () => boolean) {
+    if (this.watchdog) clearTimeout(this.watchdog)
+    this.watchdog = setTimeout(() => {
       if (this.socket !== socket) return
-      this.socket = null
-      this.clearTimers()
-      this.opts.store.setConnected(false)
-      if (this.stopped) return
-      if (!opened) this.opts.onHandshakeFailed?.()
-      this.scheduleReconnect()
-    }
+      socket.onopen = socket.onmessage = socket.onclose = socket.onerror = null
+      socket.close()
+      this.handleClosed(socket, opened())
+    }, this.opts.silenceTimeoutMs)
+  }
+
+  private handleClosed(socket: WebSocket, opened: boolean) {
+    if (this.socket !== socket) return
+    this.socket = null
+    this.clearTimers()
+    this.opts.store.setConnected(false)
+    if (this.stopped) return
+    if (!opened) this.opts.onHandshakeFailed?.()
+    this.scheduleReconnect()
   }
 
   private send(msg: ClientMessage) {
@@ -128,8 +178,17 @@ export class LiveSocket {
         const snap = msg as Snapshot
         const local = this.opts.getPageBuild()
         if (local && snap.build && snap.build !== local) {
-          this.opts.reload()
-          return
+          // 冷却期内已刷新过仍不一致（缓存或反代问题）：不再刷新，改为提示用户，避免无限刷新
+          const last = this.opts.loadReloadStamp()
+          const now = this.opts.now()
+          if (last === null || now - last >= this.opts.reloadCooldownMs) {
+            this.opts.saveReloadStamp(now)
+            this.opts.reload()
+            return
+          }
+          store.setBuildOutdated(true)
+        } else {
+          store.setBuildOutdated(false)
         }
         store.applySnapshot(snap)
         break

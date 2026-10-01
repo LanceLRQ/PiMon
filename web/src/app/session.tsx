@@ -31,7 +31,8 @@ export function SessionProvider({ children, redirectExternal }: SessionProviderP
       setInfo(await fetchSession())
       setStatus('ready')
     } catch {
-      setStatus('error')
+      // 已经有会话信息时（hub 重启、短暂不可达）保持原状，外壳与实时连接不能因此卸载；仅首次加载失败才报错
+      setStatus((prev) => (prev === 'ready' ? 'ready' : 'error'))
     }
   }, [])
 

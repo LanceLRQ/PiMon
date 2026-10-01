@@ -25,4 +25,9 @@ describe('错误码翻译', () => {
     expect(translateErrorValue(zh, new Error('boom'))).toBe('操作失败（unknown）')
     expect(translateErrorValue(zh, { code: 'proxy.in_use', details: { instances: ['a'] } })).toContain('代理')
   })
+
+  it('details 里的 i18next 保留键不会影响翻译', async () => {
+    const zh = await createI18n('zh')
+    expect(translateError(zh, 'auth.invalid_password', { lng: 'en', count: 3, remaining: 2 })).toBe('密码错误')
+  })
 })

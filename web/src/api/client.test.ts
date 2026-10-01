@@ -75,4 +75,20 @@ describe('REST 客户端', () => {
     expect(await p).toMatchObject({ code: 'request.timeout' })
     vi.useRealTimers()
   })
+
+  it('调用方信号已中止时立即中止请求；结束后移除监听', async () => {
+    const ac = new AbortController()
+    ac.abort()
+    fetchMock.mockImplementation(async (_u: string, init: RequestInit) => {
+      expect(init.signal?.aborted).toBe(true)
+      throw new DOMException('aborted', 'AbortError')
+    })
+    await expect(request('/api/x', { signal: ac.signal })).rejects.toBeTruthy()
+
+    const live = new AbortController()
+    const remove = vi.spyOn(live.signal, 'removeEventListener')
+    fetchMock.mockResolvedValue(jsonResponse(200, {}))
+    await request('/api/x', { signal: live.signal })
+    expect(remove).toHaveBeenCalledWith('abort', expect.any(Function))
+  })
 })

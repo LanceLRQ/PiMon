@@ -1,9 +1,11 @@
 import { LogOut, Moon, Sun } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { logout } from '@/api/session'
 import { setThemeChoice, useThemeChoice } from '@/admin-theme/theme'
 import { setLanguage } from '@/i18n'
+import { translateErrorValue } from '@/i18n/errors'
 import { cn } from '@/lib/utils'
 import {
   DropdownMenu,
@@ -36,19 +38,28 @@ export function MobileTabBar() {
   const { markSignedOut } = useSession()
   const theme = useThemeChoice()
   const current = activeMobileTab(pathname)
-  const darkNow = theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+  const [logoutError, setLogoutError] = useState<string | null>(null)
+  const systemDark = typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches
+  const darkNow = theme === 'dark' || (theme === 'system' && systemDark)
 
   async function onLogout() {
+    setLogoutError(null)
     try {
       await logout()
       markSignedOut()
       navigate('/login', { replace: true })
-    } catch {
-      // 失败时留在当前页，用户可重试
+    } catch (e) {
+      setLogoutError(`${t('shell.logoutFailed')}：${translateErrorValue(i18n, e)}`)
     }
   }
 
   return (
+    <>
+    {logoutError && (
+      <p role="alert" className="fixed inset-x-0 bottom-16 z-30 bg-card px-3.5 py-2 text-xs text-destructive">
+        {logoutError}
+      </p>
+    )}
     <nav
       aria-label={t('nav.mobile')}
       className="fixed inset-x-0 bottom-0 z-30 hidden h-16 grid-cols-5 border-t border-border bg-card mobile:grid"
@@ -104,5 +115,6 @@ export function MobileTabBar() {
         )
       })}
     </nav>
+    </>
   )
 }

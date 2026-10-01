@@ -42,7 +42,9 @@ async function parseError(res: Response): Promise<ApiError> {
 export async function request<T = unknown>(path: string, opts: RequestOptions = {}): Promise<T> {
   const controller = new AbortController()
   const timer = opts.timeoutMs ? setTimeout(() => controller.abort(), opts.timeoutMs) : undefined
-  opts.signal?.addEventListener('abort', () => controller.abort())
+  const onAbort = () => controller.abort()
+  if (opts.signal?.aborted) controller.abort()
+  else opts.signal?.addEventListener('abort', onAbort, { once: true })
   let res: Response
   try {
     res = await fetch(buildUrl(path, opts.query), {
@@ -58,6 +60,7 @@ export async function request<T = unknown>(path: string, opts: RequestOptions = 
     throw new ApiError(0, timedOut ? timeoutErrorCode : networkErrorCode)
   } finally {
     if (timer) clearTimeout(timer)
+    opts.signal?.removeEventListener('abort', onAbort)
   }
   if (!res.ok) {
     const err = await parseError(res)
