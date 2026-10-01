@@ -15,7 +15,7 @@ generate:
 # 生成物漂移检查：重新生成后，web/src/types 下的内容必须与已提交的一致（只比较该目录，不受工作区其他改动影响）
 check-generated:
 	@before="$$(git diff -- web/src/types; git ls-files --others --exclude-standard web/src/types | xargs -I{} sh -c 'echo {}; cat {}')"; \
-	$(MAKE) --no-print-directory generate; \
+	$(MAKE) --no-print-directory generate || exit 1; \
 	after="$$(git diff -- web/src/types; git ls-files --others --exclude-standard web/src/types | xargs -I{} sh -c 'echo {}; cat {}')"; \
 	if [ "$$before" != "$$after" ]; then echo "tygo 生成物与 Go 模型不一致，请运行 make generate 并提交 web/src/types"; git diff --stat -- web/src/types; exit 1; fi
 

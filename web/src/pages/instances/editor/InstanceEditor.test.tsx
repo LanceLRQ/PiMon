@@ -146,7 +146,8 @@ describe('自动表单：每种字段类型的渲染与取值', () => {
       },
     })
     expect(await screen.findByText('列表页')).toBeInTheDocument()
-  })
+    // 逐字输入的控件多，全量并发运行时会超过默认 5 秒
+  }, 15_000)
 
   it('代理下拉：直连 + 本期可用位置（hub、any）的代理', async () => {
     const user = userEvent.setup()
