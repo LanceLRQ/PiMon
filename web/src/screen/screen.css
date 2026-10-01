@@ -1,0 +1,10 @@
+/* 屏幕端专用样式；只在屏幕根模块引入，选择器都限定在屏幕端类名内。 */
+
+/* 详情层允许手指滑动，但不显示滚动条 */
+.screen-no-scrollbar {
+  scrollbar-width: none;
+}
+
+.screen-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

@@ -1078,5 +1078,14 @@
       "unknown": "未知",
       "error": "采集失败"
     }
+  },
+  "screenApp": {
+    "detail": {
+      "close": "关闭",
+      "items": "全部数据项",
+      "history": "历史曲线",
+      "noItems": "暂无数据",
+      "updated": "更新于"
+    }
   }
 }

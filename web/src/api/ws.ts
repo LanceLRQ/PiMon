@@ -1,5 +1,5 @@
-import type { LiveStore } from '@/store/live-store'
-import type { ClientMessage, ErrorMessage, Patch, Pong, Snapshot } from '@/types/protocol.generated'
+import type { SocketSink } from '@/store/socket-sink'
+import type { ClientMessage, ErrorMessage, Patch, Pong, ScreenControl, Snapshot } from '@/types/protocol.generated'
 
 // index.html 里 hub 注入的构建版本占位符；开发模式（Vite）下不会被替换，此时不比较 build
 export const buildPlaceholder = '__PIMON_BUILD__'
@@ -34,7 +34,8 @@ function saveStamp(t: number) {
 }
 
 export interface LiveSocketOptions {
-  store: LiveStore
+  // 管理端 LiveStore 与屏幕端 ScreenStore 都满足
+  store: SocketSink
   url?: string
   // 以下均可注入，便于测试
   createSocket?: (url: string) => WebSocket
@@ -43,6 +44,10 @@ export interface LiveSocketOptions {
   random?: () => number
   // 某次连接在握手阶段就失败（未收到 open）：很可能是会话失效，由外壳重新查询会话
   onHandshakeFailed?: () => void
+  // 每次连接建立（含重连）时调用；屏幕端据此补报 viewport
+  onConnected?: () => void
+  // 收到屏幕指令（refresh、switch），仅屏幕会话会收到
+  onScreenControl?: (msg: ScreenControl) => void
   // 防止 build 不一致时反复刷新：记录最近一次刷新时间（可注入便于测试）
   now?: () => number
   loadReloadStamp?: () => number | null
@@ -58,7 +63,8 @@ export interface LiveSocketOptions {
 // 浏览器与中枢之间的 UI WebSocket：连上后服务端先发 snapshot，之后只发 patch；
 // 每 20 秒 ping 一次（服务端 60 秒无消息会断开）；断线后指数退避重连。
 export class LiveSocket {
-  private readonly opts: Required<Omit<LiveSocketOptions, 'onHandshakeFailed'>> & Pick<LiveSocketOptions, 'onHandshakeFailed'>
+  private readonly opts: Required<Omit<LiveSocketOptions, 'onHandshakeFailed' | 'onConnected' | 'onScreenControl'>> &
+    Pick<LiveSocketOptions, 'onHandshakeFailed' | 'onConnected' | 'onScreenControl'>
   private socket: WebSocket | null = null
   private pingTimer: ReturnType<typeof setInterval> | null = null
   private retryTimer: ReturnType<typeof setTimeout> | null = null
@@ -120,6 +126,7 @@ export class LiveSocket {
       this.opts.store.setConnected(true)
       this.pingTimer = setInterval(() => this.send({ type: 'ping' }), this.opts.pingIntervalMs)
       this.armWatchdog(socket, () => opened)
+      this.opts.onConnected?.()
     }
     socket.onmessage = (ev) => {
       this.armWatchdog(socket, () => opened)
@@ -149,7 +156,8 @@ export class LiveSocket {
     this.scheduleReconnect()
   }
 
-  private send(msg: ClientMessage) {
+  // 连接未打开时静默丢弃；调用方（如屏幕的 viewport 上报）在连接建立回调里补发
+  send(msg: ClientMessage) {
     if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(msg))
   }
 
@@ -198,6 +206,9 @@ export class LiveSocket {
         break
       case 'pong':
         store.applyServerTime((msg as Pong).server_time)
+        break
+      case 'screen_control':
+        this.opts.onScreenControl?.(msg as ScreenControl)
         break
       case 'error': {
         const { code, details } = (msg as ErrorMessage).error
