@@ -17,6 +17,8 @@ packages:
       time.Duration: number # 纳秒
   - path: github.com/LanceLRQ/PiMon/src/pkg/protocol/ui
     output_path: ../web/src/types/protocol.generated.ts
+    exclude_files:
+      - msgtype.go
     type_mappings:
       time.Time: string
       model.Instance: Instance

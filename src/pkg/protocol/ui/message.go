@@ -6,21 +6,31 @@ import (
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 )
 
-// 消息类型（JSON 的 type 字段）。
-const (
-	// 服务端 → 客户端。
-	TypeSnapshot = "snapshot"
-	TypePatch    = "patch"
-	TypePong     = "pong"
-	TypeError    = "error"
-	// TypeScreenControl 由 M1d 的屏幕控制使用，本期服务端不发送。
-	TypeScreenControl = "screen_control"
+// ServerMessageType 与 ClientMessageType 的声明在 msgtype.go（tygo 无法把它们生成为字面量联合，
+// 因此该文件被排除，TS 联合类型在此直接给出，取值须与下面两组常量保持一致）。
+//
+//tygo:emit
+var _ = `/** ServerMessageType 是服务端 → 客户端消息的 type 取值。 */
+export type ServerMessageType = "snapshot" | "patch" | "pong" | "error" | "screen_control";
+/** ClientMessageType 是客户端 → 服务端消息的 type 取值。 */
+export type ClientMessageType = "subscribe" | "ping" | "viewport_report";`
 
-	// 客户端 → 服务端。
-	TypeSubscribe = "subscribe"
-	TypePing      = "ping"
+// 服务端 → 客户端的消息类型。
+const (
+	TypeSnapshot ServerMessageType = "snapshot"
+	TypePatch    ServerMessageType = "patch"
+	TypePong     ServerMessageType = "pong"
+	TypeError    ServerMessageType = "error"
+	// TypeScreenControl 由 M1d 的屏幕控制使用，本期服务端不发送。
+	TypeScreenControl ServerMessageType = "screen_control"
+)
+
+// 客户端 → 服务端的消息类型。
+const (
+	TypeSubscribe ClientMessageType = "subscribe"
+	TypePing      ClientMessageType = "ping"
 	// TypeViewportReport 由 M1d 的屏幕端使用，本期服务端收到后只视为活动、不处理。
-	TypeViewportReport = "viewport_report"
+	TypeViewportReport ClientMessageType = "viewport_report"
 )
 
 // 会话角色。
@@ -64,7 +74,7 @@ type ScreenSettings struct {
 
 // Snapshot 是连接建立后（以及每次 subscribe 之后）下发的全量状态。
 type Snapshot struct {
-	Type string `json:"type"`
+	Type ServerMessageType `json:"type"`
 	// Build 是中枢的构建版本，与 index.html 注入的 pimon-build 同源；前端据此发现中枢升级。
 	Build string `json:"build"`
 	// ServerTime 是服务端当前时间，前端据此校正时钟偏差。
@@ -83,9 +93,9 @@ type Snapshot struct {
 
 // Patch 是按实体的增量更新。Entity 决定哪些字段有值。
 type Patch struct {
-	Type       string    `json:"type"`
-	ServerTime time.Time `json:"server_time"`
-	Entity     string    `json:"entity"`
+	Type       ServerMessageType `json:"type"`
+	ServerTime time.Time         `json:"server_time"`
+	Entity     string            `json:"entity"`
 	// ID 是被删除的实例 id（instance_removed）。
 	ID             string          `json:"id,omitempty"`
 	Instance       *model.Instance `json:"instance,omitempty"`
@@ -95,8 +105,8 @@ type Patch struct {
 
 // Pong 是对 ping 的应答，带服务端时间供前端校正时钟。
 type Pong struct {
-	Type       string    `json:"type"`
-	ServerTime time.Time `json:"server_time"`
+	Type       ServerMessageType `json:"type"`
+	ServerTime time.Time         `json:"server_time"`
 }
 
 // ErrorBody 是协议级错误的内容，形状与 REST 错误体一致。
@@ -107,13 +117,13 @@ type ErrorBody struct {
 
 // ErrorMessage 是协议级错误消息；收到它后连接仍然可用。
 type ErrorMessage struct {
-	Type  string    `json:"type"`
-	Error ErrorBody `json:"error"`
+	Type  ServerMessageType `json:"type"`
+	Error ErrorBody         `json:"error"`
 }
 
 // ClientMessage 是客户端发来的消息，按 Type 取用对应字段。
 type ClientMessage struct {
-	Type string `json:"type"`
+	Type ClientMessageType `json:"type"`
 	// Topics 用于 subscribe：声明完整的订阅主题集合，服务端随后重发 snapshot。
 	Topics []string `json:"topics,omitempty"`
 }

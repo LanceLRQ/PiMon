@@ -4,38 +4,42 @@ import type { Instance, Settings } from './model.generated';
 //////////
 // source: message.go
 
+/** ServerMessageType 是服务端 → 客户端消息的 type 取值。 */
+export type ServerMessageType = "snapshot" | "patch" | "pong" | "error" | "screen_control";
+/** ClientMessageType 是客户端 → 服务端消息的 type 取值。 */
+export type ClientMessageType = "subscribe" | "ping" | "viewport_report";
 /**
- * 服务端 → 客户端。
+ * 服务端 → 客户端的消息类型。
  */
-export const TypeSnapshot = "snapshot";
+export const TypeSnapshot: ServerMessageType = "snapshot";
 /**
- * 消息类型（JSON 的 type 字段）。
+ * 服务端 → 客户端的消息类型。
  */
-export const TypePatch = "patch";
+export const TypePatch: ServerMessageType = "patch";
 /**
- * 消息类型（JSON 的 type 字段）。
+ * 服务端 → 客户端的消息类型。
  */
-export const TypePong = "pong";
+export const TypePong: ServerMessageType = "pong";
 /**
- * 消息类型（JSON 的 type 字段）。
+ * 服务端 → 客户端的消息类型。
  */
-export const TypeError = "error";
+export const TypeError: ServerMessageType = "error";
 /**
  * TypeScreenControl 由 M1d 的屏幕控制使用，本期服务端不发送。
  */
-export const TypeScreenControl = "screen_control";
+export const TypeScreenControl: ServerMessageType = "screen_control";
 /**
- * 客户端 → 服务端。
+ * 客户端 → 服务端的消息类型。
  */
-export const TypeSubscribe = "subscribe";
+export const TypeSubscribe: ClientMessageType = "subscribe";
 /**
- * 消息类型（JSON 的 type 字段）。
+ * 客户端 → 服务端的消息类型。
  */
-export const TypePing = "ping";
+export const TypePing: ClientMessageType = "ping";
 /**
  * TypeViewportReport 由 M1d 的屏幕端使用，本期服务端收到后只视为活动、不处理。
  */
-export const TypeViewportReport = "viewport_report";
+export const TypeViewportReport: ClientMessageType = "viewport_report";
 /**
  * 会话角色。
  */
@@ -84,7 +88,7 @@ export interface ScreenSettings {
  * Snapshot 是连接建立后（以及每次 subscribe 之后）下发的全量状态。
  */
 export interface Snapshot {
-  type: string;
+  type: ServerMessageType;
   /**
    * Build 是中枢的构建版本，与 index.html 注入的 pimon-build 同源；前端据此发现中枢升级。
    */
@@ -118,7 +122,7 @@ export interface Snapshot {
  * Patch 是按实体的增量更新。Entity 决定哪些字段有值。
  */
 export interface Patch {
-  type: string;
+  type: ServerMessageType;
   server_time: string;
   entity: string;
   /**
@@ -133,7 +137,7 @@ export interface Patch {
  * Pong 是对 ping 的应答，带服务端时间供前端校正时钟。
  */
 export interface Pong {
-  type: string;
+  type: ServerMessageType;
   server_time: string;
 }
 /**
@@ -147,14 +151,14 @@ export interface ErrorBody {
  * ErrorMessage 是协议级错误消息；收到它后连接仍然可用。
  */
 export interface ErrorMessage {
-  type: string;
+  type: ServerMessageType;
   error: ErrorBody;
 }
 /**
  * ClientMessage 是客户端发来的消息，按 Type 取用对应字段。
  */
 export interface ClientMessage {
-  type: string;
+  type: ClientMessageType;
   /**
    * Topics 用于 subscribe：声明完整的订阅主题集合，服务端随后重发 snapshot。
    */
