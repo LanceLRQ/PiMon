@@ -1,5 +1,4 @@
 # 前端 TS 类型生成配置（Go 模型为单一事实来源）：make generate
-# C3 创建 pkg/protocol/ui 后在 packages 里追加
 packages:
   - path: github.com/LanceLRQ/PiMon/src/pkg/model
     output_path: ../web/src/types/model.generated.ts
@@ -16,3 +15,11 @@ packages:
     type_mappings:
       time.Time: string
       time.Duration: number # 纳秒
+  - path: github.com/LanceLRQ/PiMon/src/pkg/protocol/ui
+    output_path: ../web/src/types/protocol.generated.ts
+    type_mappings:
+      time.Time: string
+      model.Instance: Instance
+      model.Settings: Settings
+    frontmatter: |
+      import type { Instance, Settings } from './model.generated';
