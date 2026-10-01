@@ -146,7 +146,24 @@
     "show": "Show password",
     "hide": "Hide password",
     "close": "Close",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "save": "Save",
+    "discard": "Discard",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "test": "Test",
+    "refresh": "Refresh",
+    "retry": "Retry",
+    "loading": "Loading…",
+    "yes": "Yes",
+    "no": "No",
+    "download": "Download",
+    "saving": "Saving…",
+    "withDetail": "{{summary}}: {{detail}}",
+    "loadFailed": "Failed to load",
+    "stay": "Stay",
+    "leave": "Leave"
   },
   "login": {
     "title": "Sign in to the admin console",
@@ -261,7 +278,11 @@
     "inSeconds": "in {{n}}s",
     "inMinutes": "in {{n}} min",
     "inHours": "in {{n}} h",
-    "inDays": "in {{n}} d"
+    "inDays": "in {{n}} d",
+    "uptimeDays": "{{d}}d {{h}}h",
+    "uptimeHours": "{{h}}h {{m}}m",
+    "uptimeMinutes": "{{m}} min",
+    "uptimeSeconds": "{{s}} s"
   },
   "items": {
     "unknown": "Unknown",
@@ -449,7 +470,8 @@
       "timezone": "Time zone",
       "instances": "Instances",
       "agents": "Agents online",
-      "agentsLater": "Coming in M2"
+      "agentsLater": "Coming in M2",
+      "uptime": "Uptime"
     },
     "attention": {
       "title": "Needs attention",
@@ -612,5 +634,383 @@
       "busy": "The instance is saved; it is being collected right now, try the test again shortly."
     },
     "withDetail": "{{summary}}: {{detail}}"
+  },
+  "proxies": {
+    "sub": "Global proxy list; plugins pick one from a dropdown, default is direct",
+    "add": "Add proxy",
+    "loadFailed": "Could not load the proxy list",
+    "list": {
+      "title": "Proxies",
+      "meta": "{{count}} · credentials are write-only",
+      "empty": "No proxies yet",
+      "emptyHint": "A plugin whose proxy field is empty connects directly; once you add a proxy you can pick it from the dropdown in plugin settings."
+    },
+    "cols": {
+      "name": "Name",
+      "scheme": "scheme",
+      "address": "Address",
+      "auth": "Auth",
+      "remoteDns": "Remote dns",
+      "location": "Available on",
+      "refs": "Used by",
+      "lastTest": "Last test"
+    },
+    "auth": {
+      "has": "Set",
+      "none": "None"
+    },
+    "dns": {
+      "na": "n/a",
+      "yes": "Yes",
+      "no": "No"
+    },
+    "location": {
+      "hub": "hub",
+      "lan": "LAN",
+      "any": "Any"
+    },
+    "refs": {
+      "count": "{{count}} instance(s)",
+      "zero": "0 instances"
+    },
+    "test": {
+      "never": "Not tested",
+      "ok": "{{status}} · {{ms}} ms",
+      "failed": "Failed",
+      "running": "Testing…",
+      "okShort": "OK",
+      "toastOk": "\"{{name}}\" passed: {{status}} · {{ms}} ms",
+      "toastFail": "\"{{name}}\" failed: {{error}}",
+      "aria": "Test {{name}}",
+      "atTime": "{{time}}"
+    },
+    "edit": "Edit {{name}}",
+    "delete": "Delete {{name}}",
+    "note": "\"Direct\" is not a proxy entry: leave a plugin's proxy field empty to connect directly. Deleting a proxy that is in use switches the instances using it to direct connections.",
+    "legend": {
+      "title": "Available on",
+      "meta": "Decides which run locations can pick it",
+      "hub": "Only plugins running on the Raspberry Pi, e.g. a proxy that listens on 127.0.0.1 only.",
+      "lan": "The hub and agents on the LAN; agents on a public VPS cannot pick it.",
+      "any": "Every run location, including a VPS the hub dials out to."
+    },
+    "drawer": {
+      "titleNew": "Add proxy",
+      "titleEdit": "Edit proxy · {{name}}",
+      "name": "Name",
+      "scheme": "scheme",
+      "address": "Address",
+      "host": "Host",
+      "port": "Port",
+      "hostPlaceholder": "10.0.0.2",
+      "portPlaceholder": "1080",
+      "username": "Username",
+      "password": "Password",
+      "passwordSet": "Set · leave empty to keep",
+      "passwordOptional": "Optional",
+      "passwordHelp": "Stored encrypted, never shown again. When changing the password, re-enter the username too.",
+      "clearAuth": "Clear the saved credentials",
+      "remoteDns": "Remote DNS",
+      "remoteDnsLabel": "Resolve domain names on the proxy server",
+      "remoteDnsHelp": "socks5h always resolves remotely; socks5 is optional; http and https proxies resolve on the proxy side, nothing to set.",
+      "location": "Available on",
+      "refs": "Used by",
+      "noRefs": "No instance uses it",
+      "test": "Test",
+      "testNew": "Save first to test it.",
+      "testTarget": "Test target",
+      "testHelp": "Defaults to the Google 204 address and can be changed; the test uses the saved settings, not unsaved edits.",
+      "saved": "Saved proxy \"{{name}}\"",
+      "created": "Added proxy \"{{name}}\""
+    },
+    "deleteDialog": {
+      "title": "Delete proxy \"{{name}}\"?",
+      "bodyRefs": "{{count}} instance(s) use it. After deleting, their proxy is switched to \"direct\" and traffic no longer goes through a proxy:",
+      "bodyNone": "No instance uses it, so it can be deleted right away.",
+      "ack": "I understand these instances will connect directly",
+      "confirm": "Delete proxy",
+      "deleted": "Deleted proxy \"{{name}}\"",
+      "inUse": "An instance just started using this proxy; please review the affected instances."
+    },
+    "fieldError": {
+      "invalid": "Invalid value",
+      "required": "Required",
+      "duplicate": "A proxy with this name already exists",
+      "name": {
+        "required": "Enter a name",
+        "duplicate": "A proxy with this name already exists"
+      },
+      "scheme": {
+        "required": "Choose a protocol",
+        "invalid": "Unsupported protocol"
+      },
+      "address": {
+        "required": "Enter an address",
+        "invalid": "Use \"host:port\", without a protocol or credentials"
+      },
+      "location": {
+        "invalid": "Unsupported location"
+      },
+      "auth": {
+        "username": {
+          "required": "A username is required when a password is set"
+        }
+      },
+      "clear_auth": {
+        "invalid": "Cannot clear the credentials and submit new ones at once"
+      },
+      "url": {
+        "invalid": "The target must start with http:// or https://"
+      }
+    },
+    "portInvalid": "The port must be an integer from 1 to 65535"
+  },
+  "settings": {
+    "sub": "Global hub settings; changes take effect after saving",
+    "loadFailed": "Could not load settings",
+    "anchors": "Settings sections",
+    "general": {
+      "title": "General",
+      "meta": "general",
+      "language": "Language",
+      "languageHelp": "Global language for plugin text and notifications; use the 中/EN switch in the sidebar for this browser's UI language.",
+      "timezone": "Time zone",
+      "timezoneHelp": "Schedules, logs and backup times all follow this time zone.",
+      "accessUrl": "Access URL",
+      "accessUrlPlaceholder": "https://pimon.home.arpa",
+      "accessUrlHelp": "Used for links in push messages; leave empty to omit links."
+    },
+    "net": {
+      "title": "Network & security",
+      "meta": "security",
+      "https": "HTTPS",
+      "httpsNow": "This page is served over {{scheme}} · port {{port}}",
+      "httpsRestart": "Applies after restart",
+      "httpsHelp": "Direct HTTPS uses a self-signed certificate, so browsers will warn; an nginx reverse proxy is recommended for HTTPS. The hub must restart for a change to apply.",
+      "trusted": "Trusted proxies",
+      "trustedHelp": "Empty by default. X-Forwarded-* is only honored from these sources; the same headers from anywhere else are ignored.",
+      "trustedEmpty": "None added",
+      "trustedPlaceholder": "IP or CIDR, e.g. 10.0.0.0/24",
+      "trustedAdd": "Add",
+      "trustedAddAria": "Add a trusted proxy",
+      "trustedRemove": "Remove {{value}}",
+      "trustedDuplicate": "This source is already listed",
+      "password": "Admin password",
+      "passwordChange": "Change password",
+      "lockout": "Login lockout",
+      "lockoutHelp": "Fixed policy, not configurable.",
+      "lockoutTimes": "10 failures",
+      "lockoutFor": "locked for 15 min",
+      "lockoutPerIp": "per source IP"
+    },
+    "display": {
+      "title": "Display",
+      "meta": "display",
+      "reduce": "Reduce effects",
+      "reduceHelp": "Turns off glow and motion; suits always-on screens or weak hardware. Same switch as on the Schedule page.",
+      "theme": "Admin theme",
+      "themeHelp": "Light by default; affects the admin UI only, applies immediately and is remembered in this browser, no need to save. The screen theme is set under Schedule & themes."
+    },
+    "retention": {
+      "title": "Data retention",
+      "meta": "retention",
+      "label": "History",
+      "raw": "Raw samples",
+      "fiveMin": "5-minute rollups",
+      "hour": "1-hour rollups",
+      "hours": "{{n}} h",
+      "days": "{{n}} days",
+      "help": "Three downsampling tiers; data past its limit is purged by the hub periodically."
+    },
+    "backup": {
+      "title": "Backups",
+      "meta": "backup",
+      "last": "Latest {{time}} · {{reason}}",
+      "none": "No backups yet",
+      "daily": "Daily local backup",
+      "dailyHelp": "Backup files are written to the backups directory inside the hub data directory.",
+      "keep": "Copies to keep",
+      "keepUnit": "copies",
+      "keepOriginal": "Was {{n}}",
+      "download": "Download latest backup",
+      "downloadBtn": "Download {{name}}",
+      "downloadNone": "No backup to download yet",
+      "nas": "NAS backup",
+      "nasHelp": "Encrypted sync to a NAS, coming in phase 2.",
+      "nasBadge": "M2",
+      "backupNow": "Back up now"
+    },
+    "reason": {
+      "daily": "Daily",
+      "manual": "Manual",
+      "pre-upgrade": "Pre-upgrade"
+    },
+    "downloadWarn": {
+      "title": "Download backup",
+      "body": "The archive contains key files (encryption key, agent credentials, notification tokens). Keep it safe and never upload it anywhere public.",
+      "file": "File: {{name}}",
+      "confirm": "I understand, download"
+    },
+    "bar": {
+      "dirty": "{{count}} unsaved change(s)",
+      "errors": "{{count}} failed validation",
+      "hint": "Applies on save; the HTTPS switch needs a hub restart",
+      "discard": "Discard",
+      "save": "Save",
+      "saving": "Saving…"
+    },
+    "saved": "Settings saved",
+    "savedRestart": "Settings saved; the HTTPS change applies after the hub restarts",
+    "discarded": "Changes discarded",
+    "saveFailed": "Could not save",
+    "changed": "Changed",
+    "fieldError": {
+      "invalid": "Invalid value",
+      "out_of_range": "Out of range",
+      "required": "Required",
+      "language": {
+        "invalid": "Unsupported language"
+      },
+      "timezone": {
+        "invalid": "The server does not recognise this time zone; pick another"
+      },
+      "access_url": {
+        "invalid": "The access URL must be a valid address starting with http:// or https://"
+      },
+      "trusted_proxies": {
+        "invalid": "Not a valid IP or CIDR"
+      },
+      "retention": {
+        "raw_hours": {
+          "out_of_range": "Raw samples are kept 1–168 hours"
+        },
+        "five_min_days": {
+          "out_of_range": "5-minute rollups are kept 1–365 days"
+        },
+        "hour_days": {
+          "out_of_range": "1-hour rollups are kept 1–1825 days"
+        }
+      },
+      "backup": {
+        "daily_at": {
+          "invalid": "The backup time must be HH:MM"
+        },
+        "keep": {
+          "out_of_range": "Keep 1–30 copies"
+        }
+      }
+    },
+    "password": {
+      "title": "Change admin password",
+      "current": "Current password",
+      "new": "New password",
+      "confirm": "Confirm new password",
+      "help": "At least {{min}} characters. All other sessions are signed out.",
+      "tooShort": "The new password needs at least {{min}} characters",
+      "mismatch": "The two new passwords do not match",
+      "currentRequired": "Enter the current password",
+      "submit": "Change password",
+      "done": "Password changed; other sessions were signed out",
+      "wrong": "Wrong current password, {{remaining}} attempt(s) left"
+    },
+    "leave": {
+      "title": "Leave Settings?",
+      "body": "You have unsaved changes; they will be lost if you leave.",
+      "stay": "Stay on this page",
+      "leave": "Discard changes and leave"
+    }
+  },
+  "system": {
+    "sub": "Hub version, resources, screen daemon and logs",
+    "loadFailed": "Could not load system info",
+    "readout": {
+      "hub": "hub {{version}}",
+      "uptime": "up {{uptime}}"
+    },
+    "version": {
+      "title": "Version",
+      "meta": "pimon-hub",
+      "uptime": "Uptime",
+      "go": "Go",
+      "startedAt": "Started",
+      "build": "build {{build}}"
+    },
+    "resources": {
+      "title": "Resources",
+      "meta": "hub process",
+      "memory": "Hub memory",
+      "memoryValue": "{{sys}} (heap {{heap}})",
+      "dataDir": "Data directory",
+      "dataUsed": "Data directory size",
+      "writes24h": "Disk writes (last 24 h)",
+      "writesSince": "Written since start",
+      "writesEstimated": "extrapolated from the average rate since start",
+      "unsupported": "Not readable on this platform",
+      "cached": "Refreshed every 60 s"
+    },
+    "screen": {
+      "title": "Screen",
+      "meta": "M1d",
+      "placeholder": "Screen online state, resolution and kiosk daemon details appear here once screen sessions are wired up in M1d."
+    },
+    "idle": {
+      "title": "System idle-blank check",
+      "meta": "M1e",
+      "placeholder": "Checks whether the system will blank the screen on its own (swayidle etc.); provided with the kiosk deployment in M1e."
+    },
+    "plugins": {
+      "title": "Plugins",
+      "meta": "{{total}} registered · builtin {{builtin}} · exec {{exec}}",
+      "cols": {
+        "plugin": "Plugin",
+        "kind": "Kind",
+        "source": "Source",
+        "status": "Status"
+      },
+      "loaded": "Loaded",
+      "error": "Failed to load",
+      "conflict": "Conflict",
+      "builtinRow": "builtin × {{count}}",
+      "builtinSource": "Compiled into pimon-hub",
+      "dir": "exec plugin directory",
+      "rescan": "Rescan plugin directory",
+      "rescanning": "Scanning…",
+      "rescanned": "Scan done · {{total}} plugins",
+      "scanFailed": "Scan failed",
+      "loadFailed": "Could not load the plugin list",
+      "issues": "{{errors}} failed to load, {{conflicts}} conflicting"
+    },
+    "logs": {
+      "title": "Recent hub logs",
+      "meta": "{{count}} / {{capacity}} entries",
+      "hint": "mono in the attributes is the monotonic time since start, useful for spotting clock jumps",
+      "level": "Log level",
+      "all": "All",
+      "info": "info",
+      "warn": "warn",
+      "error": "error",
+      "empty": "No matching log entries",
+      "emptyAll": "No logs yet",
+      "refresh": "Refresh logs",
+      "loadFailed": "Could not load logs",
+      "aria": "hub logs",
+      "maskNote": "Secret-like attributes are hidden in logs"
+    },
+    "backups": {
+      "title": "Backups",
+      "meta": "{{count}} · daily {{time}} · keep {{keep}}",
+      "settings": "Settings",
+      "cols": {
+        "time": "Time",
+        "file": "File",
+        "size": "Size",
+        "type": "Type"
+      },
+      "empty": "No backups yet",
+      "backupNow": "Back up now",
+      "backingUp": "Backing up…",
+      "created": "Created backup \"{{name}}\"",
+      "loadFailed": "Could not load the backup list"
+    }
   }
 }

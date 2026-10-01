@@ -146,7 +146,24 @@
     "show": "显示密码",
     "hide": "隐藏密码",
     "close": "关闭",
-    "cancel": "取消"
+    "cancel": "取消",
+    "save": "保存",
+    "discard": "放弃",
+    "delete": "删除",
+    "edit": "编辑",
+    "add": "添加",
+    "test": "测试",
+    "refresh": "刷新",
+    "retry": "重试",
+    "loading": "加载中…",
+    "yes": "是",
+    "no": "否",
+    "download": "下载",
+    "saving": "保存中…",
+    "withDetail": "{{summary}}：{{detail}}",
+    "loadFailed": "加载失败",
+    "stay": "留下",
+    "leave": "离开"
   },
   "login": {
     "title": "登录管理界面",
@@ -261,7 +278,11 @@
     "inSeconds": "{{n}} 秒后",
     "inMinutes": "{{n}} 分钟后",
     "inHours": "{{n}} 小时后",
-    "inDays": "{{n}} 天后"
+    "inDays": "{{n}} 天后",
+    "uptimeDays": "{{d}} 天 {{h}} 小时",
+    "uptimeHours": "{{h}} 小时 {{m}} 分",
+    "uptimeMinutes": "{{m}} 分钟",
+    "uptimeSeconds": "{{s}} 秒"
   },
   "items": {
     "unknown": "未知",
@@ -449,7 +470,8 @@
       "timezone": "时区",
       "instances": "实例数",
       "agents": "在线 agent",
-      "agentsLater": "M2 提供"
+      "agentsLater": "M2 提供",
+      "uptime": "运行时长"
     },
     "attention": {
       "title": "需要处理",
@@ -612,5 +634,383 @@
       "busy": "实例已保存；该实例正在采集中，请稍后再测。"
     },
     "withDetail": "{{summary}}：{{detail}}"
+  },
+  "proxies": {
+    "sub": "全局代理列表；插件配置里以下拉引用，默认直连",
+    "add": "添加代理",
+    "loadFailed": "无法加载代理列表",
+    "list": {
+      "title": "代理列表",
+      "meta": "{{count}} 个 · 认证信息只写不读",
+      "empty": "还没有添加代理",
+      "emptyHint": "插件的代理字段留空即直连；添加代理后，可以在插件配置里用下拉选择它。"
+    },
+    "cols": {
+      "name": "名称",
+      "scheme": "scheme",
+      "address": "地址",
+      "auth": "认证",
+      "remoteDns": "远端 dns",
+      "location": "可用位置",
+      "refs": "被引用",
+      "lastTest": "最近测试"
+    },
+    "auth": {
+      "has": "有",
+      "none": "无"
+    },
+    "dns": {
+      "na": "不适用",
+      "yes": "是",
+      "no": "否"
+    },
+    "location": {
+      "hub": "hub",
+      "lan": "局域网",
+      "any": "任意"
+    },
+    "refs": {
+      "count": "{{count}} 个实例",
+      "zero": "0 个实例"
+    },
+    "test": {
+      "never": "未测试",
+      "ok": "{{status}} · {{ms}} ms",
+      "failed": "失败",
+      "running": "测试中…",
+      "okShort": "通过",
+      "toastOk": "「{{name}}」测试通过：{{status}} · {{ms}} ms",
+      "toastFail": "「{{name}}」测试失败：{{error}}",
+      "aria": "测试 {{name}}",
+      "atTime": "{{time}}"
+    },
+    "edit": "编辑 {{name}}",
+    "delete": "删除 {{name}}",
+    "note": "「直连」不是代理条目：插件的代理字段留空即直连。删除被引用的代理时，引用它的实例会被改为直连，之后不再经过代理。",
+    "legend": {
+      "title": "可用位置",
+      "meta": "决定哪些运行位置能选它",
+      "hub": "只在树莓派上的插件可用，例如代理只监听 127.0.0.1。",
+      "lan": "hub 和局域网里的 agent 可用；公网 VPS 上的 agent 不可选。",
+      "any": "所有运行位置都可用，包括中枢拨出连接的 VPS。"
+    },
+    "drawer": {
+      "titleNew": "添加代理",
+      "titleEdit": "编辑代理 · {{name}}",
+      "name": "名称",
+      "scheme": "scheme",
+      "address": "地址",
+      "host": "主机",
+      "port": "端口",
+      "hostPlaceholder": "10.0.0.2",
+      "portPlaceholder": "1080",
+      "username": "用户名",
+      "password": "密码",
+      "passwordSet": "已设置 · 留空则不修改",
+      "passwordOptional": "可选",
+      "passwordHelp": "加密存储，不回显。更换密码时需要同时重新填写用户名。",
+      "clearAuth": "清除已保存的认证",
+      "remoteDns": "远端 DNS",
+      "remoteDnsLabel": "由代理服务器解析域名",
+      "remoteDnsHelp": "socks5h 固定为远端解析；socks5 可选；http 与 https 代理由代理端解析，无需设置。",
+      "location": "可用位置",
+      "refs": "被引用",
+      "noRefs": "没有实例引用",
+      "test": "测试",
+      "testNew": "保存后才能测试。",
+      "testTarget": "测试目标",
+      "testHelp": "默认目标为 Google 204 地址，可改；测试使用已保存的配置，不含尚未保存的修改。",
+      "saved": "已保存代理「{{name}}」",
+      "created": "已添加代理「{{name}}」"
+    },
+    "deleteDialog": {
+      "title": "删除代理「{{name}}」？",
+      "bodyRefs": "有 {{count}} 个实例正在引用它。删除后这些实例的代理会改为「直连」，之后不再经过代理：",
+      "bodyNone": "没有实例引用它，可以直接删除。",
+      "ack": "我已了解，这些实例之后将直连",
+      "confirm": "删除代理",
+      "deleted": "已删除代理「{{name}}」",
+      "inUse": "刚刚有实例开始引用这个代理，请确认受影响的实例。"
+    },
+    "fieldError": {
+      "invalid": "取值不合法",
+      "required": "必填",
+      "duplicate": "已有同名代理",
+      "name": {
+        "required": "请填写名称",
+        "duplicate": "已有同名代理"
+      },
+      "scheme": {
+        "required": "请选择协议",
+        "invalid": "不支持这个协议"
+      },
+      "address": {
+        "required": "请填写地址",
+        "invalid": "地址须为「主机:端口」，不含协议与账号"
+      },
+      "location": {
+        "invalid": "不支持这个可用位置"
+      },
+      "auth": {
+        "username": {
+          "required": "填写密码时必须同时填写用户名"
+        }
+      },
+      "clear_auth": {
+        "invalid": "不能一边清除认证一边提交新认证"
+      },
+      "url": {
+        "invalid": "目标地址须以 http:// 或 https:// 开头"
+      }
+    },
+    "portInvalid": "端口须为 1–65535 的整数"
+  },
+  "settings": {
+    "sub": "hub 全局设置；改动需保存后生效",
+    "loadFailed": "无法加载设置",
+    "anchors": "设置分组",
+    "general": {
+      "title": "通用",
+      "meta": "general",
+      "language": "语言",
+      "languageHelp": "全局语言，影响插件文案与推送；本浏览器的界面语言用侧栏的中/EN 切换。",
+      "timezone": "时区",
+      "timezoneHelp": "时段计划、日志、备份时间都按此时区。",
+      "accessUrl": "访问地址",
+      "accessUrlPlaceholder": "https://pimon.home.arpa",
+      "accessUrlHelp": "用于推送消息里的链接；留空则不附链接。"
+    },
+    "net": {
+      "title": "网络与安全",
+      "meta": "security",
+      "https": "HTTPS",
+      "httpsNow": "当前页面经 {{scheme}} 访问 · 端口 {{port}}",
+      "httpsRestart": "重启后生效",
+      "httpsHelp": "直连 HTTPS 使用自签名证书，浏览器会提示不受信任；推荐用 nginx 反代提供 HTTPS。修改后需重启 hub 才生效。",
+      "trusted": "受信任反代",
+      "trustedHelp": "默认空。只对这些来源采信 X-Forwarded-*；其他来源的这类请求头一律忽略。",
+      "trustedEmpty": "尚未添加",
+      "trustedPlaceholder": "IP 或 CIDR，例如 10.0.0.0/24",
+      "trustedAdd": "添加",
+      "trustedAddAria": "添加受信任反代",
+      "trustedRemove": "移除 {{value}}",
+      "trustedDuplicate": "这个来源已在列表里",
+      "password": "管理员密码",
+      "passwordChange": "修改密码",
+      "lockout": "登录失败锁定",
+      "lockoutHelp": "固定策略，不可修改。",
+      "lockoutTimes": "10 次",
+      "lockoutFor": "锁定 15 分钟",
+      "lockoutPerIp": "按来源 IP"
+    },
+    "display": {
+      "title": "显示",
+      "meta": "display",
+      "reduce": "降低特效",
+      "reduceHelp": "关闭光晕与动效，适合长时间常亮或性能不足。与「时段计划」页是同一开关。",
+      "theme": "管理界面主题",
+      "themeHelp": "默认浅色；只影响管理界面，立即生效，记在本浏览器里，不需要保存。屏幕主题在「时段计划与主题」里设置。"
+    },
+    "retention": {
+      "title": "数据保留",
+      "meta": "retention",
+      "label": "历史数据",
+      "raw": "原始采样",
+      "fiveMin": "5 分钟聚合",
+      "hour": "1 小时聚合",
+      "hours": "{{n}} 小时",
+      "days": "{{n}} 天",
+      "help": "三档降采样，超期数据由 hub 定期清理。"
+    },
+    "backup": {
+      "title": "备份",
+      "meta": "backup",
+      "last": "最近一次 {{time}} · {{reason}}",
+      "none": "暂无备份",
+      "daily": "每日本地备份",
+      "dailyHelp": "备份文件写在 hub 数据目录下的 backups 目录。",
+      "keep": "保留份数",
+      "keepUnit": "份",
+      "keepOriginal": "原值 {{n}} 份",
+      "download": "下载最新备份",
+      "downloadBtn": "下载 {{name}}",
+      "downloadNone": "还没有备份可下载",
+      "nas": "NAS 备份",
+      "nasHelp": "加密后同步到 NAS，阶段 2 提供。",
+      "nasBadge": "M2",
+      "backupNow": "立即备份"
+    },
+    "reason": {
+      "daily": "每日",
+      "manual": "手动",
+      "pre-upgrade": "升级前"
+    },
+    "downloadWarn": {
+      "title": "下载备份",
+      "body": "备份包含密钥文件（加密密钥、agent 凭据、通知渠道令牌），请妥善保管，不要上传到公开位置。",
+      "file": "文件：{{name}}",
+      "confirm": "我已了解，下载"
+    },
+    "bar": {
+      "dirty": "有 {{count}} 处未保存的修改",
+      "errors": "{{count}} 处未通过校验",
+      "hint": "保存后立即生效；HTTPS 开关需重启 hub",
+      "discard": "放弃",
+      "save": "保存",
+      "saving": "保存中…"
+    },
+    "saved": "已保存设置",
+    "savedRestart": "已保存设置；HTTPS 的改动需重启 hub 后生效",
+    "discarded": "已放弃修改",
+    "saveFailed": "保存失败",
+    "changed": "已修改",
+    "fieldError": {
+      "invalid": "取值不合法",
+      "out_of_range": "超出允许范围",
+      "required": "必填",
+      "language": {
+        "invalid": "不支持这个语言"
+      },
+      "timezone": {
+        "invalid": "服务端不识别这个时区，请重新选择"
+      },
+      "access_url": {
+        "invalid": "访问地址须是 http:// 或 https:// 开头的有效地址"
+      },
+      "trusted_proxies": {
+        "invalid": "不是合法的 IP 或 CIDR"
+      },
+      "retention": {
+        "raw_hours": {
+          "out_of_range": "原始采样保留 1–168 小时"
+        },
+        "five_min_days": {
+          "out_of_range": "5 分钟聚合保留 1–365 天"
+        },
+        "hour_days": {
+          "out_of_range": "1 小时聚合保留 1–1825 天"
+        }
+      },
+      "backup": {
+        "daily_at": {
+          "invalid": "备份时刻须为 HH:MM"
+        },
+        "keep": {
+          "out_of_range": "保留 1–30 份"
+        }
+      }
+    },
+    "password": {
+      "title": "修改管理员密码",
+      "current": "当前密码",
+      "new": "新密码",
+      "confirm": "确认新密码",
+      "help": "至少 {{min}} 位。修改后其他会话全部退出。",
+      "tooShort": "新密码至少 {{min}} 位",
+      "mismatch": "两次输入的新密码不一致",
+      "currentRequired": "请输入当前密码",
+      "submit": "修改密码",
+      "done": "密码已修改，其他会话已退出",
+      "wrong": "当前密码错误，还可尝试 {{remaining}} 次"
+    },
+    "leave": {
+      "title": "离开设置页？",
+      "body": "有未保存的修改，离开后会丢失。",
+      "stay": "留在此页",
+      "leave": "放弃修改并离开"
+    }
+  },
+  "system": {
+    "sub": "hub 版本、资源、屏幕守护与日志",
+    "loadFailed": "无法加载系统信息",
+    "readout": {
+      "hub": "hub {{version}}",
+      "uptime": "运行 {{uptime}}"
+    },
+    "version": {
+      "title": "版本",
+      "meta": "pimon-hub",
+      "uptime": "运行时长",
+      "go": "Go",
+      "startedAt": "启动于",
+      "build": "build {{build}}"
+    },
+    "resources": {
+      "title": "资源",
+      "meta": "hub 进程",
+      "memory": "hub 内存",
+      "memoryValue": "{{sys}}（堆 {{heap}}）",
+      "dataDir": "数据目录",
+      "dataUsed": "数据目录占用",
+      "writes24h": "日写入量（近 24 小时）",
+      "writesSince": "自启动以来写入",
+      "writesEstimated": "按启动以来的平均速率折算",
+      "unsupported": "此平台无法读取",
+      "cached": "每 60 秒更新一次"
+    },
+    "screen": {
+      "title": "屏幕",
+      "meta": "M1d",
+      "placeholder": "屏幕在线状态、分辨率与 kiosk 守护进程信息，在 M1d 接入屏幕会话后显示。"
+    },
+    "idle": {
+      "title": "系统空闲息屏检查",
+      "meta": "M1e",
+      "placeholder": "检查系统是否会自己息屏（swayidle 等），在 M1e 的 kiosk 部署里提供。"
+    },
+    "plugins": {
+      "title": "插件",
+      "meta": "已注册 {{total}} · builtin {{builtin}} · exec {{exec}}",
+      "cols": {
+        "plugin": "插件",
+        "kind": "形态",
+        "source": "来源",
+        "status": "状态"
+      },
+      "loaded": "已加载",
+      "error": "加载失败",
+      "conflict": "冲突",
+      "builtinRow": "builtin × {{count}}",
+      "builtinSource": "随 pimon-hub 编译",
+      "dir": "exec 插件目录",
+      "rescan": "重新扫描插件目录",
+      "rescanning": "扫描中…",
+      "rescanned": "扫描完成 · {{total}} 个插件",
+      "scanFailed": "扫描失败",
+      "loadFailed": "无法加载插件列表",
+      "issues": "{{errors}} 个加载失败，{{conflicts}} 个冲突"
+    },
+    "logs": {
+      "title": "最近 hub 日志",
+      "meta": "{{count}} / {{capacity}} 条",
+      "hint": "属性里的 mono 是自启动起的单调时长，排查时钟跳变用",
+      "level": "日志级别",
+      "all": "全部",
+      "info": "info",
+      "warn": "warn",
+      "error": "error",
+      "empty": "没有符合条件的日志",
+      "emptyAll": "暂无日志",
+      "refresh": "刷新日志",
+      "loadFailed": "无法加载日志",
+      "aria": "hub 日志",
+      "maskNote": "日志里的密钥类属性已隐藏"
+    },
+    "backups": {
+      "title": "备份",
+      "meta": "{{count}} 份 · 每日 {{time}} · 保留 {{keep}} 份",
+      "settings": "设置",
+      "cols": {
+        "time": "时间",
+        "file": "文件",
+        "size": "大小",
+        "type": "类型"
+      },
+      "empty": "暂无备份",
+      "backupNow": "立即备份",
+      "backingUp": "备份中…",
+      "created": "已生成备份「{{name}}」",
+      "loadFailed": "无法加载备份列表"
+    }
   }
 }

@@ -75,15 +75,18 @@ export function useInstanceManager(plugins: PluginInfo[] | undefined, onDeleted?
       let text = translateErrorValue(i18n, err)
       // 采集错误的详情文字已由中枢脱敏，直接附在译文后
       if (isApiError(err) && (err.code === 'run.failed' || err.code === 'run.timeout') && typeof err.details.message === 'string') {
-        text += `：${err.details.message}`
+        text = t('common.withDetail', { summary: text, detail: err.details.message })
       }
       return text
     },
-    [i18n],
+    [i18n, t],
   )
 
   // 单个操作的失败提示带实例名；批量操作改用 summarize 只弹一条
-  const failure = useCallback((err: unknown, name: string) => toast.show(`${name}：${describe(err)}`, 'warn'), [describe, toast])
+  const failure = useCallback(
+    (err: unknown, name: string) => toast.show(t('common.withDetail', { summary: name, detail: describe(err) }), 'warn'),
+    [describe, t, toast],
+  )
 
   // 批量结果汇总：全部成功给普通提示，有失败则一条警告列出失败的实例及各自原因
   const summarize = useCallback(

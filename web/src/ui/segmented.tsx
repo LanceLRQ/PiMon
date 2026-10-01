@@ -37,7 +37,7 @@ export function Segmented<V extends string>({ options, value, onChange, ariaLabe
             title={o.title}
             onClick={() => onChange(o.value)}
             className={cn(
-              'flex h-7 flex-1 items-center justify-center gap-1 px-2.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'flex h-7 flex-1 items-center justify-center gap-1 px-2.5 text-xs whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring',
               i > 0 && 'border-l border-border',
               on ? 'bg-inv-bg text-inv-ink' : 'text-ink-2 hover:bg-panel-2',
             )}

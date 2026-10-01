@@ -213,6 +213,18 @@ describe('实例操作', () => {
     expect(await screen.findByText('树莓派本机：采集失败：exit status 1: boom')).toBeInTheDocument()
   })
 
+  it('英文界面里的失败提示用半角冒号，不出现全角「：」', async () => {
+    const user = userEvent.setup()
+    mockApi((req) => (req.url.endsWith('/run') ? apiError(502, 'run.failed', { message: 'exit status 1: boom' }) : undefined))
+    seedStore(prototypeInstances)
+    await renderWithApp(<InstancesPage />, { lng: 'en' })
+    await user.click(within(rowOf('树莓派本机')).getByRole('button', { name: /more actions/i }))
+    await user.click(await screen.findByRole('menuitem', { name: /^Collect now/ }))
+    const toast = await screen.findByRole('alert')
+    expect(toast.textContent).toMatch(/^树莓派本机: .+: exit status 1: boom$/)
+    expect(toast.textContent).not.toContain('：')
+  })
+
   it('暂停与恢复按当前状态切换菜单项', async () => {
     const user = userEvent.setup()
     const paused = { ...prototypeInstances[4], paused: true }
