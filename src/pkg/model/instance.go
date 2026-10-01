@@ -67,7 +67,7 @@ type ScreenRef struct {
 	Name string `json:"name"`
 }
 
-// InstanceDeleteResult 是删除实例的响应。screens 表在 M1d 才有，本期恒为空。
+// InstanceDeleteResult 是删除实例的响应：AffectedScreens 是删除时引用它的 screen。
 type InstanceDeleteResult struct {
 	AffectedScreens []ScreenRef `json:"affected_screens"`
 }

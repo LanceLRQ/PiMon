@@ -21,6 +21,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/screens"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
@@ -135,6 +136,8 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 		Proxies: proxies.New(proxies.Config{DB: db, Box: box, Clock: clk, Referrers: refs}),
 	}
 	inst.UseProxies(deps.Proxies)
+	deps.Screens = screens.New(screens.Config{DB: db, Clock: clk, Plugins: reg, Instances: inst})
+	inst.UseScreenRefs(deps.Screens)
 	if err := deps.ScreenTokens.EnsureExists(ctx); err != nil {
 		t.Fatal(err)
 	}

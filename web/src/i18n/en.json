@@ -128,6 +128,10 @@
       "not_found": "Instance not found",
       "in_use": "The instance is used by screens and cannot be deleted"
     },
+    "layout": {
+      "conflict": "The layout was updated elsewhere. Reload before saving.",
+      "invalid": "The layout is invalid: overlapping, out-of-bounds or disallowed sizes"
+    },
     "run": {
       "timeout": "Collection timed out",
       "failed": "Collection failed",

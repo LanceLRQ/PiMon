@@ -18,6 +18,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/screens"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/sdnotify"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
@@ -51,6 +52,7 @@ type App struct {
 	backups    *backup.Service
 	plugins    *plugins.Registry
 	instances  *instances.Service
+	screens    *screens.Service
 	history    *history.Service
 	ws         *ws.Hub
 	notifier   *sdnotify.Notifier
@@ -150,6 +152,8 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		OnChange: a.instances.Refresh,
 	})
 	a.instances.UseProxies(proxyStore)
+	a.screens = screens.New(screens.Config{DB: a.db, Clock: o.clk, Plugins: a.plugins, Instances: a.instances})
+	a.instances.UseScreenRefs(a.screens)
 	// hub-self 的统计来源在 instances 与 history 就绪后才能绑定，先于 Load 以便首次采集就有数据。
 	hubself.Bind(hubStats{inst: a.instances, hist: a.history, started: o.clk.Now(), dataDir: a.cfg.DataDir})
 	if err := a.instances.Load(ctx); err != nil {
@@ -166,6 +170,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		Plugins:   a.plugins,
 		Instances: a.instances,
 		History:   a.history,
+		Screens:   a.screens,
 		System: system.New(system.Config{
 			Clock: o.clk, Version: o.version, DataDir: a.cfg.DataDir, Plugins: a.plugins, Ring: o.logRing,
 		}),

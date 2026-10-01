@@ -238,17 +238,29 @@ func (s *Service) Copy(ctx context.Context, id, name string) (model.InstanceDeta
 	return s.toDetail(r), nil
 }
 
-// AffectedScreens 返回引用该实例的 screen。screens 表在 M1d 才有，本期恒为空列表，
-// 接口形状留给 M1d。实例不存在返回 ErrNotFound。
+// AffectedScreens 返回当前布局里引用该实例的 screen，没有引用时为空列表。
+// 实例不存在返回 ErrNotFound。
 func (s *Service) AffectedScreens(ctx context.Context, id string) ([]model.ScreenRef, error) {
 	if _, err := s.getRow(ctx, id); err != nil {
 		return nil, err
 	}
-	return []model.ScreenRef{}, nil
+	return s.screensUsing(ctx, id)
+}
+
+func (s *Service) screensUsing(ctx context.Context, id string) ([]model.ScreenRef, error) {
+	if s.screens == nil {
+		return []model.ScreenRef{}, nil
+	}
+	return s.screens.ScreensUsing(ctx, id)
 }
 
 // Delete 删除实例：移出调度、丢弃当前状态；状态行与历史随外键级联删除。
+// 返回值里的 AffectedScreens 是删除时引用它的 screen（这些 screen 上的小组件随后显示引用失效）。
 func (s *Service) Delete(ctx context.Context, id string) (model.InstanceDeleteResult, error) {
+	affected, err := s.screensUsing(ctx, id)
+	if err != nil {
+		return model.InstanceDeleteResult{}, err
+	}
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	res, err := s.db.ExecContext(ctx, `DELETE FROM plugin_instances WHERE id = ?`, id)
@@ -262,7 +274,7 @@ func (s *Service) Delete(ctx context.Context, id string) (model.InstanceDeleteRe
 	s.dropState(id)
 	s.setSyncIssue(id, nil)
 	s.notify(id)
-	return model.InstanceDeleteResult{AffectedScreens: []model.ScreenRef{}}, nil
+	return model.InstanceDeleteResult{AffectedScreens: affected}, nil
 }
 
 // Pause 暂停实例：移出调度器，当前状态与配置保留。

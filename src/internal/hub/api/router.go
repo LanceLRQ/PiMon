@@ -11,6 +11,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/screens"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/system"
 	"github.com/LanceLRQ/PiMon/src/pkg/version"
@@ -37,6 +38,7 @@ type Deps struct {
 	Plugins      *plugins.Registry
 	Instances    *instances.Service
 	History      *history.Service
+	Screens      *screens.Service
 	System       *system.Service
 	// Web 是前端 SPA 处理器，挂在 "/" 兜底；为 nil 时不提供前端（测试用）。
 	Web http.Handler
@@ -64,6 +66,7 @@ func New(d Deps) http.Handler {
 	s.registerAuth(mux)
 	s.registerSettings(mux)
 	s.registerScreen(mux)
+	s.registerScreens(mux)
 	s.registerBackup(mux)
 	s.registerProxies(mux)
 	s.registerPlugins(mux)

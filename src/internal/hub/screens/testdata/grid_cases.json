@@ -1,0 +1,198 @@
+{
+  "description": "布局网格几何校验的表驱动用例，Go 测试（internal/hub/screens）与前端 Vitest 读同一份。",
+  "rules": [
+    "网格 grid 为 cols x rows；col、row 从 0 开始，是小组件左上角所在格；w、h 是小组件占用的列数与行数。",
+    "invalid_size：w 或 h 小于 1。该小组件不再参与其余检查。",
+    "size_not_allowed：给出了 allowed（形如 \"2x1\" 的列表）且 \"wxh\" 不在其中。allowed 缺省表示不限尺寸。",
+    "out_of_bounds：col 或 row 小于 0，或 col+w 大于 grid.cols，或 row+h 大于 grid.rows。",
+    "overlap：两个尺寸合法的小组件占用的格有交集；每一对只报一条，widget 为列表里靠后的那个，with 为靠前的那个。",
+    "problems 比较时按集合处理（先按 widget、code、with 排序再逐条比较），不要求与实现产出的顺序一致。"
+  ],
+  "cases": [
+    {
+      "name": "无小组件",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [],
+      "problems": []
+    },
+    {
+      "name": "刚好铺满一行的相邻小组件不算重叠",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [
+        {"id": "a", "col": 0, "row": 0, "w": 3, "h": 1},
+        {"id": "b", "col": 3, "row": 0, "w": 3, "h": 1}
+      ],
+      "problems": []
+    },
+    {
+      "name": "上下相邻不算重叠",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [
+        {"id": "a", "col": 0, "row": 0, "w": 2, "h": 2},
+        {"id": "b", "col": 0, "row": 2, "w": 2, "h": 2}
+      ],
+      "problems": []
+    },
+    {
+      "name": "占满整个网格",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [{"id": "a", "col": 0, "row": 0, "w": 6, "h": 4}],
+      "problems": []
+    },
+    {
+      "name": "右侧越界",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [{"id": "a", "col": 5, "row": 0, "w": 2, "h": 1}],
+      "problems": [{"widget": "a", "code": "out_of_bounds"}]
+    },
+    {
+      "name": "底部越界",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [{"id": "a", "col": 0, "row": 3, "w": 1, "h": 2}],
+      "problems": [{"widget": "a", "code": "out_of_bounds"}]
+    },
+    {
+      "name": "位置为负",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [
+        {"id": "a", "col": -1, "row": 0, "w": 1, "h": 1},
+        {"id": "b", "col": 0, "row": -2, "w": 1, "h": 1}
+      ],
+      "problems": [
+        {"widget": "a", "code": "out_of_bounds"},
+        {"widget": "b", "code": "out_of_bounds"}
+      ]
+    },
+    {
+      "name": "起点在网格之外",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [{"id": "a", "col": 6, "row": 0, "w": 1, "h": 1}],
+      "problems": [{"widget": "a", "code": "out_of_bounds"}]
+    },
+    {
+      "name": "小组件比网格还大",
+      "grid": {"cols": 4, "rows": 3},
+      "widgets": [{"id": "a", "col": 0, "row": 0, "w": 5, "h": 1}],
+      "problems": [{"widget": "a", "code": "out_of_bounds"}]
+    },
+    {
+      "name": "部分重叠",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [
+        {"id": "a", "col": 0, "row": 0, "w": 2, "h": 2},
+        {"id": "b", "col": 1, "row": 1, "w": 2, "h": 2}
+      ],
+      "problems": [{"widget": "b", "code": "overlap", "with": "a"}]
+    },
+    {
+      "name": "完全相同的位置",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [
+        {"id": "a", "col": 2, "row": 1, "w": 1, "h": 1},
+        {"id": "b", "col": 2, "row": 1, "w": 1, "h": 1}
+      ],
+      "problems": [{"widget": "b", "code": "overlap", "with": "a"}]
+    },
+    {
+      "name": "大块包住小块",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [
+        {"id": "big", "col": 0, "row": 0, "w": 4, "h": 4},
+        {"id": "small", "col": 1, "row": 1, "w": 1, "h": 1}
+      ],
+      "problems": [{"widget": "small", "code": "overlap", "with": "big"}]
+    },
+    {
+      "name": "三个小组件两两重叠各报一条",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [
+        {"id": "a", "col": 0, "row": 0, "w": 2, "h": 2},
+        {"id": "b", "col": 1, "row": 0, "w": 2, "h": 2},
+        {"id": "c", "col": 1, "row": 1, "w": 1, "h": 1}
+      ],
+      "problems": [
+        {"widget": "b", "code": "overlap", "with": "a"},
+        {"widget": "c", "code": "overlap", "with": "a"},
+        {"widget": "c", "code": "overlap", "with": "b"}
+      ]
+    },
+    {
+      "name": "越界且重叠同时报告",
+      "grid": {"cols": 4, "rows": 2},
+      "widgets": [
+        {"id": "a", "col": 3, "row": 0, "w": 2, "h": 1},
+        {"id": "b", "col": 4, "row": 0, "w": 1, "h": 1}
+      ],
+      "problems": [
+        {"widget": "a", "code": "out_of_bounds"},
+        {"widget": "b", "code": "out_of_bounds"},
+        {"widget": "b", "code": "overlap", "with": "a"}
+      ]
+    },
+    {
+      "name": "尺寸在白名单内",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [{"id": "a", "col": 0, "row": 0, "w": 2, "h": 1, "allowed": ["1x1", "2x1", "2x2"]}],
+      "problems": []
+    },
+    {
+      "name": "尺寸不在白名单内",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [{"id": "a", "col": 0, "row": 0, "w": 3, "h": 1, "allowed": ["1x1", "2x1", "2x2"]}],
+      "problems": [{"widget": "a", "code": "size_not_allowed"}]
+    },
+    {
+      "name": "白名单为空列表时任何尺寸都不允许",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [{"id": "a", "col": 0, "row": 0, "w": 1, "h": 1, "allowed": []}],
+      "problems": [{"widget": "a", "code": "size_not_allowed"}]
+    },
+    {
+      "name": "列与行颠倒的尺寸不等价",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [{"id": "a", "col": 0, "row": 0, "w": 1, "h": 2, "allowed": ["2x1"]}],
+      "problems": [{"widget": "a", "code": "size_not_allowed"}]
+    },
+    {
+      "name": "尺寸不合法的小组件不参与重叠与越界检查",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [
+        {"id": "z", "col": 0, "row": 0, "w": 0, "h": 2},
+        {"id": "a", "col": 0, "row": 0, "w": 2, "h": 2}
+      ],
+      "problems": [{"widget": "z", "code": "invalid_size"}]
+    },
+    {
+      "name": "行数为负的尺寸",
+      "grid": {"cols": 6, "rows": 4},
+      "widgets": [{"id": "z", "col": 0, "row": 9, "w": 1, "h": -1}],
+      "problems": [{"widget": "z", "code": "invalid_size"}]
+    },
+    {
+      "name": "缩小网格后越界的小组件逐个列出",
+      "grid": {"cols": 4, "rows": 3},
+      "widgets": [
+        {"id": "ok", "col": 0, "row": 0, "w": 2, "h": 1},
+        {"id": "right", "col": 3, "row": 0, "w": 2, "h": 1},
+        {"id": "bottom", "col": 0, "row": 2, "w": 2, "h": 2},
+        {"id": "far", "col": 5, "row": 3, "w": 1, "h": 1}
+      ],
+      "problems": [
+        {"widget": "right", "code": "out_of_bounds"},
+        {"widget": "bottom", "code": "out_of_bounds"},
+        {"widget": "far", "code": "out_of_bounds"}
+      ]
+    },
+    {
+      "name": "最小网格 2x2 铺满四个 1x1",
+      "grid": {"cols": 2, "rows": 2},
+      "widgets": [
+        {"id": "a", "col": 0, "row": 0, "w": 1, "h": 1},
+        {"id": "b", "col": 1, "row": 0, "w": 1, "h": 1},
+        {"id": "c", "col": 0, "row": 1, "w": 1, "h": 1},
+        {"id": "d", "col": 1, "row": 1, "w": 1, "h": 1}
+      ],
+      "problems": []
+    }
+  ]
+}

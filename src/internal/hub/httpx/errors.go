@@ -26,6 +26,8 @@ package httpx
 //	proxy.in_use             代理被实例引用，details.instances     409
 //	instance.not_found       实例不存在                            404
 //	instance.in_use          实例被 screen 引用，details.screens    409
+//	layout.conflict          布局版本冲突，details.latest_version 为服务端最新版本    409
+//	layout.invalid           布局不合法，details.problems 列出碰撞、越界、尺寸与结构问题  400
 //	run.timeout              采集超时（或上游请求超时），details.message 可选  504
 //	run.failed               采集失败（或上游请求失败），details.message 可选  502
 //	run.busy                 该实例正在运行，等待至多插件超时仍未轮到       409
@@ -54,6 +56,8 @@ const (
 	CodeProxyInUse            = "proxy.in_use"
 	CodeInstanceNotFound      = "instance.not_found"
 	CodeInstanceInUse         = "instance.in_use"
+	CodeLayoutConflict        = "layout.conflict"
+	CodeLayoutInvalid         = "layout.invalid"
 	CodeRunTimeout            = "run.timeout"
 	CodeRunFailed             = "run.failed"
 	CodeRunBusy               = "run.busy"
