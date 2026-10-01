@@ -51,6 +51,7 @@
     },
     "loading": "Loading",
     "pageLoadFailed": "Failed to load the page resources. The hub may have just been upgraded; reload the page and try again.",
+    "pageError": "Something went wrong on this page. Reload and try again; check the browser console if it keeps happening.",
     "reload": "Reload page",
     "sessionError": "Cannot read the session state. Check that the hub is running.",
     "retry": "Retry",

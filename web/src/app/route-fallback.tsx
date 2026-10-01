@@ -12,11 +12,18 @@ export function RouteFallback() {
   )
 }
 
-function ChunkFailed() {
+// 动态 import 拉取失败的典型报错文案（Chromium、Firefox、Safari 与打包器各不相同）
+const chunkErrorPattern = /dynamically imported module|importing a module script failed|ChunkLoadError|loading chunk|error loading dynamically/i
+
+export function isChunkLoadError(error: unknown): boolean {
+  return error instanceof Error && (chunkErrorPattern.test(error.message) || error.name === 'ChunkLoadError')
+}
+
+function FailedNotice({ messageKey }: { messageKey: 'shell.pageLoadFailed' | 'shell.pageError' }) {
   const { t } = useTranslation()
   return (
     <div role="alert" className="flex flex-col items-start gap-3 p-6 text-sm mobile:p-3.5">
-      <p>{t('shell.pageLoadFailed')}</p>
+      <p>{t(messageKey)}</p>
       <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
         {t('shell.reload')}
       </Button>
@@ -24,12 +31,13 @@ function ChunkFailed() {
   )
 }
 
-// 懒加载的页面代码块拉取失败（常见于中枢升级后旧文件名失效）时给出可操作的提示，而不是白屏
-export class LazyBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false }
+// 页面出错时给出可操作的提示而不是白屏：代码块拉取失败（常见于中枢升级后旧文件名失效）
+// 提示刷新以获取新版本；其他渲染异常给通用文案，并保留控制台详情
+export class LazyBoundary extends Component<{ children: ReactNode }, { error: unknown }> {
+  state: { error: unknown } = { error: null }
 
-  static getDerivedStateFromError() {
-    return { failed: true }
+  static getDerivedStateFromError(error: unknown) {
+    return { error }
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
@@ -37,6 +45,8 @@ export class LazyBoundary extends Component<{ children: ReactNode }, { failed: b
   }
 
   render() {
-    return this.state.failed ? <ChunkFailed /> : this.props.children
+    const { error } = this.state
+    if (error === null) return this.props.children
+    return <FailedNotice messageKey={isChunkLoadError(error) ? 'shell.pageLoadFailed' : 'shell.pageError'} />
   }
 }

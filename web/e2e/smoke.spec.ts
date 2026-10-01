@@ -1,4 +1,4 @@
-import type { Browser, BrowserContext, Page } from '@playwright/test'
+import type { Browser, BrowserContext, Page, TestInfo } from '@playwright/test'
 import { collectConsoleErrors, findOverflow } from './support/checks.ts'
 import { expect, setupCode, test } from './support/fixtures.ts'
 
@@ -25,7 +25,39 @@ async function openContext(browser: Browser, baseURL: string, combo: Combo): Pro
       // 存储不可用时按默认主题运行
     }
   }, combo.theme)
+  // 手动创建的上下文不受配置里的 trace 选项管辖，这里自己开启，失败时由 closeContext 保存
+  await context.tracing.start({ screenshots: true, snapshots: true })
   return context
+}
+
+// 关闭上下文；用例失败时先把 trace 与当前页截图存到该用例的产物目录（CI 会上传 test-results）
+async function closeContext(context: BrowserContext, page: Page | undefined, failed: boolean, outputPath: (name: string) => string) {
+  if (failed) {
+    await page?.screenshot({ path: outputPath('failure.png'), fullPage: true }).catch(() => {})
+    await context.tracing.stop({ path: outputPath('trace.zip') }).catch(() => {})
+  } else {
+    await context.tracing.stop().catch(() => {})
+  }
+  await context.close()
+}
+
+// 在一个独立上下文里跑用例体，无论成败都收尾（失败保存 trace 与截图）
+async function withContext(
+  browser: Browser,
+  baseURL: string,
+  combo: Combo,
+  testInfo: TestInfo,
+  body: (context: BrowserContext, page: Page) => Promise<void>,
+) {
+  const context = await openContext(browser, baseURL, combo)
+  const page = await context.newPage()
+  let failed = true
+  try {
+    await body(context, page)
+    failed = false
+  } finally {
+    await closeContext(context, page, failed, (n) => testInfo.outputPath(n))
+  }
 }
 
 // 写接口要校验 Origin，经 API 登录时手动带上
@@ -53,28 +85,27 @@ test.describe.configure({ mode: 'serial' })
 
 test.describe('首次设置页（未提交，逐尺寸逐主题）', () => {
   for (const combo of combos) {
-    test(combo.label, async ({ browser, baseURL }) => {
-      const context = await openContext(browser, baseURL!, combo)
-      const page = await context.newPage()
-      const errors = collectConsoleErrors(page)
-      await page.goto('/')
-      await expect(page).toHaveURL(/\/setup$/)
-      await expect(page.getByLabel('第 1 组')).toBeVisible()
-      await expectLayoutSound(page, '首次设置 · 设置码')
+    test(combo.label, async ({ browser, baseURL }, testInfo) =>
+      withContext(browser, baseURL!, combo, testInfo, async (_context, page) => {
+        const errors = collectConsoleErrors(page)
+        await page.goto('/')
+        await expect(page).toHaveURL(/\/setup$/)
+        await expect(page.getByLabel('第 1 组')).toBeVisible()
+        await expectLayoutSound(page, '首次设置 · 设置码')
 
-      await fillSetupCode(page)
-      await page.getByRole('button', { name: '下一步' }).click()
-      await page.locator('#setup-password').fill(adminPassword)
-      await page.locator('#setup-confirm').fill(adminPassword)
-      await expectLayoutSound(page, '首次设置 · 管理员密码')
+        await fillSetupCode(page)
+        await page.getByRole('button', { name: '下一步' }).click()
+        await page.locator('#setup-password').fill(adminPassword)
+        await page.locator('#setup-confirm').fill(adminPassword)
+        await expectLayoutSound(page, '首次设置 · 管理员密码')
 
-      await page.getByRole('button', { name: '下一步' }).click()
-      await expect(page.getByRole('button', { name: '完成设置' })).toBeVisible()
-      await expectLayoutSound(page, '首次设置 · 基础设置')
+        await page.getByRole('button', { name: '下一步' }).click()
+        await expect(page.getByRole('button', { name: '完成设置' })).toBeVisible()
+        await expectLayoutSound(page, '首次设置 · 基础设置')
 
-      expect(errors).toEqual([])
-      await context.close()
-    })
+        expect(errors).toEqual([])
+      }),
+    )
   }
 })
 
@@ -82,14 +113,20 @@ test.describe('主路径', () => {
   let context: BrowserContext
   let page: Page
   let errors: string[]
+  let failed = false
 
   test.beforeAll(async ({ browser, baseURL }) => {
     context = await openContext(browser, baseURL!, combos[0])
     page = await context.newPage()
     errors = collectConsoleErrors(page)
   })
-  test.afterAll(async () => {
-    await context.close()
+  test.afterEach(({ browserName }, testInfo) => {
+    void browserName // 夹具要求解构参数，这里只需要 testInfo
+    if (testInfo.status !== testInfo.expectedStatus) failed = true
+  })
+  test.afterAll(async ({ browserName }, testInfo) => {
+    void browserName
+    await closeContext(context, page, failed, (n) => testInfo.outputPath(`flow-${n}`))
   })
 
   test('首次设置：设置码 → 密码 → 基础设置 → 完成', async () => {
@@ -172,49 +209,52 @@ const adminPages = [
 
 test.describe('逐页布局（登录与各管理页，逐尺寸逐主题）', () => {
   for (const combo of combos) {
-    test(combo.label, async ({ browser, baseURL }) => {
-      const context = await openContext(browser, baseURL!, combo)
-      const page = await context.newPage()
-      const errors = collectConsoleErrors(page)
+    test(combo.label, async ({ browser, baseURL }, testInfo) =>
+      withContext(browser, baseURL!, combo, testInfo, async (context, page) => {
+        const errors = collectConsoleErrors(page)
 
-      await page.goto('/login')
-      await expect(page.getByLabel('管理员密码')).toBeVisible()
-      await expectLayoutSound(page, '登录页')
+        await page.goto('/login')
+        await expect(page.getByLabel('管理员密码')).toBeVisible()
+        await expectLayoutSound(page, '登录页')
 
-      await apiLogin(context, baseURL!)
-      for (const p of adminPages) {
-        await page.goto(p.path)
-        await expect(page.locator('main').getByText(p.ready, { exact: true }).first(), `${p.name} 未渲染完成`).toBeVisible()
-        // 等实时数据与懒加载内容落定后再量
+        await apiLogin(context, baseURL!)
+        for (const p of adminPages) {
+          await page.goto(p.path)
+          await expect(page.locator('main').getByText(p.ready, { exact: true }).first(), `${p.name} 未渲染完成`).toBeVisible()
+          // 等实时数据与懒加载内容落定后再量
+          await page.waitForLoadState('networkidle')
+          await expectLayoutSound(page, p.name)
+        }
+
+        // 打开抽屉与编辑页（带最近一次测试结果）后的状态
+        await page.goto('/instances')
+        await page.getByText('本机健康检查').first().click()
+        await expect(page.getByRole('dialog')).toBeVisible()
         await page.waitForLoadState('networkidle')
-        await expectLayoutSound(page, p.name)
-      }
+        await expectLayoutSound(page, '实例详情抽屉')
+        await page.keyboard.press('Escape')
 
-      // 打开抽屉与编辑页（带最近一次测试结果）后的状态
-      await page.goto('/instances')
-      await page.getByText('本机健康检查').first().click()
-      await expect(page.getByRole('dialog')).toBeVisible()
-      await page.waitForLoadState('networkidle')
-      await expectLayoutSound(page, '实例详情抽屉')
-      await page.keyboard.press('Escape')
+        await page.goto('/proxies')
+        await page.getByRole('button', { name: '添加代理' }).first().click()
+        await expect(page.getByRole('dialog')).toBeVisible()
+        await expectLayoutSound(page, '添加代理抽屉')
+        await page.keyboard.press('Escape')
 
-      await page.goto('/proxies')
-      await page.getByRole('button', { name: '添加代理' }).first().click()
-      await expect(page.getByRole('dialog')).toBeVisible()
-      await expectLayoutSound(page, '添加代理抽屉')
-      await page.keyboard.press('Escape')
+        const list = (await (await context.request.get('/api/instances')).json()) as { id: string; name: string }[]
+        const check = list.find((i) => i.name === '本机健康检查')
+        expect(check).toBeTruthy()
+        await page.goto(`/instances/${check!.id}/edit`)
+        await expect(page.getByRole('button', { name: '保存并测试' })).toBeVisible()
+        // 先等本次运行的响应回来，再断言结果，避免命中上一次的结果
+        const run = page.waitForResponse((r) => r.url().includes(`/api/instances/${check!.id}/run`) && r.request().method() === 'POST')
+        await page.getByRole('button', { name: '保存并测试' }).click()
+        await run
+        await expect(page.getByRole('button', { name: '保存并测试' })).toBeEnabled()
+        await expect(page.getByText(/数据项（\d+）/).first()).toBeVisible()
+        await expectLayoutSound(page, '编辑实例（含测试结果）')
 
-      const list = (await (await context.request.get('/api/instances')).json()) as { id: string; name: string }[]
-      const check = list.find((i) => i.name === '本机健康检查')
-      expect(check).toBeTruthy()
-      await page.goto(`/instances/${check!.id}/edit`)
-      await expect(page.getByRole('button', { name: '保存并测试' })).toBeVisible()
-      await page.getByRole('button', { name: '保存并测试' }).click()
-      await expect(page.getByText(/数据项（\d+）/).first()).toBeVisible()
-      await expectLayoutSound(page, '编辑实例（含测试结果）')
-
-      expect(errors).toEqual([])
-      await context.close()
-    })
+        expect(errors).toEqual([])
+      }),
+    )
   }
 })

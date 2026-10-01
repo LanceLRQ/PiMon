@@ -49,3 +49,12 @@ jobs:
         run: cd web && pnpm exec playwright install --with-deps chromium
       - name: Playwright 冒烟（真实 hub）
         run: make test-e2e
+      - name: 上传 Playwright 报告与失败产物（trace、截图）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            web/playwright-report/
+            web/test-results/
+          if-no-files-found: ignore

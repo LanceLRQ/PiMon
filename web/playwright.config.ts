@@ -13,7 +13,8 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   retries: 0,
   use: {
-    trace: 'retain-on-failure',
+    // 用例里的上下文都是手动创建的（含 beforeAll 里的），trace 与失败截图由 smoke.spec.ts 自己保存
+    trace: 'off',
   },
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
 })

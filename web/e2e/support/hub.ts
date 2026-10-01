@@ -10,6 +10,27 @@ export interface RunningHub {
   dataDir: string
   workDir: string
   child: ChildProcess
+  // 关闭 hub（整个进程组）、删除临时目录并撤销兜底钩子；可重复调用
+  dispose: () => Promise<void>
+}
+
+// hub 只需要这几个环境变量，不继承运行器的完整环境（避免带入密钥等无关变量）
+const hubEnvAllowlist = ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'TZ']
+
+function hubEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {}
+  for (const k of hubEnvAllowlist) if (process.env[k] !== undefined) env[k] = process.env[k]
+  return env
+}
+
+// 杀掉 hub 所在进程组（hub 以 detached 启动，自成一组）
+function killGroup(child: ChildProcess | undefined, signal: NodeJS.Signals) {
+  if (!child?.pid) return
+  try {
+    process.kill(-child.pid, signal)
+  } catch {
+    // 进程已退出
+  }
 }
 
 // 向系统要一个空闲端口：先监听 0 号端口取得分配结果再释放
@@ -38,17 +59,60 @@ function ensureBinary(workDir: string): string {
   return out
 }
 
-// 在临时数据目录与随机端口启动真实 hub，从 stderr 取首次设置码，等 /healthz 就绪后返回
+// 在临时数据目录与随机端口启动真实 hub，从 stderr 取首次设置码，等 /healthz 就绪后返回。
+// 兜底清理在一开始（含 go build 阶段）就挂好：进程退出、SIGTERM、SIGINT 时杀进程组并删临时目录。
 export async function startHub(): Promise<RunningHub> {
   const workDir = mkdtempSync(path.join(tmpdir(), 'pimon-e2e-'))
   const dataDir = path.join(workDir, 'data')
   mkdirSync(dataDir)
   let child: ChildProcess | undefined
+
+  const cleanupNow = () => {
+    killGroup(child, 'SIGKILL')
+    rmSync(workDir, { recursive: true, force: true })
+  }
+  const onSignal = (signal: NodeJS.Signals) => {
+    cleanupNow()
+    detachHooks()
+    // 我们的监听会让默认的终止行为失效：SIGTERM 清理后按默认方式终止；SIGINT 交给运行器自己的处理继续走 teardown
+    if (signal === 'SIGTERM') process.kill(process.pid, 'SIGTERM')
+  }
+  const onTerm = () => onSignal('SIGTERM')
+  const onInt = () => onSignal('SIGINT')
+  function detachHooks() {
+    process.removeListener('exit', cleanupNow)
+    process.removeListener('SIGTERM', onTerm)
+    process.removeListener('SIGINT', onInt)
+  }
+  process.on('exit', cleanupNow)
+  process.on('SIGTERM', onTerm)
+  process.on('SIGINT', onInt)
+
+  const dispose = async () => {
+    detachHooks()
+    if (child && child.exitCode === null && child.signalCode === null) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => killGroup(child, 'SIGKILL'), 8000)
+        child!.once('exit', () => {
+          clearTimeout(timer)
+          resolve()
+        })
+        killGroup(child, 'SIGTERM')
+      })
+    }
+    killGroup(child, 'SIGKILL')
+    rmSync(workDir, { recursive: true, force: true })
+  }
+
   try {
     const bin = ensureBinary(workDir)
     const port = await freePort()
     const addr = `127.0.0.1:${port}`
-    child = spawn(bin, ['serve', '--addr', addr, '--data-dir', dataDir], { stdio: ['ignore', 'pipe', 'pipe'] })
+    child = spawn(bin, ['serve', '--addr', addr, '--data-dir', dataDir], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+      env: hubEnv(),
+    })
     let output = ''
     let exited = false
     child.once('exit', () => {
@@ -66,7 +130,8 @@ export async function startHub(): Promise<RunningHub> {
     for (;;) {
       if (exited) throw new Error(`hub 提前退出：\n${output}`)
       if (Date.now() > deadline) throw new Error(`等待 hub 就绪超时：\n${output}`)
-      const m = output.match(/首次设置码:\s*([A-Za-z0-9-]+)/)
+      // 按完整行匹配（以「）」结尾并已换行），避免管道截断时取到不完整的码
+      const m = output.match(/^首次设置码: ([A-Za-z0-9-]+)（[^\n]*）\r?\n/m)
       if (m) setupCode = m[1]
       if (setupCode) {
         try {
@@ -77,26 +142,10 @@ export async function startHub(): Promise<RunningHub> {
       }
       await new Promise((r) => setTimeout(r, 100))
     }
-    return { url, setupCode, dataDir, workDir, child }
+    return { url, setupCode, dataDir, workDir, child, dispose }
   } catch (err) {
-    child?.kill('SIGKILL')
-    rmSync(workDir, { recursive: true, force: true })
+    detachHooks()
+    cleanupNow()
     throw err
   }
-}
-
-// 关闭 hub 并删除临时目录；重复调用安全
-export async function stopHub(hub: Pick<RunningHub, 'child' | 'workDir'>): Promise<void> {
-  const { child } = hub
-  if (child.exitCode === null && child.signalCode === null) {
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => child.kill('SIGKILL'), 8000)
-      child.once('exit', () => {
-        clearTimeout(timer)
-        resolve()
-      })
-      child.kill('SIGTERM')
-    })
-  }
-  rmSync(hub.workDir, { recursive: true, force: true })
 }

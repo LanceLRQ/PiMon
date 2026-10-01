@@ -7,7 +7,7 @@ export interface Offender {
 
 // 页面级与容器级溢出检查，在浏览器内执行。
 // 页面级：documentElement.scrollWidth 不得超过视口宽度（不允许横向滚动）。
-// 容器级：遍历所有带边框的容器（卡片、分区、表格外框、输入框等），其后代盒子的右边界
+// 容器级：遍历所有带边框、有实色背景或有阴影的容器（卡片、分区、表格外框、输入框等），其后代盒子的右边界
 // 不得超出容器右边界（容许 1px 误差）；已被中间的滚动容器（overflow-x 非 visible）裁剪的
 // 后代、position: fixed 的浮层、svg 内部元素不算。容器自己是横向滚动容器时整体跳过。
 export async function findOverflow(page: Page): Promise<Offender[]> {
@@ -33,14 +33,18 @@ export async function findOverflow(page: Page): Promise<Offender[]> {
       const ox = getComputedStyle(el).overflowX
       return ox === 'auto' || ox === 'scroll'
     }
-    const hasBorder = (el: Element) => {
+    // 视觉上构成「盒子」的元素：有边框、非透明背景色或阴影
+    const isBox = (el: Element) => {
       const cs = getComputedStyle(el)
-      return [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].some((w) => parseFloat(w) > 0)
+      const bordered = [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].some((w) => parseFloat(w) > 0)
+      const bg = cs.backgroundColor
+      const filled = bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent'
+      return bordered || filled || cs.boxShadow !== 'none'
     }
 
     const seen = new Set<string>()
     for (const container of document.body.querySelectorAll('*')) {
-      if (container.closest('svg') || container.childElementCount === 0 || !hasBorder(container)) continue
+      if (container.closest('svg') || container.childElementCount === 0 || !isBox(container)) continue
       if (scrollsX(container)) continue
       const cs = getComputedStyle(container)
       if (cs.display === 'none' || cs.visibility === 'hidden') continue
