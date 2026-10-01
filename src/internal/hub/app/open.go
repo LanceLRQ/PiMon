@@ -159,6 +159,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		Clock: o.clk, Build: o.version, Instances: a.instances, Settings: st, Sessions: a.sessions,
 	})
 	a.instances.OnChange(a.ws.NotifyInstance)
+	a.sessions.OnRevoke(a.ws.RecheckSessions)
 	st.OnChange(a.ws.NotifySettings)
 	a.handler = api.New(api.Deps{
 		Plugins:      a.plugins,

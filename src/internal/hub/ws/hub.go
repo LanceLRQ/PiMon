@@ -27,6 +27,8 @@ const (
 	// reconcileInterval 是对账周期：展示状态随时间自行变化（如过期）时没有变更通知，
 	// 靠定期对账把变化推出去。
 	reconcileInterval = 15 * time.Second
+	// sessionRecheckInterval 是已建立连接复核会话（登出、吊销、过期）的周期。
+	sessionRecheckInterval = 15 * time.Second
 	// defaultQueueSize 是每连接发送队列的默认容量。
 	defaultQueueSize = 64
 )
@@ -214,8 +216,9 @@ func (h *Hub) touchConnsLocked() {
 }
 
 // attach 构建 snapshot、登记连接并启动它的写线程。snapshot 是队列里的第一条消息。
-func (h *Hub) attach(ctx context.Context, s sink, kind auth.SessionKind) (*client, error) {
-	c := newClient(h, ctx, s, kind)
+// token 是握手时的会话令牌，供之后复核会话；为空表示不复核（测试用）。
+func (h *Hub) attach(ctx context.Context, s sink, kind auth.SessionKind, token string) (*client, error) {
+	c := newClient(h, ctx, s, kind, token)
 	h.bmu.Lock()
 	if h.closed {
 		h.bmu.Unlock()
@@ -307,6 +310,12 @@ func (h *Hub) resubscribeLocked(ctx context.Context, c *client, topics []string)
 	return nil
 }
 
+// outMsg 是一条待广播的 patch：admin 与 screen 两种会话各自的序列化结果（相同时共用）。
+type outMsg struct {
+	topic         string
+	admin, screen []byte
+}
+
 // flush 把合并窗口内登记的变化推给订阅者。
 func (h *Hub) flush() {
 	h.mu.Lock()
@@ -327,21 +336,23 @@ func (h *Hub) flush() {
 	if h.closed {
 		return
 	}
+	var msgs []outMsg
 	for _, id := range ids {
 		in, err := h.cfg.Instances.View(ctx, id)
 		switch {
 		case errors.Is(err, instances.ErrNotFound):
-			h.broadcastRemovedLocked(id)
+			msgs = appendMsg(msgs, h.removedMsgLocked(id))
 		case err != nil:
 			// 读取失败不丢变化：交给下一轮对账。
 			slog.Warn("读取实例失败，等待下一轮对账", "instance", id, "err", err)
 		default:
-			h.broadcastInstanceLocked(in)
+			msgs = appendMsg(msgs, h.instanceMsgLocked(in))
 		}
 	}
 	if settingsChanged {
-		h.broadcastSettingsLocked()
+		msgs = appendMsg(msgs, h.settingsMsgLocked())
 	}
+	h.deliverLocked(ctx, msgs)
 }
 
 // reconcile 对账：与最近一次广播的状态比较，把没有变更通知的变化（如展示状态过期）推出去。
@@ -356,70 +367,133 @@ func (h *Hub) reconcile(ctx context.Context) {
 		slog.Warn("对账时读取实例列表失败", "err", err)
 		return
 	}
+	var msgs []outMsg
 	seen := make(map[string]bool, len(list))
 	for _, in := range list {
 		seen[in.ID] = true
-		h.broadcastInstanceLocked(in)
+		msgs = appendMsg(msgs, h.instanceMsgLocked(in))
 	}
 	for id := range h.last {
 		if !seen[id] {
-			h.broadcastRemovedLocked(id)
+			msgs = appendMsg(msgs, h.removedMsgLocked(id))
 		}
 	}
+	h.deliverLocked(ctx, msgs)
 }
 
-func (h *Hub) broadcastInstanceLocked(in model.Instance) {
+func appendMsg(msgs []outMsg, m *outMsg) []outMsg {
+	if m == nil {
+		return msgs
+	}
+	return append(msgs, *m)
+}
+
+// instanceMsgLocked 记下并序列化实例状态；与最近一次广播的状态相同时返回 nil。
+func (h *Hub) instanceMsgLocked(in model.Instance) *outMsg {
 	if h.last == nil {
 		h.last = map[string]model.Instance{}
 	}
 	if prev, ok := h.last[in.ID]; ok && reflect.DeepEqual(prev, in) {
-		return
+		return nil
 	}
 	h.last[in.ID] = in
-	h.broadcastLocked(ui.TopicInstances, ui.Patch{
+	return h.patchMsg(ui.TopicInstances, ui.Patch{
 		Type: ui.TypePatch, ServerTime: h.clk.Now().UTC(), Entity: ui.EntityInstanceState, Instance: &in,
 	}, nil)
 }
 
-func (h *Hub) broadcastRemovedLocked(id string) {
+func (h *Hub) removedMsgLocked(id string) *outMsg {
 	delete(h.last, id)
-	h.broadcastLocked(ui.TopicInstances, ui.Patch{
+	return h.patchMsg(ui.TopicInstances, ui.Patch{
 		Type: ui.TypePatch, ServerTime: h.clk.Now().UTC(), Entity: ui.EntityInstanceRemoved, ID: id,
 	}, nil)
 }
 
-func (h *Hub) broadcastSettingsLocked() {
+func (h *Hub) settingsMsgLocked() *outMsg {
 	cur := h.cfg.Settings.Get()
 	now := h.clk.Now().UTC()
 	admin := ui.Patch{Type: ui.TypePatch, ServerTime: now, Entity: ui.EntitySettings, Settings: &cur}
 	ss := screenSettings(cur)
 	screen := ui.Patch{Type: ui.TypePatch, ServerTime: now, Entity: ui.EntitySettings, ScreenSettings: &ss}
-	h.broadcastLocked(ui.TopicSettings, admin, &screen)
+	return h.patchMsg(ui.TopicSettings, admin, &screen)
 }
 
-// broadcastLocked 向订阅了 topic 的连接入队 patch；screen 为 nil 表示屏幕会话用同一份（实例 patch 屏幕本就收不到）。
-func (h *Hub) broadcastLocked(topic string, admin ui.Patch, screen *ui.Patch) {
+// patchMsg 序列化 patch；screen 为 nil 表示屏幕会话用同一份（实例 patch 屏幕本就收不到）。
+func (h *Hub) patchMsg(topic string, admin ui.Patch, screen *ui.Patch) *outMsg {
 	adminRaw, err := json.Marshal(admin)
 	if err != nil {
 		slog.Error("序列化 patch 失败", "err", err)
+		return nil
+	}
+	m := &outMsg{topic: topic, admin: adminRaw, screen: adminRaw}
+	if screen != nil {
+		if m.screen, err = json.Marshal(screen); err != nil {
+			slog.Error("序列化 patch 失败", "err", err)
+			return nil
+		}
+	}
+	return m
+}
+
+// deliverLocked 把一轮广播的消息入队给订阅者。某个连接在这一轮要收的条数超过队列容量的一半时，
+// 改为给它发一份 snapshot：既不会把健康连接的队列冲满而误判为慢连接，批量变化时数据量也更小。
+func (h *Hub) deliverLocked(ctx context.Context, msgs []outMsg) {
+	if len(msgs) == 0 {
 		return
 	}
-	screenRaw := adminRaw
-	if screen != nil {
-		if screenRaw, err = json.Marshal(screen); err != nil {
-			slog.Error("序列化 patch 失败", "err", err)
-			return
+	limit := max(h.cfg.QueueSize/2, 1)
+	for c := range h.conns {
+		var rel []outMsg
+		for _, m := range msgs {
+			if c.topics[m.topic] {
+				rel = append(rel, m)
+			}
+		}
+		if len(rel) > limit {
+			if err := h.resubscribeLocked(ctx, c, sortedTopics(c.topics)); err == nil {
+				continue
+			} else {
+				slog.Warn("批量变化时构建 snapshot 失败，改发逐条 patch", "err", err)
+			}
+		}
+		for _, m := range rel {
+			if c.kind == auth.KindAdmin {
+				c.enqueue(m.admin)
+			} else {
+				c.enqueue(m.screen)
+			}
 		}
 	}
+}
+
+// RecheckSessions 让所有连接立即复核会话；会话被撤销（登出、吊销）时由 auth.Sessions 的回调触发。
+// 非阻塞：复核在后台 goroutine 里做，不持有 bmu 逐个查库。
+func (h *Hub) RecheckSessions() {
+	h.bmu.Lock()
+	list := make([]*client, 0, len(h.conns))
 	for c := range h.conns {
-		if !c.topics[topic] {
-			continue
+		list = append(list, c)
+	}
+	h.bmu.Unlock()
+	go func() {
+		for _, c := range list {
+			h.recheck(c)
 		}
-		if c.kind == auth.KindAdmin {
-			c.enqueue(adminRaw)
-		} else {
-			c.enqueue(screenRaw)
-		}
+	}()
+}
+
+// recheck 重新查会话：查不到、类型变了即以 policy violation 断开。查询出错时保持连接，下次再查。
+func (h *Hub) recheck(c *client) {
+	if c.token == "" {
+		return
+	}
+	kind, ok, err := h.cfg.Sessions.Lookup(c.ctx, c.token)
+	if err != nil {
+		slog.Warn("复核 WebSocket 会话失败", "err", err)
+		return
+	}
+	if !ok || kind != c.kind {
+		c.kill(websocket.StatusPolicyViolation, "session revoked", false)
 	}
 }
 

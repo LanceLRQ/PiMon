@@ -30,6 +30,7 @@ func (s wsSink) close(code websocket.StatusCode, reason string) { _ = s.conn.Clo
 type client struct {
 	hub    *Hub
 	kind   auth.SessionKind
+	token  string
 	sink   sink
 	queue  chan []byte
 	topics map[string]bool
@@ -43,10 +44,10 @@ type client struct {
 	once     sync.Once
 }
 
-func newClient(h *Hub, parent context.Context, s sink, kind auth.SessionKind) *client {
+func newClient(h *Hub, parent context.Context, s sink, kind auth.SessionKind, token string) *client {
 	ctx, cancel := context.WithCancel(parent)
 	return &client{
-		hub: h, kind: kind, sink: s, queue: make(chan []byte, h.cfg.QueueSize),
+		hub: h, kind: kind, token: token, sink: s, queue: make(chan []byte, h.cfg.QueueSize),
 		ctx: ctx, cancel: cancel, done: make(chan struct{}), finished: make(chan struct{}),
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/coder/websocket"
 
@@ -26,7 +27,7 @@ func (h *Hub) serve(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusForbidden, httpx.CodeOriginMismatch, nil)
 		return
 	}
-	kind, ok, err := h.session(r)
+	token, kind, ok, err := h.session(r)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, nil)
 		return
@@ -36,7 +37,7 @@ func (h *Hub) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.isClosed() {
-		http.Error(w, "shutting down", http.StatusServiceUnavailable)
+		httpx.WriteError(w, http.StatusServiceUnavailable, httpx.CodeShuttingDown, nil)
 		return
 	}
 	// Origin 已按反代解析出的协议与 Host 校验过，库自带的按 r.Host 比较在反代后会误判。
@@ -46,26 +47,31 @@ func (h *Hub) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	conn.SetReadLimit(maxClientMessage)
 
+	// 计时器先于 attach 登记：客户端收到 snapshot 时它们一定已经开始计时。
+	idle := h.clk.After(idleTimeout)
+	recheck := h.clk.After(sessionRecheckInterval)
 	ctx := context.WithoutCancel(r.Context())
-	c, err := h.attach(ctx, wsSink{conn}, kind)
+	c, err := h.attach(ctx, wsSink{conn}, kind, token)
 	if err != nil {
 		_ = conn.Close(websocket.StatusInternalError, "attach failed")
 		return
 	}
-	h.run(c, conn)
+	h.run(c, conn, idle, recheck)
 }
 
-func (h *Hub) session(r *http.Request) (auth.SessionKind, bool, error) {
-	ck, err := r.Cookie(auth.CookieName)
-	if err != nil || ck.Value == "" {
-		return "", false, nil
+func (h *Hub) session(r *http.Request) (token string, kind auth.SessionKind, ok bool, err error) {
+	ck, cerr := r.Cookie(auth.CookieName)
+	if cerr != nil || ck.Value == "" {
+		return "", "", false, nil
 	}
-	return h.cfg.Sessions.Lookup(r.Context(), ck.Value)
+	kind, ok, err = h.cfg.Sessions.Lookup(r.Context(), ck.Value)
+	return ck.Value, kind, ok, err
 }
 
 // run 是连接的读循环：任何客户端消息都让空闲计时重新开始，超过 idleTimeout 没有消息即断开。
 // 计时器在处理消息之前登记，因此客户端收到应答时它一定已经重新开始。
-func (h *Hub) run(c *client, conn *websocket.Conn) {
+// 另外每 sessionRecheckInterval 复核一次会话，登出、吊销或过期的会话即使一直在 ping 也会被断开。
+func (h *Hub) run(c *client, conn *websocket.Conn, idle, recheck <-chan time.Time) {
 	in := make(chan []byte)
 	readDone := make(chan struct{})
 	go func() {
@@ -83,12 +89,14 @@ func (h *Hub) run(c *client, conn *websocket.Conn) {
 		}
 	}()
 
-	idle := h.clk.After(idleTimeout)
 	for {
 		select {
 		case raw := <-in:
 			idle = h.clk.After(idleTimeout)
 			h.handle(c, raw)
+		case <-recheck:
+			recheck = h.clk.After(sessionRecheckInterval)
+			h.recheck(c)
 		case <-idle:
 			c.kill(websocket.StatusPolicyViolation, "idle timeout", false)
 		case <-readDone:

@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -17,6 +19,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/httpx"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 	"github.com/LanceLRQ/PiMon/src/pkg/protocol/ui"
@@ -90,11 +93,22 @@ func (f *fakeSettings) set(v model.Settings) {
 	f.mu.Unlock()
 }
 
-type fakeSessions map[string]auth.SessionKind
+type fakeSessions struct {
+	mu sync.Mutex
+	m  map[string]auth.SessionKind
+}
 
-func (f fakeSessions) Lookup(_ context.Context, token string) (auth.SessionKind, bool, error) {
-	k, ok := f[token]
+func (f *fakeSessions) Lookup(_ context.Context, token string) (auth.SessionKind, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	k, ok := f.m[token]
 	return k, ok, nil
+}
+
+func (f *fakeSessions) drop(token string) {
+	f.mu.Lock()
+	delete(f.m, token)
+	f.mu.Unlock()
 }
 
 type harness struct {
@@ -104,19 +118,31 @@ type harness struct {
 	inst *fakeInstances
 	set  *fakeSettings
 	srv  *httptest.Server
+	sess *fakeSessions
 }
 
 func newHarness(t *testing.T, queue int, list ...model.Instance) *harness {
 	t.Helper()
+	return newHarnessWith(t, queue, nil, list...)
+}
+
+// newHarnessWith 可以换用真实的会话服务（mkSessions 非 nil 时，以测试的假时钟构造）。
+func newHarnessWith(t *testing.T, queue int, mkSessions func(clock.Clock) SessionLookup, list ...model.Instance) *harness {
+	t.Helper()
 	h := &harness{
+		sess: &fakeSessions{m: map[string]auth.SessionKind{adminToken: auth.KindAdmin, screenToken: auth.KindScreen}},
 		t:    t,
 		clk:  clock.NewFake(time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC)),
 		inst: newFakeInstances(list...),
 		set:  &fakeSettings{v: model.Settings{Language: "zh", Timezone: "Asia/Shanghai", AccessURL: "http://pi.lan", ReduceEffects: true}},
 	}
+	var sessions SessionLookup = h.sess
+	if mkSessions != nil {
+		sessions = mkSessions(h.clk)
+	}
 	h.hub = New(Config{
 		Clock: h.clk, Build: "test-build", Instances: h.inst, Settings: h.set,
-		Sessions: fakeSessions{adminToken: auth.KindAdmin, screenToken: auth.KindScreen}, QueueSize: queue,
+		Sessions: sessions, QueueSize: queue,
 	})
 	mw := httpx.WithRequestInfo(func() []netip.Prefix { return nil })
 	h.srv = httptest.NewServer(mw(h.hub.Handler()))
@@ -185,7 +211,7 @@ func send(t *testing.T, c *websocket.Conn, msg ui.ClientMessage) {
 func ping(t *testing.T, c *websocket.Conn) {
 	t.Helper()
 	send(t, c, ui.ClientMessage{Type: ui.TypePing})
-	if m := read(t, c); m["type"] != ui.TypePong {
+	if m := read(t, c); m["type"] != string(ui.TypePong) {
 		t.Fatalf("期望 pong，得到 %v", m)
 	}
 }
@@ -211,12 +237,23 @@ func closedSoon(c *websocket.Conn) <-chan error {
 
 func expectClosed(t *testing.T, c *websocket.Conn) {
 	t.Helper()
+	expectClosedWith(t, c, -1)
+}
+
+// expectClosedWith 要求连接被服务端关闭；status 不为 -1 时还要求关闭码一致。
+func expectClosedWith(t *testing.T, c *websocket.Conn, status websocket.StatusCode) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), waitTimeout)
 	defer cancel()
-	if _, _, err := c.Read(ctx); err == nil {
+	_, _, err := c.Read(ctx)
+	if err == nil {
 		t.Fatal("连接应已被服务端关闭")
-	} else if ctx.Err() != nil {
+	}
+	if ctx.Err() != nil {
 		t.Fatalf("等待关闭超时: %v", err)
+	}
+	if status != -1 && websocket.CloseStatus(err) != status {
+		t.Fatalf("关闭码 = %v，期望 %v（%v）", websocket.CloseStatus(err), status, err)
 	}
 }
 
@@ -250,7 +287,7 @@ func TestSnapshotIsFirstMessage(t *testing.T) {
 	h := newHarness(t, 0, inst("a", "one"), inst("b", "two"))
 	c := h.dial(adminToken)
 	m := read(t, c)
-	if m["type"] != ui.TypeSnapshot || m["build"] != "test-build" || m["role"] != ui.RoleAdmin {
+	if m["type"] != string(ui.TypeSnapshot) || m["build"] != "test-build" || m["role"] != ui.RoleAdmin {
 		t.Fatalf("首条消息应是 admin snapshot: %v", m)
 	}
 	if len(m["instances"].([]any)) != 2 {
@@ -285,7 +322,7 @@ func TestScreenSessionSnapshotAndSubscribeDenied(t *testing.T) {
 
 	send(t, c, ui.ClientMessage{Type: ui.TypeSubscribe, Topics: []string{ui.TopicInstances}})
 	e := read(t, c)
-	if e["type"] != ui.TypeError || e["error"].(map[string]any)["code"] != ui.ErrSubscribeDenied {
+	if e["type"] != string(ui.TypeError) || e["error"].(map[string]any)["code"] != ui.ErrSubscribeDenied {
 		t.Fatalf("订阅实例应收到协议级错误: %v", e)
 	}
 	ping(t, c) // 连接未断开
@@ -304,7 +341,7 @@ func TestInstanceChangesCoalesceIntoOnePatch(t *testing.T) {
 
 	h.clk.Advance(time.Second)
 	p := read(t, c)
-	if p["type"] != ui.TypePatch || p["entity"] != ui.EntityInstanceState {
+	if p["type"] != string(ui.TypePatch) || p["entity"] != ui.EntityInstanceState {
 		t.Fatalf("应收到 instance_state patch: %v", p)
 	}
 	if got := p["instance"].(map[string]any)["summary"]; got != "v3" {
@@ -367,7 +404,7 @@ func TestSubscribeNarrowsTopicsAndResendsSnapshot(t *testing.T) {
 
 	send(t, c, ui.ClientMessage{Type: ui.TypeSubscribe, Topics: []string{ui.TopicSettings}})
 	m := read(t, c)
-	if m["type"] != ui.TypeSnapshot || len(m["instances"].([]any)) != 0 || len(m["topics"].([]any)) != 1 {
+	if m["type"] != string(ui.TypeSnapshot) || len(m["instances"].([]any)) != 0 || len(m["topics"].([]any)) != 1 {
 		t.Fatalf("仅订阅 settings 的 snapshot 不应含实例: %v", m)
 	}
 	h.inst.set(inst("a", "y"))
@@ -415,7 +452,7 @@ func TestSlowConnectionDroppedWithoutAffectingOthers(t *testing.T) {
 	read(t, fast)
 
 	slow := newBlockingSink()
-	sc, err := h.hub.attach(context.Background(), slow, auth.KindAdmin)
+	sc, err := h.hub.attach(context.Background(), slow, auth.KindAdmin, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,8 +491,12 @@ func TestCloseDropsConnectionsAndRejectsNew(t *testing.T) {
 		}
 	}
 	waitConns(t, h.hub, 0)
-	if _, resp, err := h.dialAs(adminToken, h.origin()); err == nil || resp == nil || resp.StatusCode != http.StatusServiceUnavailable {
+	_, resp, err := h.dialAs(adminToken, h.origin())
+	if err == nil || resp == nil || resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("关闭后新握手应 503: resp=%v err=%v", resp, err)
+	}
+	if body, _ := io.ReadAll(resp.Body); !strings.Contains(string(body), httpx.CodeShuttingDown) {
+		t.Fatalf("503 应是统一的 JSON 错误体: %s", body)
 	}
 }
 
@@ -537,4 +578,116 @@ func waitConns(t *testing.T, h *Hub, n int) {
 			t.Fatalf("连接数应为 %d，实际 %d", n, h.connCount())
 		}
 	}
+}
+
+func TestRevokedSessionDroppedByPeriodicRecheck(t *testing.T) {
+	h := newHarness(t, 0)
+	c := h.dial(adminToken)
+	read(t, c)
+	h.sess.drop(adminToken) // 没有任何回调：只靠定期复核兜底
+	ping(t, c)              // 一直在 ping 也不能续命
+	h.clk.Advance(sessionRecheckInterval)
+	expectClosedWith(t, c, websocket.StatusPolicyViolation)
+	waitConns(t, h.hub, 0)
+}
+
+func TestRecheckSessionsDropsRevokedImmediately(t *testing.T) {
+	h := newHarness(t, 0)
+	revoked, kept := h.dial(adminToken), h.dial(screenToken)
+	read(t, revoked)
+	read(t, kept)
+	h.sess.drop(adminToken)
+	h.hub.RecheckSessions()
+	expectClosedWith(t, revoked, websocket.StatusPolicyViolation)
+	ping(t, kept) // 其他会话的连接不受影响
+}
+
+func newRealSessions(t *testing.T, clk clock.Clock) (*auth.Sessions, *store.DB) {
+	t.Helper()
+	db, err := store.Open(filepath.Join(t.TempDir(), "pimon.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return auth.NewSessions(db, clk), db
+}
+
+// 真实会话服务：登出（Delete）与批量吊销（DeleteKind）经 OnRevoke 立即断开，过期靠定期复核。
+func TestRealSessionLogoutRevokeAndExpiry(t *testing.T) {
+	var (
+		sessions *auth.Sessions
+		db       *store.DB
+	)
+	h := newHarnessWith(t, 0, func(clk clock.Clock) SessionLookup {
+		sessions, db = newRealSessions(t, clk)
+		return sessions
+	})
+	fake := h.clk
+	sessions.OnRevoke(h.hub.RecheckSessions)
+	ctx := context.Background()
+
+	logout, err := sessions.Create(ctx, auth.KindAdmin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := h.dial(logout)
+	read(t, c)
+	if err := sessions.Delete(ctx, logout); err != nil {
+		t.Fatal(err)
+	}
+	expectClosedWith(t, c, websocket.StatusPolicyViolation)
+
+	screen, err := sessions.Create(ctx, auth.KindScreen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := h.dial(screen)
+	read(t, sc)
+	if err := sessions.DeleteKind(ctx, auth.KindScreen); err != nil {
+		t.Fatal(err)
+	}
+	expectClosedWith(t, sc, websocket.StatusPolicyViolation)
+
+	expired, err := sessions.Create(ctx, auth.KindAdmin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := h.dial(expired)
+	read(t, ec)
+	if _, err := db.ExecContext(ctx, `UPDATE sessions SET expires_at = ?`, store.FormatTime(fake.Now().Add(-time.Second))); err != nil {
+		t.Fatal(err)
+	}
+	fake.Advance(sessionRecheckInterval)
+	expectClosedWith(t, ec, websocket.StatusPolicyViolation)
+}
+
+func TestBatchChangeFallsBackToSnapshot(t *testing.T) {
+	var list []model.Instance
+	for i := 0; i < 10; i++ {
+		list = append(list, inst(string(rune('a'+i)), "v0"))
+	}
+	h := newHarness(t, 4, list...)
+	c := h.dial(adminToken)
+	read(t, c)
+
+	for _, in := range list {
+		in.Summary = "v1"
+		h.inst.set(in)
+		h.hub.NotifyInstance(in.ID)
+	}
+	h.clk.Advance(time.Second)
+	m := read(t, c)
+	if m["type"] != string(ui.TypeSnapshot) || len(m["instances"].([]any)) != 10 {
+		t.Fatalf("批量变化应改发 snapshot: %v", m)
+	}
+	for _, raw := range m["instances"].([]any) {
+		if raw.(map[string]any)["summary"] != "v1" {
+			t.Fatalf("snapshot 应是最新状态: %v", raw)
+		}
+	}
+	ping(t, c) // 连接健康，没有被当成慢连接
+	waitConns(t, h.hub, 1)
 }
