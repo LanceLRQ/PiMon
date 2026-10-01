@@ -1,0 +1,7 @@
+{
+  "app": {
+    "name": "PiMon",
+    "tagline": "Admin console for the desktop monitoring panel",
+    "placeholder": "The frontend toolchain is ready; pages arrive in later tasks."
+  }
+}
