@@ -200,6 +200,9 @@ func TestExtremeProfile(t *testing.T) {
 	if tb := rep.Find("tasks"); tb == nil || len(tb.Rows) < 20 {
 		t.Errorf("extreme 的任务表应有很多行: %+v", tb)
 	}
+	if len([]rune(rep.Summary)) < 100 {
+		t.Errorf("extreme 的摘要应超长: %q", rep.Summary)
+	}
 	// 其余默认数据项仍在，保证种子布局与既有小组件照常有数据。
 	if rep.Find("cpu.pi") == nil || rep.Find("quota.codex.5h") == nil {
 		t.Error("extreme 应保留默认数据项")

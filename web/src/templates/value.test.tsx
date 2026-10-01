@@ -191,3 +191,31 @@ describe('value 模板：quota 的默认读数是百分比', () => {
     expect(container.querySelector('.tpl-value__unit')!.textContent).toBe('%')
   })
 })
+
+describe('value 模板：摘要行与数值字号共用高度（D9 C-1）', () => {
+  const fontOf = (container: HTMLElement) => {
+    const m = (container.querySelector('.tpl-value__number') as HTMLElement).style.fontSize.match(/(\d+(?:\.\d+)?)px\)$/)
+    return m ? Number(m[1]) : null
+  }
+  it('有摘要时给读数的字号让出摘要行的高度，摘要行不被压扁', async () => {
+    const w = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
+    const h = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 300 })
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 60 })
+    try {
+      const plain = bound('value', { cols: 2, rows: 1 }, [cpu], 'cpu', {})
+      const withSummary = bound('value', { cols: 2, rows: 1 }, [cpu], 'cpu', {}, { summary: '极端数据：超长摘要' })
+      const a = await renderIn(<WidgetView widget={plain.widget} data={plain.data} />)
+      const b = await renderIn(<WidgetView widget={withSummary.widget} data={withSummary.data} />)
+      expect(fontOf(b.container)!).toBeLessThan(fontOf(a.container)!)
+      // 读数行高（字号 × 1.2）加摘要行 24px 不超过容器高度
+      expect(fontOf(b.container)! * 1.2 + 24).toBeLessThanOrEqual(60)
+      expect(b.container.querySelector('.tpl-value__summary')!.className).toContain('shrink-0')
+    } finally {
+      if (w) Object.defineProperty(HTMLElement.prototype, 'clientWidth', w)
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth
+      if (h) Object.defineProperty(HTMLElement.prototype, 'clientHeight', h)
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientHeight
+    }
+  })
+})

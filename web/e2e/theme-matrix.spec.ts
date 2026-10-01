@@ -39,11 +39,9 @@ interface Candidate {
   w: number
   h: number
   item: string
-  // 给出时用 demo 插件自带的小组件（通用 list 不展开通配，主机列表走插件小组件的 items 槽）
-  widget?: string
 }
 const extremeCandidates: Candidate[] = [
-  { template: 'list', col: 0, row: 0, w: 4, h: 3, item: 'host[*]', widget: 'hostlist' },
+  { template: 'list', col: 0, row: 0, w: 4, h: 3, item: 'host[*]' },
   { template: 'table', col: 4, row: 0, w: 2, h: 2, item: 'tasks' },
   { template: 'value', col: 4, row: 2, w: 1, h: 1, item: 'balance[cny]' },
   { template: 'value', col: 5, row: 2, w: 1, h: 1, item: 'balance[usd]' },
@@ -77,9 +75,9 @@ function extremeScreen(instanceId: string, grid: { cols: number; rows: number })
     .filter((c) => c.col + c.w <= grid.cols && c.row + c.h <= grid.rows)
     .map((c, i) => ({
       id: `x${i}`,
-      ...(c.widget
-        ? { source: 'plugin', plugin_id: 'demo', widget_id: c.widget, binding: { instance_id: instanceId } }
-        : { source: c.template === 'status-grid' ? 'aggregate' : 'generic', template: c.template, binding: { refs: [{ instance_id: instanceId, item: c.item }] } }),
+      source: c.template === 'status-grid' ? 'aggregate' : 'generic',
+      template: c.template,
+      binding: { refs: [{ instance_id: instanceId, item: c.item }] },
       size: { cols: c.w, rows: c.h },
       col: c.col,
       row: c.row,
@@ -195,8 +193,13 @@ for (const scr of screens) {
       })
       await api(admin.request, 'post', '/api/screen/control', baseURL, { action: 'switch', screen_id: 'extreme' })
       await expect(page.locator('[data-screen-grid][data-screen-id="extreme"]')).toBeVisible({ timeout: pushBudgetMs + 1000 })
-      // 极端数据确实到位（否则检查是空转）：主机列表有行，且屏幕上的小组件数等于布局里的
+      // 极端数据确实到位（否则检查是空转）：通用 list 绑 host[*] 展开出行，金额与告警文本有真实内容，没有「未知」占位
       await expect(page.locator('section[data-widget-id="x0"] .tpl-list__row').first()).toBeVisible()
+      await expect(page.locator('section[data-widget-id="x2"]')).toContainText('123,456,789.12')
+      await expect(page.locator('section[data-widget-id="x5"]')).toContainText('98,765,432,100')
+      await expect(page.locator('section[data-widget-id="x6"]')).toContainText('使用率 95%')
+      await expect(page.locator('section[data-widget-id="x1"] .tpl-table__row').first()).toBeVisible()
+      await expect(page.locator('section[data-widget-id] [class*="__unknown"]')).toHaveCount(0)
       const expectedWidgets = extremeScreen(instance.id, cur.layout.grid).widgets.length
       await expect.poll(() => page.locator('section[data-widget-id]').count()).toBe(expectedWidgets)
       await runPage('extreme')

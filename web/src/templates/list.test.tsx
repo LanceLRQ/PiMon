@@ -207,3 +207,32 @@ describe('list 模板：字节单位自动换算（Ruling 52）', () => {
     expect(container.querySelector('.tpl-list__unit')!.textContent).toBe('GB')
   })
 })
+
+describe('list 模板：通用来源绑定通配（Ruling 48、D9 I-1）', () => {
+  const generic = (item: string) =>
+    makeWidget({ template: 'list', size: { cols: 2, rows: 2 }, source: 'generic', slots: { value: [{ instance_id: 'i1', item }] } })
+
+  it('generic 的 host[*] 展开为全部成员，名称取成员 label 或方括号里的名字', async () => {
+    const items: Item[] = [
+      { key: 'host[a]', type: 'state', state: 'ok', text: 'up' },
+      { key: 'host[b]', type: 'state', state: 'warning', text: 'slow', label: '备用机' },
+      { key: 'cpu', type: 'number', value: 1 },
+    ]
+    const { container } = await renderIn(<WidgetView widget={generic('host[*]')} data={{ i1: makeData(items) }} />)
+    expect([...container.querySelectorAll('.tpl-list__label')].map((e) => e.textContent)).toEqual(['a', '备用机'])
+  })
+
+  it('generic 通配没有成员显示空态，实例数据未到达仍是「未知」', async () => {
+    const none = await renderIn(<WidgetView widget={generic('host[*]')} data={{ i1: makeData([{ key: 'cpu', type: 'number', value: 1 }]) }} />)
+    expect(none.container.querySelector('.tpl-list__empty')).not.toBeNull()
+    const pending = await renderIn(<WidgetView widget={generic('host[*]')} data={{}} />)
+    expect(pending.container.querySelector('.tpl-list__empty')).toBeNull()
+    expect(pending.container.textContent).toContain('未知')
+  })
+
+  it('generic 的非通配引用仍按单项（table 项按行）显示，不受影响', async () => {
+    const items: Item[] = [{ key: 'tasks', type: 'table', columns: ['k', 'v'], rows: [['x', 1], ['y', 2]] }]
+    const { container } = await renderIn(<WidgetView widget={generic('tasks')} data={{ i1: makeData(items) }} />)
+    expect([...container.querySelectorAll('.tpl-list__label')].map((e) => e.textContent)).toEqual(['x', 'y'])
+  })
+})

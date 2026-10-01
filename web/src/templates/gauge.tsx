@@ -95,7 +95,7 @@ export function GaugeTemplate({ widget, data, defaultThreshold }: TemplateProps)
             <div className="shrink-0">{reading}</div>
           </>
         ) : (
-          <div ref={ringRef} className="relative flex h-full max-h-full min-h-0 flex-col items-center justify-center" style={{ aspectRatio: '1 / 1' }}>
+          <div ref={ringRef} className="relative flex h-full max-h-full min-h-0 min-w-0 flex-col items-center justify-center" style={{ aspectRatio: '1 / 1' }}>
             {fraction !== null && (
               <svg viewBox="0 0 100 100" className="tpl-gauge__ring absolute inset-0 h-full w-full" {...meterProps}>
                 <circle cx="50" cy="50" r={RING_R} fill="none" strokeWidth={RING_STROKE} className="stroke-s-chart-grid" />
@@ -107,7 +107,7 @@ export function GaugeTemplate({ widget, data, defaultThreshold }: TemplateProps)
                 />
               </svg>
             )}
-            <div className="relative z-10 flex max-w-[68%] flex-col items-center">
+            <div className="relative z-10 flex w-[68%] flex-col items-center">
               {reading}
               {summary && <div className="tpl-gauge__summary text-s-muted-fg mt-1 max-w-full truncate text-[length:var(--size-label)]">{summary}</div>}
             </div>

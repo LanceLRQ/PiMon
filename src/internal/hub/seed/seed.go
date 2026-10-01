@@ -135,7 +135,7 @@ func (s *Seeder) lang() string {
 }
 
 // Layout 按网格返回种子布局，实例引用取调用时各插件最早创建的实例；该网格没有种子时 ok 为 false。
-// 对应实例已被删除时，插件小组件退回占位绑定，聚合小组件整个省略，保证布局始终可保存。
+// 对应实例已被删除时，插件小组件退回占位绑定，通用小组件不绑引用（解析为未配置占位），聚合小组件整个省略，保证布局始终可保存。
 // 它同时是 screens.SeedFunc，装配时经 UseSeedLayouts 注入。
 func (s *Seeder) Layout(grid model.Grid) (model.Layout, bool) {
 	place, ok := placements[grid]
@@ -161,12 +161,11 @@ func (s *Seeder) Layout(grid model.Grid) (model.Layout, bool) {
 		}
 		switch {
 		case p.generic:
-			id, ok := ids[p.refPlugin]
-			if !ok {
-				continue
-			}
 			w.Source, w.Template = model.WidgetSourceGeneric, p.template
-			w.Binding.Refs = []model.WidgetRef{{InstanceID: id, Item: p.refItem}}
+			// 实例已被删除时不绑引用，解析为「未配置」占位卡，与插件小组件缺实例时的占位一致，布局不留空洞
+			if id, ok := ids[p.refPlugin]; ok {
+				w.Binding.Refs = []model.WidgetRef{{InstanceID: id, Item: p.refItem}}
+			}
 			w.Options["title"] = p.titleZh
 			if s.lang() == "en" {
 				w.Options["title"] = p.titleEn

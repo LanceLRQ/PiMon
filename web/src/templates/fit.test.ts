@@ -2,10 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { fitFontSize, fitList, listCapacity, textUnits, truncateByWidth } from './fit'
 
 describe('textUnits', () => {
-  it('中日韩字符按 1、西文按 0.55 计宽', () => {
+  it('中日韩字符按 1、西文按 0.61 计宽', () => {
     expect(textUnits('温度')).toBe(2)
-    expect(textUnits('ab')).toBeCloseTo(1.1)
+    expect(textUnits('ab')).toBeCloseTo(1.22)
     expect(textUnits('')).toBe(0)
+  })
+  it('估算不小于浏览器实测：等宽数字栈每个字符 0.602em（含 ¥ € , . 与字母）', () => {
+    const measuredMono = 0.602
+    for (const s of ['¥123,456,789.12', 'JP¥98,765,432,100', '€1,234,567.89', 'US$9,876,543.21']) {
+      expect(textUnits(s)).toBeGreaterThanOrEqual([...s].length * measuredMono)
+    }
   })
 })
 

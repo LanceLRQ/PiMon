@@ -285,3 +285,84 @@ func TestTenBySixSeedFillsGrid(t *testing.T) {
 		}
 	}
 }
+
+// 通用小组件的数据项必须真实存在于被引用插件的 outputs 里：键名写错只会在屏幕上变成「未知」。
+func TestGenericPlacementsReferenceDeclaredOutputs(t *testing.T) {
+	var generic int
+	for grid, list := range placements {
+		for _, p := range list {
+			if !p.generic {
+				continue
+			}
+			generic++
+			src, ok := runtime.Builtin(p.refPlugin)
+			if !ok {
+				t.Fatalf("%v %s: 插件 %s 未注册", grid, p.id, p.refPlugin)
+			}
+			found := false
+			for _, o := range src.Manifest().Outputs {
+				if o.Key == p.refItem {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("%v %s: 插件 %s 的 outputs 里没有 %s", grid, p.id, p.refPlugin, p.refItem)
+			}
+			if p.titleZh == "" || p.titleEn == "" {
+				t.Errorf("%v %s: 中英文标题都要有", grid, p.id)
+			}
+		}
+	}
+	if generic == 0 {
+		t.Fatal("没有通用小组件放置，检查空转")
+	}
+}
+
+func TestGenericWidgetTitleFollowsLanguage(t *testing.T) {
+	f := newFixture(t)
+	if err := f.seeder.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	title := func() string {
+		l, _ := f.seeder.Layout(model.Grid{Cols: 10, Rows: 6})
+		for _, w := range l.Screens[0].Widgets {
+			if w.ID == "cpu-history" {
+				return w.Options["title"].(string)
+			}
+		}
+		t.Fatal("没有 cpu-history")
+		return ""
+	}
+	if got := title(); got != "CPU 使用率" {
+		t.Errorf("中文标题: %q", got)
+	}
+	f.lang = "en"
+	if got := title(); got != "CPU usage" {
+		t.Errorf("英文标题: %q", got)
+	}
+}
+
+// 没有 host-metrics 实例时，通用小组件仍保留在原位（不绑引用，解析为未配置占位），10x6 不留空洞。
+func TestGenericWidgetsKeepPlaceWhenInstanceMissing(t *testing.T) {
+	f := newFixture(t) // 没有任何实例
+	l, ok := f.seeder.Layout(model.Grid{Cols: 10, Rows: 6})
+	if !ok {
+		t.Fatal("应能生成")
+	}
+	var kept []string
+	for _, w := range l.Screens[0].Widgets {
+		if w.Source == model.WidgetSourceGeneric {
+			kept = append(kept, w.ID)
+			if len(w.Binding.Refs) != 0 {
+				t.Errorf("%s 缺实例时不应绑引用: %+v", w.ID, w.Binding.Refs)
+			}
+		}
+	}
+	if len(kept) != 3 {
+		t.Fatalf("应保留 3 个通用小组件，实际 %v", kept)
+	}
+	cur, _ := f.layout.Current(context.Background())
+	if _, err := f.layout.Save(context.Background(), cur.Version, l, screens.SaveOptions{Source: model.LayoutSourceAuto}); err != nil {
+		t.Fatalf("缺实例的种子布局仍应能保存: %v", err)
+	}
+}

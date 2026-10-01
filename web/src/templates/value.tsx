@@ -78,6 +78,8 @@ export function ValueTemplate({ widget, data, defaultThreshold }: TemplateProps)
     min: 9,
     reservePx: (level ? (variant === 'compact' ? 12 : 18) + 6 : 0) + (reading?.unit ? reading.unit.length * 8 + 6 : 0),
     heightRatio: variant === 'large' ? 0.6 : 1,
+    // 摘要行（上边距 6 + 行高约 18）占的高度不能再给读数
+    reserveHeightPx: summary ? 24 : 0,
   })
 
   return (
@@ -103,7 +105,7 @@ export function ValueTemplate({ widget, data, defaultThreshold }: TemplateProps)
           <span className="tpl-value__unknown text-s-muted-fg text-[length:var(--size-value-sm)]">{t('screenWidget.unknown')}</span>
         )}
         {summary && (
-          <div className="tpl-value__summary text-s-muted-fg mt-1.5 truncate text-[length:var(--size-label)]">{summary}</div>
+          <div className="tpl-value__summary text-s-muted-fg mt-1.5 shrink-0 truncate text-[length:var(--size-label)]">{summary}</div>
         )}
       </div>
     </WidgetFrame>

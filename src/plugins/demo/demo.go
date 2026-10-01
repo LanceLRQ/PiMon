@@ -37,12 +37,14 @@ func (p *plugin) Collect(_ context.Context, in runtime.Input) (*report.Report, e
 	}
 	now := clk.Now()
 	list := items(now)
+	summary := "演示数据 / Demo data"
 	if profile, _ := in.Config["profile"].(string); profile == profileExtreme {
 		list = extremeItems(list)
+		summary = strings.Repeat("极端数据：超长摘要文本 / Extreme data: a very long summary line. ", 3)
 	}
 	return &report.Report{
 		Status:      report.StatusCritical,
-		Summary:     "演示数据 / Demo data",
+		Summary:     summary,
 		CollectedAt: now.UnixMilli(),
 		Items:       list,
 	}, nil

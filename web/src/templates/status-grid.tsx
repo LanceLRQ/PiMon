@@ -17,6 +17,8 @@ import { capacityOf, useBoxSize } from './use-box-size'
 // 尺寸：2x2、4x2、4x3、6x2；格数按容器高度换算，量不到时按名义容量。
 
 const CELL_PX = 46
+// 行间距（Tailwind gap-y-1），算行数时要计入：n 行总高 = n × CELL_PX + (n − 1) × ROW_GAP_PX
+const ROW_GAP_PX = 4
 
 export function StatusGridTemplate({ widget, data, defaultThreshold }: TemplateProps) {
   const { t } = useTranslation()
@@ -25,7 +27,7 @@ export function StatusGridTemplate({ widget, data, defaultThreshold }: TemplateP
   const rawRefs = widget.slots.items ?? []
   const refs = expandRefs(rawRefs, data)
   const columns = Math.max(1, widget.size.cols)
-  const cellRows = box ? Math.floor(box.height / CELL_PX) : widget.size.rows * 2 - 1
+  const cellRows = box ? Math.floor((box.height + ROW_GAP_PX) / (CELL_PX + ROW_GAP_PX)) : widget.size.rows * 2 - 1
   const { shown, more } = fitList(refs.length, capacityOf(null, CELL_PX, columns * cellRows))
 
   return (

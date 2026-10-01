@@ -49,11 +49,6 @@ widgets:
     name: {zh: 主机灯组, en: Host lights}
     sizes:
       2x2: {template: status-grid, bind: {items: {item: "host[*]"}}}
-  - id: hostlist
-    name: {zh: 主机列表, en: Host list}
-    sizes:
-      2x2: {template: list, bind: {items: {item: "host[*]"}}}
-      4x3: {template: list, bind: {items: {item: "host[*]"}}}
   - id: cpu
     name: {zh: CPU, en: CPU}
     sizes:

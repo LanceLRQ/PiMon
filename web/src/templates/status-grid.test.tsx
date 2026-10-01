@@ -139,3 +139,27 @@ describe('status-grid 模板：通配引用（Ruling 48）', () => {
     expect(container.querySelector('.tpl-grid__empty')!.textContent).toBe('暂无数据项')
   })
 })
+
+describe('status-grid 模板：行数计入行间距', () => {
+  it('量到的容器高度 189px、2 列：格子总高（含 4px 行距）不超过容器', async () => {
+    const w = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
+    const h = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 200 })
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 189 })
+    try {
+      const many: Item[] = Array.from({ length: 50 }, (_, i) => ({ key: `host[h${i}]`, type: 'state', state: 'ok', text: 'ok' }))
+      const widget = gridWidget({ cols: 2, rows: 2 }, many.map((m) => m.key))
+      const { container } = await renderIn(<WidgetView widget={widget} data={{ i1: makeData(many) }} />)
+      const cells = container.querySelectorAll('.tpl-grid__cell').length + container.querySelectorAll('.tpl-grid__more').length
+      const rows = Math.ceil(cells / 2)
+      // 旧算法按 floor(189 / 46) = 4 行排，实际高 4 × 46 + 3 × 4 = 196 > 189
+      expect(rows * 46 + (rows - 1) * 4).toBeLessThanOrEqual(189)
+      expect(rows).toBe(3)
+    } finally {
+      if (w) Object.defineProperty(HTMLElement.prototype, 'clientWidth', w)
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth
+      if (h) Object.defineProperty(HTMLElement.prototype, 'clientHeight', h)
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientHeight
+    }
+  })
+})

@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import type { Item, ResolvedRef, ResolvedWidget } from '@/types/generated'
-import { expandRefs, findItem, hasWildcardWithData } from './data'
+import { expandRefs, findItem, hasWildcardWithData, isWildcardRef } from './data'
 import { useScreenEnv } from './env'
 import { WidgetFrame } from './frame'
 import { fitList } from './fit'
@@ -35,9 +35,17 @@ function tableRows(item: Item, lang: 'zh' | 'en', pluginText: (s: string) => str
   })
 }
 
+// 要展开的引用：plugin 与 aggregate 取 items 槽；generic 取 value 槽，其中以 [*] 结尾的通配也展开成全部成员（Ruling 48）
+function widgetRefs(widget: ResolvedWidget): ResolvedRef[] {
+  if (widget.slots.items) return widget.slots.items
+  const single = widget.slots.value?.[0]
+  return single && isWildcardRef(single) ? [single] : []
+}
+
 function rowsOf(widget: ResolvedWidget, data: TemplateProps['data'], describe: (ref: ResolvedRef) => ItemView, lang: 'zh' | 'en', pluginText: (s: string) => string): Row[] {
-  const refs = expandRefs(widget.slots.items ?? [], data)
-  if (refs.length > 0) return refs.map((ref, i) => ({ key: `${ref.instance_id}/${ref.item}/${i}`, view: describe(ref) }))
+  const wanted = widgetRefs(widget)
+  const refs = expandRefs(wanted, data)
+  if (wanted.length > 0) return refs.map((ref, i) => ({ key: `${ref.instance_id}/${ref.item}/${i}`, view: describe(ref) }))
   const single = widget.slots.value?.[0]
   if (!single) return []
   const item = findItem(single, data)
@@ -52,7 +60,7 @@ export function ListTemplate({ widget, data, defaultThreshold }: TemplateProps) 
   const [boxRef, box] = useBoxSize<HTMLDivElement>()
   const rows = rowsOf(widget, data, (ref) => d.describe(ref, data), lang, d.pluginText)
   // 通配引用在实例数据已到达却没有成员：显示空态而不是「未知」
-  const empty = rows.length === 0 && hasWildcardWithData(widget.slots.items ?? [], data)
+  const empty = rows.length === 0 && hasWildcardWithData(widgetRefs(widget), data)
   const nominal = layoutVariant(widget.size) === 'wide' ? 2 : widget.size.rows * 2
   const { shown, more } = fitList(rows.length, capacityOf(box, ROW_PX, nominal))
 

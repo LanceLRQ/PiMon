@@ -1,6 +1,8 @@
 // 文字适配工具：宽度估算、截断、字号自适应、列表「+N」。纯函数，不依赖 DOM。
 
-const LATIN_UNIT = 0.55
+// 西文字符宽度（em）。浏览器里实测：等宽数字栈（SF Mono/Menlo/Liberation Mono）每个字符 0.602em，
+// Noto Sans CJK 的数字 0.6em，其余字符更窄；取 0.61 让估算不小于任何一种实测值。
+const LATIN_UNIT = 0.61
 
 function isWide(code: number): boolean {
   return (

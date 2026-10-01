@@ -77,4 +77,13 @@ test.describe('findScreenOverflow 自测', () => {
     await page.setContent(gauge(30))
     expect((await findScreenOverflow(page)).filter((x) => x.startsWith('仪表'))).toEqual([])
   })
+
+  test('数值被 overflow:hidden 硬裁必须报出（C-1），单行省略与行数限制放行', async ({ page }) => {
+    await page.setContent(widget('<div style="overflow:hidden;white-space:nowrap;width:60px;font:20px monospace">¥123,456,789.12</div>'))
+    expect((await findScreenOverflow(page)).some((x) => x.includes('内容被裁剪'))).toBe(true)
+    await page.setContent(widget('<div style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:60px;font:20px monospace">some long name here</div>'))
+    expect(await findScreenOverflow(page)).toEqual([])
+    await page.setContent(widget('<div style="overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;width:60px;font:16px monospace">aaaa bbbb cccc dddd eeee ffff gggg</div>'))
+    expect(await findScreenOverflow(page)).toEqual([])
+  })
 })
