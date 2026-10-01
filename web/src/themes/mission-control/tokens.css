@@ -1,0 +1,105 @@
+/* 任务控制（mission-control）：转写自 ui-demo 方向 1。深空蓝底、细线面板、方形 LED、等宽读数。
+   L1 只用 hex；L2 只引用本文件的 --p-*；不含 backdrop-filter、闪烁动画与网格纹理。 */
+:root[data-theme="mission-control"],
+/* stylelint-disable-next-line no-descending-specificity */
+[data-theme="mission-control"] {
+  /* L1 原始层 */
+  --p-bg: #060c17;
+  --p-panel: #0d1728;
+  --p-panel-hi: #111e36;
+  --p-muted: #0a1322;
+  --p-ink: #d9e4f2;
+  --p-dim: #8a9db5;
+  --p-faint: #5a6d85;
+  --p-line: #1f2c44;
+  --p-line-strong: #34445f;
+  --p-ring: #829ecd;
+  --p-amber: #e3a94f;
+  --p-amber-glow: #e3a94f8c;
+  --p-ok: #6fc48b;
+  --p-crit: #e8504a;
+  --p-unk: #7a8ba3;
+  --p-error: #b68cf0;
+  --p-warn-bg: #33270f;
+  --p-crit-bg: #3b1618;
+  --p-blue: #5fa8e8;
+  --p-grid: #1c2a41;
+
+  /* L2 表面与文字 */
+  --background: var(--p-bg);
+  --foreground: var(--p-ink);
+  --card: var(--p-panel);
+  --card-foreground: var(--p-ink);
+  --popover: var(--p-panel-hi);
+  --popover-foreground: var(--p-ink);
+  --muted: var(--p-muted);
+  --muted-foreground: var(--p-dim);
+  --border: var(--p-line);
+  --primary: var(--p-amber);
+  --primary-foreground: var(--p-bg);
+  --ring: var(--p-ring);
+  --surface-raised: var(--p-panel-hi);
+  --foreground-faint: var(--p-faint);
+
+  /* L2 状态：色 + 形 + 强调 */
+  --status-ok-color: var(--p-ok);
+  --status-ok-foreground: var(--p-bg);
+  --status-ok-marker: square;
+  --status-ok-weight: normal;
+  --status-warning-color: var(--p-amber);
+  --status-warning-foreground: var(--p-bg);
+  --status-warning-bg: var(--p-warn-bg);
+  --status-warning-marker: triangle;
+  --status-warning-weight: strong;
+  --status-critical-color: var(--p-crit);
+  --status-critical-foreground: var(--p-bg);
+  --status-critical-bg: var(--p-crit-bg);
+  --status-critical-marker: diamond;
+  --status-critical-weight: invert;
+  --status-unknown-color: var(--p-unk);
+  --status-unknown-foreground: var(--p-bg);
+  --status-unknown-marker: ring;
+  --status-unknown-weight: normal;
+  --status-error-color: var(--p-error);
+  --status-error-foreground: var(--p-bg);
+  --status-error-marker: dot;
+  --status-error-weight: strong;
+
+  /* L2 弱化态 */
+  --state-dim-opacity: 0.45;
+  --state-placeholder-border: 1px dashed var(--p-line-strong);
+
+  /* L2 排版 */
+  --font-display: "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-numeric: ui-monospace, "SFMono-Regular", menlo, consolas, "Liberation Mono", monospace;
+  --font-label: "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-body: "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --size-value-xl: 52px;
+  --size-value-lg: 34px;
+  --size-value-md: 24px;
+  --size-value-sm: 16px;
+  --size-label: 11px;
+
+  /* L2 形状、间距与密度 */
+  --radius: 2px;
+  --radius-card: var(--radius);
+  --border-card-width: 1px;
+  --border-card-style: solid;
+  --grid-gap: 10px;
+  --card-pad: 12px;
+  --density: compact;
+
+  /* L2 图表 */
+  --chart-1: var(--p-blue);
+  --chart-2: var(--p-ok);
+  --chart-3: var(--p-amber);
+  --chart-4: var(--p-crit);
+  --chart-5: var(--p-error);
+  --chart-grid: var(--p-grid);
+
+  /* L2 特效与动效 */
+  --effect-card-shadow: none;
+  --effect-glow: 0 0 6px var(--p-amber-glow);
+  --effect-backdrop: none;
+  --motion-duration: 150ms;
+}

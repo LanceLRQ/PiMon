@@ -1,0 +1,11 @@
+/* 降低特效（设计 10.5）：在屏幕根或编辑器画布上加 data-reduce-effects 属性即开启。
+   选择器覆盖「同一元素上同时带两个属性」与「属性在祖先上」两种写法，权重不低于主题块。 */
+:root[data-theme][data-reduce-effects],
+/* stylelint-disable-next-line no-descending-specificity */
+[data-theme][data-reduce-effects],
+[data-reduce-effects] [data-theme] {
+  --effect-card-shadow: none;
+  --effect-glow: none;
+  --effect-backdrop: none;
+  --motion-duration: 0ms;
+}

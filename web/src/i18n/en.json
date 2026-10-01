@@ -1043,5 +1043,10 @@
       "created": "Created backup \"{{name}}\"",
       "loadFailed": "Could not load the backup list"
     }
+  },
+  "screenThemes": {
+    "ambient": "Ambient",
+    "mission-control": "Mission Control",
+    "industrial": "Industrial"
   }
 }

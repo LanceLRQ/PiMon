@@ -1043,5 +1043,10 @@
       "created": "已生成备份「{{name}}」",
       "loadFailed": "无法加载备份列表"
     }
+  },
+  "screenThemes": {
+    "ambient": "氛围",
+    "mission-control": "任务控制",
+    "industrial": "工业面板"
   }
 }

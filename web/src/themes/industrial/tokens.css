@@ -1,0 +1,108 @@
+/* 工业面板（industrial）：转写自 ui-demo 方向 4。暖纸白仪器面板、信号橙、蚀刻标签。
+   L1 只用 hex；L2 只引用本文件的 --p-*；不含 backdrop-filter 与动画。
+   demo 中为对比度偏低的 LED 绿与橙，这里按 WCAG AA 加深。 */
+:root[data-theme="industrial"],
+/* stylelint-disable-next-line no-descending-specificity */
+[data-theme="industrial"] {
+  /* L1 原始层 */
+  --p-paper-screen: #e7e2d5;
+  --p-paper-1: #f2eee4;
+  --p-paper-2: #f7f4ec;
+  --p-paper-muted: #e0dbcd;
+  --p-ink: #1c1a16;
+  --p-ink-2: #4a463e;
+  --p-etch: #7a7567;
+  --p-line: #ccc7b9;
+  --p-line-dash: #a8a192;
+  --p-orange: #e2571e;
+  --p-orange-deep: #c04410;
+  --p-white: #fff6ee;
+  --p-red: #be2b21;
+  --p-ok: #557a40;
+  --p-unk: #6f6a5d;
+  --p-error: #6b3fa0;
+  --p-warn-bg: #f8e0cf;
+  --p-crit-bg: #f3cfc9;
+  --p-blue: #3f6fa0;
+  --p-ochre: #8a6a1f;
+  --p-grid: #d6d1c3;
+  --p-shadow: #14110c33;
+
+  /* L2 表面与文字 */
+  --background: var(--p-paper-screen);
+  --foreground: var(--p-ink);
+  --card: var(--p-paper-1);
+  --card-foreground: var(--p-ink);
+  --popover: var(--p-paper-2);
+  --popover-foreground: var(--p-ink);
+  --muted: var(--p-paper-muted);
+  --muted-foreground: var(--p-ink-2);
+  --border: var(--p-line);
+  --primary: var(--p-orange-deep);
+  --primary-foreground: var(--p-white);
+  --ring: var(--p-orange);
+  --surface-raised: var(--p-paper-2);
+  --foreground-faint: var(--p-etch);
+
+  /* L2 状态：色 + 形 + 强调 */
+  --status-ok-color: var(--p-ok);
+  --status-ok-foreground: var(--p-white);
+  --status-ok-marker: dot;
+  --status-ok-weight: normal;
+  --status-warning-color: var(--p-orange-deep);
+  --status-warning-foreground: var(--p-white);
+  --status-warning-bg: var(--p-warn-bg);
+  --status-warning-marker: ring;
+  --status-warning-weight: strong;
+  --status-critical-color: var(--p-red);
+  --status-critical-foreground: var(--p-white);
+  --status-critical-bg: var(--p-crit-bg);
+  --status-critical-marker: square;
+  --status-critical-weight: strong;
+  --status-unknown-color: var(--p-unk);
+  --status-unknown-foreground: var(--p-white);
+  --status-unknown-marker: diamond;
+  --status-unknown-weight: normal;
+  --status-error-color: var(--p-error);
+  --status-error-foreground: var(--p-white);
+  --status-error-marker: triangle;
+  --status-error-weight: strong;
+
+  /* L2 弱化态 */
+  --state-dim-opacity: 0.5;
+  --state-placeholder-border: 1px dashed var(--p-line-dash);
+
+  /* L2 排版 */
+  --font-display: "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-numeric: ui-monospace, "SFMono-Regular", menlo, consolas, "Liberation Mono", monospace;
+  --font-label: "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-body: "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --size-value-xl: 56px;
+  --size-value-lg: 36px;
+  --size-value-md: 26px;
+  --size-value-sm: 17px;
+  --size-label: 11px;
+
+  /* L2 形状、间距与密度 */
+  --radius: 7px;
+  --radius-card: var(--radius);
+  --border-card-width: 1px;
+  --border-card-style: solid;
+  --grid-gap: 10px;
+  --card-pad: 14px;
+  --density: regular;
+
+  /* L2 图表 */
+  --chart-1: var(--p-orange-deep);
+  --chart-2: var(--p-ok);
+  --chart-3: var(--p-blue);
+  --chart-4: var(--p-ochre);
+  --chart-5: var(--p-error);
+  --chart-grid: var(--p-grid);
+
+  /* L2 特效与动效 */
+  --effect-card-shadow: 0 2px 3px var(--p-shadow);
+  --effect-glow: none;
+  --effect-backdrop: none;
+  --motion-duration: 150ms;
+}

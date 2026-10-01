@@ -41,6 +41,26 @@ describe('屏幕端与模板目录的样式约束（ESLint）', () => {
     expect(msgs.length).toBeGreaterThanOrEqual(2)
   })
 
+  it('管理端颜色类在 screen 与 templates 目录下报错', async () => {
+    const msgs = await lintTs(fixture('admin-color-class.tsx'), 'src/templates/bad.tsx')
+    expect(msgs.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('Tailwind 默认调色板类报错', async () => {
+    const msgs = await lintTs(fixture('default-palette-class.tsx'), 'src/screen/bad.tsx')
+    expect(msgs.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('屏幕命名空间颜色类通过', async () => {
+    const msgs = await lintTs(fixture('screen-color-class.tsx'), 'src/templates/ok.tsx')
+    expect(msgs).toEqual([])
+  })
+
+  it('themes 目录不受颜色字面量禁令', async () => {
+    const msgs = await lintTs(fixture('color-literal.tsx'), 'src/themes/free.ts')
+    expect(msgs).toEqual([])
+  })
+
   it('只用语义 token 的写法通过', async () => {
     const msgs = await lintTs(fixture('clean.tsx'), 'src/screen/ok.tsx')
     expect(msgs).toEqual([])
