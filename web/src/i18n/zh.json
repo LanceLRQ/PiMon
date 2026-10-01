@@ -1508,6 +1508,7 @@
       "label": "缩放",
       "help": "高分屏放大文字与间距；网格列 × 行不变。",
       "restart": "保存只写入设置，需由 kiosk 重启 Chromium 后生效。"
-    }
+    },
+    "settingsFailedAfterLayout": "布局已保存（v{{version}}），但设置保存失败：{{error}}"
   }
 }

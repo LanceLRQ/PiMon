@@ -1,7 +1,7 @@
 import { History, Monitor, Power, Undo2, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { http } from '@/api/client'
 import { isApiError } from '@/api/errors'
 import { UnsavedGuard } from '@/app/unsaved-guard'
@@ -103,6 +103,9 @@ interface ConflictInfo {
 function EditorBody() {
   const { t, i18n } = useTranslation()
   const toast = useToast()
+  // ?screen=id：进入时定位到该标签，id 不存在时停在 index
+  const [searchParams] = useSearchParams()
+  const wantedScreen = searchParams.get('screen')
   const [state, rawDispatch] = useReducer(editorReducer, undefined, initialEditorState)
   // 保存在途时锁定所有编辑：成功后会用服务端返回整份替换草稿，期间的编辑会丢失（load 例外）
   const savingRef = useRef(false)
@@ -145,12 +148,13 @@ function EditorBody() {
         setLoadError(null)
         setServer({ catalog, status })
         dispatch({ type: 'load', version: layout.version, layout: layout.layout })
+        if (wantedScreen && layout.layout.screens.some((s) => s.id === wantedScreen)) dispatch({ type: 'selectScreen', id: wantedScreen })
       })
       .catch((e) => {
         if (!ctrl.signal.aborted) setLoadError(e)
       })
     return () => ctrl.abort()
-  }, [reloadKey, dispatch])
+  }, [reloadKey, dispatch, wantedScreen])
 
   const catalog = server?.catalog ?? null
   const pluginList = useMemo(() => plugins.list?.plugins ?? [], [plugins.list])

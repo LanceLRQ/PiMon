@@ -228,6 +228,41 @@ describe('screens 管理页', () => {
     expect(screen.queryByTestId('screens-dirty-bar')).toBeNull()
   })
 
+  it('409 后重新加载只重置布局草稿，设置草稿保留', async () => {
+    const user = userEvent.setup()
+    await mount((req) => (req.method === 'PUT' && req.url === '/api/screens' ? apiError(409, 'layout.conflict', { latest_version: 9 }) : undefined))
+    await user.click(within(row('s1')).getByRole('switch', { name: 's1 参与轮播' }))
+    await user.click(screen.getByRole('radio', { name: '1.5×' }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await screen.findByText(/布局已被修改/)
+    await user.click(screen.getByRole('button', { name: '重新加载最新布局' }))
+    await waitFor(() => expect(screen.queryByText(/布局已被修改/)).toBeNull())
+    expect(within(row('s1')).getByRole('switch', { name: 's1 参与轮播' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('radio', { name: '1.5×' })).toHaveAttribute('aria-checked', 'true')
+    expect(within(screen.getByTestId('screens-changes')).getByText('屏幕显示参数（轮播、输入方式或界面缩放）')).toBeInTheDocument()
+  })
+
+  it('布局保存成功、设置保存失败：提示里说明布局已保存，设置仍为未保存', async () => {
+    const user = userEvent.setup()
+    await mount((req) => {
+      if (req.method === 'PUT' && req.url === '/api/screens') return json(200, layoutState(6))
+      if (req.method === 'PUT' && req.url === '/api/settings') return apiError(500, 'internal')
+      return undefined
+    })
+    await user.click(within(row('s1')).getByRole('switch', { name: 's1 参与轮播' }))
+    await user.click(screen.getByRole('radio', { name: '1.5×' }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByText(/布局已保存（v6），但设置保存失败/)).toBeInTheDocument()
+    const bar = screen.getByTestId('screens-dirty-bar')
+    expect(within(bar).getByText('未保存 1 处改动')).toBeInTheDocument()
+  })
+
+  it('每行「编辑布局」带上 screen 参数', async () => {
+    await mount()
+    expect(within(row('s1')).getByRole('link', { name: '编辑布局' })).toHaveAttribute('href', '/screens/editor?screen=s1')
+    expect(within(row('index')).getByRole('link', { name: '编辑布局' })).toHaveAttribute('href', '/screens/editor?screen=index')
+  })
+
   it('layout.invalid 给出提示且保留草稿', async () => {
     const user = userEvent.setup()
     await mount((req) => (req.method === 'PUT' && req.url === '/api/screens' ? apiError(422, 'layout.invalid', { problems: [{}, {}] }) : undefined))

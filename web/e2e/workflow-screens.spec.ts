@@ -81,6 +81,10 @@ test('screens 管理页：新增、排序、保存后版本摘要记录重排，
     await page.goto('/screen')
     await expect(page.getByTestId('admin-preview-badge')).toHaveText('管理员预览')
     await expect(page.locator('[data-screen-grid]')).toBeVisible()
+    // 标识条不压住网格：网格上缘不高于标识条下缘
+    const badgeBox = (await page.getByTestId('admin-preview-badge').boundingBox())!
+    const gridBox = (await page.locator('[data-screen-grid]').boundingBox())!
+    expect(gridBox.y).toBeGreaterThanOrEqual(badgeBox.y + badgeBox.height - 1)
     await page.setViewportSize({ width: 800, height: 480 })
     // 服务端要求尺寸稳定 2 秒才采信：等过这个时间再看
     await page.waitForTimeout(3500)

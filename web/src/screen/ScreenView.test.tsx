@@ -416,3 +416,29 @@ describe('屏幕根：渲染开销', () => {
     expect(commits).toBeGreaterThan(base)
   })
 })
+
+describe('屏幕根：顶部让位', () => {
+  it('topInset 让出顶部高度：网格区从该高度开始，网格高度 = 视口高 - 让位', async () => {
+    setViewport(1024, 600)
+    const i18n = await createI18n('zh')
+    const { container } = render(
+      <I18nextProvider i18n={i18n}>
+        <ScreenView store={storeWith()} nav={new ScreenNavigator()} topInset={24} />
+      </I18nextProvider>,
+    )
+    const area = container.querySelector<HTMLElement>('[data-screen-grid-area]')!
+    expect(area.style.top).toBe('24px')
+    expect(container.querySelector<HTMLElement>('[data-screen-grid]')!.style.height).toBe('576px')
+  })
+
+  it('不传 topInset 时网格占满视口', async () => {
+    setViewport(1024, 600)
+    const i18n = await createI18n('zh')
+    const { container } = render(
+      <I18nextProvider i18n={i18n}>
+        <ScreenView store={storeWith()} nav={new ScreenNavigator()} />
+      </I18nextProvider>,
+    )
+    expect(container.querySelector<HTMLElement>('[data-screen-grid]')!.style.height).toBe('600px')
+  })
+})

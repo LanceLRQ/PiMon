@@ -7,8 +7,8 @@ import type { ScreenStore } from './screen-store'
 // 这里把它适配成屏幕端 store 认识的形状。布局解析结果走 GET /api/screens/resolved，
 // 实例数据订阅 screen_data（管理员会话可订阅）。预览端不上报 viewport，也不是屏幕会话，不影响显示器在线状态。
 
-/** 预览订阅的主题：管理员默认只有 instances、settings、layout、screen_state，需要额外订阅 screen_data */
-export const previewTopics = ['settings', 'layout', 'screen_state', 'screen_data']
+/** 预览订阅的主题：在管理员默认主题之外额外订阅 screen_data；instances 用来感知实例增删与状态变化（解析布局随之变） */
+export const previewTopics = ['instances', 'settings', 'layout', 'screen_state', 'screen_data']
 
 /** 完整设置里屏幕端用到的子集 */
 export function toScreenSettings(s: Settings): ScreenSettings {
@@ -20,8 +20,12 @@ export class PreviewSink implements SocketSink {
   private seq = 0
   private readonly store: ScreenStore
   private readonly loadResolved: () => Promise<ResolvedLayout>
+  private readonly debounceMs: number
+  private timer: ReturnType<typeof setTimeout> | null = null
+  private pendingTime = ''
 
-  constructor(store: ScreenStore, loadResolved: () => Promise<ResolvedLayout>, initial: ResolvedLayout) {
+  constructor(store: ScreenStore, loadResolved: () => Promise<ResolvedLayout>, initial: ResolvedLayout, debounceMs = 300) {
+    this.debounceMs = debounceMs
     this.store = store
     this.loadResolved = loadResolved
     this.resolved = initial
@@ -48,9 +52,27 @@ export class PreviewSink implements SocketSink {
       case 'screen_data':
         this.store.applyPatch(p)
         return
+      case 'instance_state':
+      case 'instance_removed':
+        // 实例增删与展示状态变化会让解析布局变化（真实屏幕会收到新布局）：合并一小段时间内的多次变化再重取
+        this.pendingTime = p.server_time
+        if (!this.timer) {
+          this.timer = setTimeout(() => {
+            this.timer = null
+            void this.refreshLayout(this.pendingTime)
+          }, this.debounceMs)
+        }
+        return
       default:
         return
     }
+  }
+
+  /** 卸载时取消尚未触发的重取 */
+  dispose() {
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = null
+    this.seq++
   }
 
   private async refreshLayout(serverTime: string) {

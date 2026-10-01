@@ -1508,6 +1508,7 @@
       "label": "Scale",
       "help": "Enlarges text and spacing on high-resolution displays; the grid columns × rows stay the same.",
       "restart": "Saving only stores the setting; it takes effect after the kiosk restarts Chromium."
-    }
+    },
+    "settingsFailedAfterLayout": "The layout was saved (v{{version}}), but saving the settings failed: {{error}}"
   }
 }

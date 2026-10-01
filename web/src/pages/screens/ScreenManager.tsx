@@ -87,6 +87,8 @@ export function ScreenManager() {
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const [conflictLatest, setConflictLatest] = useState<number | null>(null)
+  // 409 后重新加载只重置布局草稿，设置草稿保留（设置本身没有冲突）
+  const keepDisplayRef = useRef(false)
   const [pendingGrid, setPendingGrid] = useState<Grid | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
 
@@ -103,7 +105,8 @@ export function ScreenManager() {
         setLoadError(null)
         setServer({ status, versions })
         setSettingsBase(settings)
-        setDisplay(settings.screen)
+        if (!keepDisplayRef.current) setDisplay(settings.screen)
+        keepDisplayRef.current = false
         dispatch({ type: 'load', version: layout.version, layout: layout.layout })
         setConflictLatest(null)
         setLoaded(true)
@@ -190,10 +193,12 @@ export function ScreenManager() {
   const save = async () => {
     savingRef.current = true
     setSaving(true)
+    let layoutVersion: number | null = null
     try {
       if (changes.length > 0) {
         try {
           const st = await http.put<LayoutState>('/api/screens', { base_version: state.baseVersion, layout: draft })
+          layoutVersion = st.version
           dispatch({ type: 'load', version: st.version, layout: st.layout })
           http.get<LayoutVersionInfo[]>('/api/screens/versions').then((versions) => setServer((s) => s && { ...s, versions }), () => {})
           setConflictLatest(null)
@@ -218,7 +223,8 @@ export function ScreenManager() {
           setSettingsBase(saved)
           setDisplay(saved.screen)
         } catch (e) {
-          toast.show(translateErrorValue(i18n, e), 'warn')
+          const detail = translateErrorValue(i18n, e)
+          toast.show(layoutVersion === null ? detail : t('screens.settingsFailedAfterLayout', { version: layoutVersion, error: detail }), 'warn')
           return
         }
       }
@@ -285,15 +291,16 @@ export function ScreenManager() {
               className="rounded-[2px]"
               disabled={draft.screens.length >= MAX_SCREENS || saving}
               title={draft.screens.length >= MAX_SCREENS ? t('layoutEd.screenTab.full', { max: MAX_SCREENS }) : undefined}
+              aria-label={t('screens.add')}
               onClick={addScreen}
             >
               <Plus size={15} />
-              {t('screens.add')}
+              <span className="mobile:hidden">{t('screens.add')}</span>
             </Button>
             <Button asChild size="sm" className="rounded-[2px]">
-              <Link to="/screens/editor">
+              <Link to="/screens/editor" aria-label={t('screens.editLayout')}>
                 <Layers size={15} />
-                {t('screens.editLayout')}
+                <span className="mobile:hidden">{t('screens.editLayout')}</span>
               </Link>
             </Button>
           </div>
@@ -330,7 +337,15 @@ export function ScreenManager() {
           <Note tone="crit" role="alert">
             {t('screens.conflict', { base: state.baseVersion, latest: conflictLatest })}
             <div className="mt-2">
-              <Button variant="outline" size="sm" className="rounded-[2px]" onClick={() => setReloadKey((k) => k + 1)}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-[2px]"
+                onClick={() => {
+                  keepDisplayRef.current = true
+                  setReloadKey((k) => k + 1)
+                }}
+              >
                 {t('screens.conflictReload')}
               </Button>
             </div>

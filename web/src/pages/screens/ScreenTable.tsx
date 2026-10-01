@@ -40,7 +40,7 @@ function DwellInput({ id, value, fallback, onCommit }: { id: string; value: numb
         placeholder={t('screens.list.dwellPlaceholder', { n: fallback })}
         invalid={parsed === null}
         value={text}
-        className="h-7 w-[84px] font-mono"
+        className="h-7 w-[112px] font-mono"
         onChange={(e) => {
           setText(e.target.value)
           const n = parse(e.target.value)
@@ -144,14 +144,14 @@ export function ScreenTable({ screens, defaultDwell, modified, unsavedIds, thumb
   const th = 'px-3 py-2 text-left text-[11.5px] font-medium text-muted-foreground'
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] border-collapse text-[13px]" data-testid="screen-table">
+      <table className="w-full min-w-[980px] whitespace-nowrap border-collapse text-[13px]" data-testid="screen-table">
         <thead>
           <tr className="border-b border-border">
             <th className="w-10" />
             <th className={cn(th, 'w-[196px] mobile:hidden')}>{t('screens.list.col.thumb')}</th>
             <th className={th}>{t('screens.list.col.screen')}</th>
             <th className={cn(th, 'w-[90px]')}>{t('screens.list.col.widgets')}</th>
-            <th className={cn(th, 'w-[140px]')}>{t('screens.list.col.dwell')}</th>
+            <th className={cn(th, 'w-[170px]')}>{t('screens.list.col.dwell')}</th>
             <th className={cn(th, 'w-[100px]')}>{t('screens.list.col.rotation')}</th>
             <th className={cn(th, 'w-[170px]')}>{t('screens.list.col.modified')}</th>
             <th className="w-[150px]" />
@@ -190,7 +190,7 @@ export function ScreenTable({ screens, defaultDwell, modified, unsavedIds, thumb
                 </td>
                 <td className="px-3 py-2 mobile:hidden">{thumbs[s.id]}</td>
                 <td className="px-3 py-2">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <div className="flex items-center gap-2">
                     <span className="font-mono text-[12px]">{s.id}</span>
                     <NameCell screen={s} onRename={(name) => onRename(s.id, name)} />
                     {home && <span className="rounded-[2px] border border-signal px-1.5 text-[11px] leading-[18px] text-signal-text">{t('screens.list.homeTag')}</span>}
@@ -214,7 +214,7 @@ export function ScreenTable({ screens, defaultDwell, modified, unsavedIds, thumb
                 <td className="px-3 py-2">
                   <div className="flex items-center justify-end gap-1.5">
                     <Button asChild variant="outline" size="sm" className="rounded-[2px]">
-                      <Link to="/screens/editor">
+                      <Link to={`/screens/editor?screen=${encodeURIComponent(s.id)}`}>
                         <LayoutGrid size={13} />
                         {t('screens.list.editLayout')}
                       </Link>

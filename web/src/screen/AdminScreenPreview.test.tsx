@@ -75,7 +75,7 @@ describe('管理员 /screen 预览', () => {
     await waitFor(() => expect(FakeSocket.last).not.toBeNull())
     const sock = FakeSocket.last!
     act(() => sock.onopen?.())
-    expect(sock.sent.find((m) => m.type === 'subscribe')?.topics).toEqual(['settings', 'layout', 'screen_state', 'screen_data'])
+    expect(sock.sent.find((m) => m.type === 'subscribe')?.topics).toEqual(['instances', 'settings', 'layout', 'screen_state', 'screen_data'])
     act(() =>
       sock.receive({
         type: 'snapshot', build: 'b', server_time: new Date().toISOString(), role: 'admin', topics: [], instances: [], settings,
@@ -85,6 +85,11 @@ describe('管理员 /screen 预览', () => {
     )
     expect(await screen.findByText('你好')).toBeInTheDocument()
     expect(screen.getByTestId('admin-preview-badge')).toHaveTextContent('管理员预览')
+    // 网格从标识条下方开始，不被压住
+    const badge = screen.getByTestId('admin-preview-badge').parentElement!
+    expect(badge).toHaveClass('h-6')
+    expect(document.querySelector<HTMLElement>('[data-screen-grid-area]')!.style.top).toBe('24px')
+    expect(document.querySelector<HTMLElement>('[data-screen-grid]')!.style.height).toBe('576px')
     expect(screen.getByRole('link', { name: '返回管理界面' })).toHaveAttribute('href', '/')
   })
 
@@ -131,5 +136,20 @@ describe('管理员 /screen 预览', () => {
     expect(await screen.findByText('预览加载失败')).toBeInTheDocument()
     expect(within(document.body).getByTestId('admin-preview-badge')).toBeInTheDocument()
     expect(FakeSocket.last).toBeNull()
+  })
+
+  it('实例变化的 patch 触发（合并后的）重取解析布局', async () => {
+    let version = 4
+    await mount(() => json(200, layoutOf(version === 4 ? defaultScreens() : [{ ...defaultScreens()[0], widgets: [] }], version)))
+    await waitFor(() => expect(FakeSocket.last).not.toBeNull())
+    const sock = FakeSocket.last!
+    act(() => sock.onopen?.())
+    act(() =>
+      sock.receive({ type: 'snapshot', build: 'b', server_time: new Date().toISOString(), role: 'admin', topics: [], instances: [], settings, screen_state: { mode: 'on', theme_id: 'ambient', reason: 'schedule' } }),
+    )
+    expect(await screen.findByText('你好')).toBeInTheDocument()
+    version = 5
+    act(() => sock.receive({ type: 'patch', server_time: new Date().toISOString(), entity: 'instance_state', instance: { id: 'i1' } }))
+    await waitFor(() => expect(screen.queryByText('你好')).toBeNull(), { timeout: 3000 })
   })
 })

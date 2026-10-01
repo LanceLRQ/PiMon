@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ResolvedLayout, Settings } from '@/types/generated'
 import type { Patch, Snapshot } from '@/types/protocol.generated'
 import { PreviewSink, previewTopics, toScreenSettings } from './admin-preview'
@@ -29,7 +29,7 @@ describe('管理员预览适配', () => {
 
   it('订阅 screen_data（管理员默认没有）', () => {
     expect(previewTopics).toContain('screen_data')
-    expect(previewTopics).not.toContain('instances')
+    expect(previewTopics).toContain('instances')
   })
 
   it('snapshot：设置、屏幕状态、实例数据来自管理员 snapshot，布局用解析后的', () => {
@@ -77,5 +77,39 @@ describe('管理员预览适配', () => {
     expect(s.screenState?.mode).toBe('off')
     expect(Object.keys(s.data).sort()).toEqual(['i1', 'i2'])
     expect(s.settings?.language).toBe('zh')
+  })
+
+  describe('实例变化重取解析布局', () => {
+    afterEach(() => vi.useRealTimers())
+
+    it('实例状态变化与删除的 patch 合并成一次重取，结果更新布局', async () => {
+      vi.useFakeTimers()
+      const store = createScreenStore()
+      const load = vi.fn(async () => layoutOf(defaultScreens(), 9))
+      const sink = new PreviewSink(store, load, layoutOf(defaultScreens(), 1), 300)
+      sink.applySnapshot(adminSnapshot())
+      sink.applyPatch(patch({ entity: 'instance_state' }))
+      vi.advanceTimersByTime(100)
+      sink.applyPatch(patch({ entity: 'instance_removed' }))
+      sink.applyPatch(patch({ entity: 'instance_state' }))
+      expect(load).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(300)
+      expect(load).toHaveBeenCalledTimes(1)
+      expect(store.getState().layout?.version).toBe(9)
+      // 之后的变化再触发一次
+      sink.applyPatch(patch({ entity: 'instance_state' }))
+      await vi.advanceTimersByTimeAsync(300)
+      expect(load).toHaveBeenCalledTimes(2)
+    })
+
+    it('dispose 后不再重取', async () => {
+      vi.useFakeTimers()
+      const load = vi.fn(async () => layoutOf(defaultScreens(), 9))
+      const sink = new PreviewSink(createScreenStore(), load, layoutOf(defaultScreens(), 1), 300)
+      sink.applyPatch(patch({ entity: 'instance_state' }))
+      sink.dispose()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(load).not.toHaveBeenCalled()
+    })
   })
 })

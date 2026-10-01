@@ -34,6 +34,8 @@ export interface ScreenViewProps {
   store: ScreenStore
   nav: ScreenNavigator
   reporter?: ScreenReporter
+  /** 顶部让出的高度（像素），管理员预览的标识条用；网格按剩余高度排版 */
+  topInset?: number
 }
 
 /** 横向位移达到该像素且明显大于纵向位移才算左右滑动 */
@@ -78,7 +80,7 @@ function titlesOf(layout: ResolvedLayout | null): Map<string, string> {
  * 状态机（轮播、触摸、远程命令、详情层）由外部传入的 ScreenNavigator 驱动；
  * 关屏时只渲染纯黑遮罩并卸载小组件，停止一切动效；有触摸时支持滑动切屏与点开详情层。
  */
-export function ScreenView({ store, nav, reporter }: ScreenViewProps) {
+export function ScreenView({ store, nav, reporter, topInset = 0 }: ScreenViewProps) {
   const { i18n } = useTranslation()
   // 按切片订阅：时钟校正、连接状态等无关变化不触发整棵网格重渲
   const layout = useScreenStore((s) => s.layout, store)
@@ -209,14 +211,16 @@ export function ScreenView({ store, nav, reporter }: ScreenViewProps) {
             ) : (
               <>
                 {layout && screen && (
-                  <GridView
-                    screen={screen}
-                    grid={layout.grid}
-                    width={width}
-                    height={height}
-                    data={dataMap}
-                    onWidgetClick={touch ? onWidgetClick : undefined}
-                  />
+                  <div data-screen-grid-area className="absolute inset-x-0 bottom-0" style={{ top: topInset }}>
+                    <GridView
+                      screen={screen}
+                      grid={layout.grid}
+                      width={width}
+                      height={Math.max(height - topInset, 0)}
+                      data={dataMap}
+                      onWidgetClick={touch ? onWidgetClick : undefined}
+                    />
+                  </div>
                 )}
                 {detailWidget && (
                   <DetailLayer

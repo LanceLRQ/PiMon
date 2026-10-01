@@ -73,10 +73,10 @@ function handler(over: ApiHandler = () => undefined): ApiHandler {
   }
 }
 
-async function mount(over?: ApiHandler) {
+async function mount(over?: ApiHandler, route?: string) {
   const api = mockApi(handler(over))
   seedStore([makeInstance({ id: 'i1', name: '树莓派 CPU', plugin_id: 'demo' }), makeInstance({ id: 'i2', name: '第二个', plugin_id: 'demo', created_at: '2027-01-01T00:00:00Z' })])
-  await renderWithApp(<LayoutEditor />)
+  await renderWithApp(<LayoutEditor />, { route })
   await screen.findByTestId('layout-editor')
   return api
 }
@@ -93,6 +93,16 @@ afterEach(() => {
 })
 
 describe('布局编辑器', () => {
+  it('?screen=id 进入时定位到对应标签；id 不存在时停在 index', async () => {
+    await mount(undefined, '/screens/editor?screen=s1')
+    expect(screen.getByRole('tab', { name: /主机/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('?screen 指向不存在的 screen 时回落到 index', async () => {
+    await mount(undefined, '/screens/editor?screen=nope')
+    expect(screen.getByRole('tab', { name: /首页/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
   it('三栏载入：库三个 Tab、画布小组件、检查器概要、基于的版本号', async () => {
     await mount()
     expect(screen.getByTestId('base-version')).toHaveTextContent('基于 v3')

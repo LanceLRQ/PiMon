@@ -16,6 +16,9 @@ import { ShellFrame } from './ScreenNotices'
 import { ScreenNavigator } from './state-machine'
 import { readStoredScreenTheme } from './theme-apply'
 
+/** 顶部标识条高度（像素，与标识条的 h-6 一致）：网格从它下方开始，不被压住 */
+const PREVIEW_BADGE_HEIGHT = 24
+
 const loadResolved = () => http.get<ResolvedLayout>('/api/screens/resolved')
 
 export interface AdminScreenPreviewProps {
@@ -29,7 +32,7 @@ function PreviewBadge() {
   return (
     <ThemeRoot
       themeId={readStoredScreenTheme()}
-      className="pointer-events-none fixed inset-x-0 top-0 z-[60] flex items-center justify-center gap-3 bg-s-primary px-3 py-0.5 text-[12px] text-s-primary-fg"
+      className="pointer-events-none fixed inset-x-0 top-0 z-[60] flex h-6 items-center justify-center gap-3 bg-s-primary px-3 text-[12px] text-s-primary-fg"
     >
       <b data-testid="admin-preview-badge" className="font-semibold">
         {t('screenApp.adminPreview.badge')}
@@ -58,6 +61,7 @@ function PreviewBody({ initial, socket: socketOptions }: { initial: ResolvedLayo
     })
     socket.start()
     return () => {
+      sink.dispose()
       socket.stop()
       nav.dispose()
       store.reset()
@@ -66,7 +70,7 @@ function PreviewBody({ initial, socket: socketOptions }: { initial: ResolvedLayo
 
   return (
     <>
-      <ScreenView store={store} nav={nav} />
+      <ScreenView store={store} nav={nav} topInset={PREVIEW_BADGE_HEIGHT} />
       <PreviewBadge />
     </>
   )
