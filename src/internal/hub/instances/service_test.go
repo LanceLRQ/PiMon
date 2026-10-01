@@ -1030,3 +1030,77 @@ func TestOnChangeNotifiesEveryMutation(t *testing.T) {
 		t.Fatalf("View = %+v %v", v, err)
 	}
 }
+
+// corruptRow 模拟库里配置损坏（config_json 不是合法 JSON）或密钥密文无法解密。
+func corruptRow(t *testing.T, f *fx, id, kind string) {
+	t.Helper()
+	switch kind {
+	case "config":
+		_, err := f.db.Exec(`UPDATE plugin_instances SET config_json=? WHERE id=?`, `{not json`, id)
+		must(t, err)
+	case "secrets":
+		_, err := f.db.Exec(`UPDATE plugin_instances SET secrets_enc=? WHERE id=?`, `garbage-ciphertext`, id)
+		must(t, err)
+	}
+}
+
+func TestGetCorruptInstanceReportsRefillProblem(t *testing.T) {
+	for _, kind := range []string{"config", "secrets"} {
+		t.Run(kind, func(t *testing.T) {
+			f := newFx(t)
+			d := f.create("probe", "损坏实例", probeCfg("a.example"))
+			corruptRow(t, f, d.ID, kind)
+			got, err := f.svc.Get(bg, d.ID)
+			if err != nil {
+				t.Fatalf("Get 不应失败: %v", err)
+			}
+			if got.Problems[RefillKey] != model.FieldInvalid {
+				t.Fatalf("应提示需重新填写: %v", got.Problems)
+			}
+		})
+	}
+}
+
+func TestUpdateCorruptInstanceTakesBodyAsFullConfig(t *testing.T) {
+	for _, kind := range []string{"config", "secrets"} {
+		t.Run(kind, func(t *testing.T) {
+			f := newFx(t)
+			f.start()
+			d := f.create("probe", "损坏实例", probeCfg("a.example"))
+			corruptRow(t, f, d.ID, kind)
+
+			// 请求体不带密钥：不能再沿用旧值，按必填缺失返回字段错误而不是 500
+			_, err := f.svc.Update(bg, d.ID, model.InstanceInput{Name: "损坏实例", Config: map[string]any{"host": "b.example"}})
+			var fe model.FieldErrors
+			if !errors.As(err, &fe) || fe["api_key"] != model.FieldRequired {
+				t.Fatalf("缺密钥应返回字段错误: %v", err)
+			}
+
+			// 回显标记也不能当作保留旧值
+			_, err = f.svc.Update(bg, d.ID, model.InstanceInput{Name: "损坏实例",
+				Config: map[string]any{"host": "b.example", "api_key": map[string]any{"set": true}}})
+			if !errors.As(err, &fe) {
+				t.Fatalf("回显标记应被拒绝: %v", err)
+			}
+
+			// 完整重填后成功，问题标记清除，可正常运行
+			got, err := f.svc.Update(bg, d.ID, model.InstanceInput{Name: "损坏实例", Config: probeCfg("b.example")})
+			if err != nil {
+				t.Fatalf("重填应成功: %v", err)
+			}
+			if len(got.Problems) != 0 || got.Issue != "" {
+				t.Fatalf("成功后应清除问题: issue=%q problems=%v", got.Issue, got.Problems)
+			}
+			g2, err := f.svc.Get(bg, d.ID)
+			if err != nil || len(g2.Problems) != 0 {
+				t.Fatalf("再次读取仍有问题: %v %v", err, g2.Problems)
+			}
+			if _, err := f.svc.Run(bg, d.ID); err != nil {
+				t.Fatal(err)
+			}
+			if f.probe.last().Secrets["api_key"] != "s3cret-key" || f.probe.last().Config["host"] != "b.example" {
+				t.Fatalf("重填后的配置未生效: %+v", f.probe.last())
+			}
+		})
+	}
+}
