@@ -1,7 +1,144 @@
 {
   "app": {
     "name": "PiMon",
-    "tagline": "Admin console for the desktop monitoring panel",
-    "placeholder": "The frontend toolchain is ready; pages arrive in later tasks."
-  }
+    "tagline": "Admin console for the desktop monitoring panel"
+  },
+  "nav": {
+    "primary": "Main navigation",
+    "mobile": "Mobile navigation",
+    "overview": "Overview",
+    "screens": "Screens",
+    "instances": "Instances",
+    "instancesShort": "Instances",
+    "proxies": "Proxies",
+    "settings": "Settings",
+    "system": "System",
+    "devices": "Devices",
+    "alerts": "Alert rules",
+    "channels": "Channels",
+    "later": "later",
+    "more": "More",
+    "laterHint": "Available in {{milestone}}",
+    "sub": {
+      "screenManage": "Screen manager",
+      "layoutEditor": "Layout editor",
+      "schedule": "Schedule & theme",
+      "remote": "Remote control",
+      "instanceList": "Instance list",
+      "instanceNew": "New instance"
+    }
+  },
+  "shell": {
+    "admin": "Administrator",
+    "logout": "Sign out",
+    "logoutFailed": "Sign-out failed",
+    "theme": {
+      "label": "Theme",
+      "system": "Follow system",
+      "light": "Light",
+      "dark": "Dark",
+      "toDark": "Switch to dark",
+      "toLight": "Switch to light"
+    },
+    "language": {
+      "label": "Interface language",
+      "zh": "中",
+      "en": "EN"
+    },
+    "connection": {
+      "online": "Live connection is healthy",
+      "offline": "Live connection lost, reconnecting"
+    },
+    "loading": "Loading",
+    "sessionError": "Cannot read the session state. Check that the hub is running.",
+    "retry": "Retry",
+    "notFound": "Page not found"
+  },
+  "placeholder": {
+    "pending": "This page will be implemented in a later task.",
+    "m1d": "This page will be implemented in M1d."
+  },
+  "pages": {
+    "login": "Sign in",
+    "setup": "First-time setup",
+    "overview": "Overview",
+    "instances": "Instances",
+    "instanceNew": "New instance",
+    "instanceEdit": "Edit instance",
+    "proxies": "Proxies",
+    "settings": "Settings",
+    "system": "System",
+    "screens": "Screen manager",
+    "layoutEditor": "Layout editor",
+    "schedule": "Schedule & theme",
+    "remote": "Remote control"
+  },
+  "status": {
+    "ok": "OK",
+    "warning": "Warning",
+    "critical": "Critical",
+    "unknown": "Unknown",
+    "error": "Collection failed",
+    "stale": "Stale",
+    "offline": "Offline",
+    "maintenance": "Maintenance",
+    "unconfigured": "Not configured",
+    "broken": "Broken reference"
+  },
+  "errors": {
+    "request": {
+      "invalid_json": "The request body is malformed",
+      "timeout": "The request timed out"
+    },
+    "validation": {
+      "failed": "Some fields did not pass validation. Check the highlighted fields."
+    },
+    "auth": {
+      "required": "Sign-in required",
+      "forbidden": "You are not allowed to do this",
+      "invalid_password": "Wrong password",
+      "locked": "Too many attempts. Temporarily locked, try again later."
+    },
+    "setup": {
+      "required": "First-time setup has not been completed",
+      "already_done": "First-time setup is already done",
+      "invalid_code": "Wrong setup code"
+    },
+    "origin": {
+      "mismatch": "Origin check failed. Open this page through the hub address directly."
+    },
+    "not_found": "Resource not found",
+    "backup": {
+      "exists": "A backup with the same reason already exists for this second. Try again shortly."
+    },
+    "plugin": {
+      "not_found": "Plugin not found",
+      "invalid_manifest": "The plugin manifest is invalid"
+    },
+    "proxy": {
+      "not_found": "Proxy not found",
+      "in_use": "The proxy is used by instances and cannot be deleted"
+    },
+    "instance": {
+      "not_found": "Instance not found",
+      "in_use": "The instance is used by screens and cannot be deleted"
+    },
+    "run": {
+      "timeout": "Collection timed out",
+      "failed": "Collection failed",
+      "busy": "This instance is running. Try again shortly."
+    },
+    "internal": "Internal hub error",
+    "server": {
+      "shutting_down": "The hub is shutting down. Try again shortly."
+    },
+    "ws": {
+      "subscribe_denied": "This session may not subscribe to the requested topics",
+      "bad_message": "The live connection received an unrecognised message"
+    },
+    "network": {
+      "failed": "Cannot reach the hub. Check your network."
+    }
+  },
+  "errorFallback": "Operation failed ({{code}})"
 }

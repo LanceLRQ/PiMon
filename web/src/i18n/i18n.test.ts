@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { createI18n, detectLanguage } from './index'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { applySettingsLanguage, createI18n, detectLanguage, languageStorageKey, setLanguage } from './index'
 import zh from './zh.json'
 import en from './en.json'
 
@@ -29,5 +29,34 @@ describe('i18n', () => {
     expect(detectLanguage('zh-TW')).toBe('zh')
     expect(detectLanguage('en-US')).toBe('en')
     expect(detectLanguage('fr')).toBe('en')
+  })
+
+  describe('语言来源', () => {
+    beforeEach(() => localStorage.clear())
+
+    it('侧栏切换写入 localStorage 并更新文档语言', async () => {
+      const i18n = await createI18n('zh')
+      await setLanguage(i18n, 'en')
+      expect(i18n.language).toBe('en')
+      expect(localStorage.getItem(languageStorageKey)).toBe('en')
+      expect(document.documentElement.lang).toBe('en')
+    })
+
+    it('全局设置的语言仅在本浏览器没有覆盖时生效', async () => {
+      const i18n = await createI18n('zh')
+      await applySettingsLanguage(i18n, 'en')
+      expect(i18n.language).toBe('en')
+
+      const other = await createI18n('zh')
+      localStorage.setItem(languageStorageKey, 'zh')
+      await applySettingsLanguage(other, 'en')
+      expect(other.language).toBe('zh')
+    })
+
+    it('设置里的语言非法时忽略', async () => {
+      const i18n = await createI18n('zh')
+      await applySettingsLanguage(i18n, 'fr')
+      expect(i18n.language).toBe('zh')
+    })
   })
 })

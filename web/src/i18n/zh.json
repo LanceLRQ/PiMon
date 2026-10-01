@@ -1,7 +1,144 @@
 {
   "app": {
     "name": "PiMon",
-    "tagline": "桌面监控面板的管理界面",
-    "placeholder": "前端工程已就绪，页面将在后续任务中实现。"
-  }
+    "tagline": "桌面监控面板的管理界面"
+  },
+  "nav": {
+    "primary": "主导航",
+    "mobile": "手机导航",
+    "overview": "总览",
+    "screens": "屏幕",
+    "instances": "监控实例",
+    "instancesShort": "实例",
+    "proxies": "代理",
+    "settings": "设置",
+    "system": "系统",
+    "devices": "设备",
+    "alerts": "告警规则",
+    "channels": "通知渠道",
+    "later": "后续阶段",
+    "more": "更多",
+    "laterHint": "{{milestone}} 阶段提供",
+    "sub": {
+      "screenManage": "屏幕管理",
+      "layoutEditor": "布局编辑器",
+      "schedule": "时段计划与主题",
+      "remote": "远程操作",
+      "instanceList": "实例列表",
+      "instanceNew": "新建实例"
+    }
+  },
+  "shell": {
+    "admin": "管理员",
+    "logout": "退出登录",
+    "logoutFailed": "退出登录失败",
+    "theme": {
+      "label": "主题",
+      "system": "跟随系统",
+      "light": "浅色",
+      "dark": "深色",
+      "toDark": "切换到深色",
+      "toLight": "切换到浅色"
+    },
+    "language": {
+      "label": "界面语言",
+      "zh": "中",
+      "en": "EN"
+    },
+    "connection": {
+      "online": "实时连接正常",
+      "offline": "实时连接已断开，正在重连"
+    },
+    "loading": "加载中",
+    "sessionError": "无法获取登录状态，请确认中枢是否在运行",
+    "retry": "重试",
+    "notFound": "页面不存在"
+  },
+  "placeholder": {
+    "pending": "页面内容将在后续任务中实现。",
+    "m1d": "此页面将在 M1d 实现。"
+  },
+  "pages": {
+    "login": "登录",
+    "setup": "首次设置",
+    "overview": "总览",
+    "instances": "监控实例",
+    "instanceNew": "新建实例",
+    "instanceEdit": "编辑实例",
+    "proxies": "代理",
+    "settings": "设置",
+    "system": "系统",
+    "screens": "屏幕管理",
+    "layoutEditor": "布局编辑器",
+    "schedule": "时段计划与主题",
+    "remote": "远程操作"
+  },
+  "status": {
+    "ok": "正常",
+    "warning": "警告",
+    "critical": "严重",
+    "unknown": "未知",
+    "error": "采集失败",
+    "stale": "过期",
+    "offline": "离线",
+    "maintenance": "维护中",
+    "unconfigured": "未配置",
+    "broken": "引用失效"
+  },
+  "errors": {
+    "request": {
+      "invalid_json": "请求内容格式不正确",
+      "timeout": "请求超时"
+    },
+    "validation": {
+      "failed": "填写内容未通过校验，请检查标出的字段"
+    },
+    "auth": {
+      "required": "需要登录",
+      "forbidden": "没有权限执行此操作",
+      "invalid_password": "密码错误",
+      "locked": "尝试次数过多，已被临时锁定，请稍后再试"
+    },
+    "setup": {
+      "required": "尚未完成首次设置",
+      "already_done": "首次设置已完成",
+      "invalid_code": "设置码错误"
+    },
+    "origin": {
+      "mismatch": "请求来源校验失败，请直接通过中枢地址访问本页面"
+    },
+    "not_found": "资源不存在",
+    "backup": {
+      "exists": "同一秒内已有相同原因的备份，请稍后再试"
+    },
+    "plugin": {
+      "not_found": "插件不存在",
+      "invalid_manifest": "插件描述文件不合法"
+    },
+    "proxy": {
+      "not_found": "代理不存在",
+      "in_use": "代理正被实例引用，无法删除"
+    },
+    "instance": {
+      "not_found": "实例不存在",
+      "in_use": "实例正被屏幕引用，无法删除"
+    },
+    "run": {
+      "timeout": "采集超时",
+      "failed": "采集失败",
+      "busy": "该实例正在运行，请稍后再试"
+    },
+    "internal": "中枢内部错误",
+    "server": {
+      "shutting_down": "中枢正在关停，请稍后重试"
+    },
+    "ws": {
+      "subscribe_denied": "当前会话无权订阅所请求的内容",
+      "bad_message": "实时连接收到无法识别的消息"
+    },
+    "network": {
+      "failed": "无法连接中枢，请检查网络"
+    }
+  },
+  "errorFallback": "操作失败（{{code}}）"
 }

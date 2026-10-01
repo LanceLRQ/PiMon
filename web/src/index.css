@@ -4,48 +4,83 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* 管理界面 token：默认浅色，琥珀 #E8AB6A 为唯一信号色，完整主题由 admin-theme 在 C4 接管 */
+/* 手机布局：宽度 ≤640px（侧栏收起，改为底部标签栏） */
+@custom-variant mobile (@media (max-width: 640px));
+
+/* 管理界面 token（原型 admin.css 的两层中性色 + 唯一信号色琥珀）。
+   shadcn 变量映射：background = 纸灰页面底，card/popover = 面板，accent = 中性悬停底，primary = 琥珀。 */
 :root {
-  --background: #fafaf9;
-  --foreground: #1c1b19;
-  --card: #fff;
-  --card-foreground: #1c1b19;
-  --popover: #fff;
-  --popover-foreground: #1c1b19;
+  --background: #ecebe7;
+  --foreground: #1a1917;
+  --card: #f8f7f4;
+  --card-foreground: #1a1917;
+  --popover: #f8f7f4;
+  --popover-foreground: #1a1917;
   --primary: #e8ab6a;
-  --primary-foreground: #1c1b19;
-  --secondary: #f1f0ee;
-  --secondary-foreground: #1c1b19;
-  --muted: #f1f0ee;
-  --muted-foreground: #6b6862;
-  --accent: #e8ab6a;
-  --accent-foreground: #1c1b19;
-  --destructive: #c2410c;
-  --border: #dcdad5;
-  --input: #dcdad5;
+  --primary-foreground: #1a1917;
+  --secondary: #e4e2dc;
+  --secondary-foreground: #1a1917;
+  --muted: #e4e2dc;
+  --muted-foreground: #66625a;
+  --accent: #e4e2dc;
+  --accent-foreground: #1a1917;
+  --destructive: #b0362d;
+  --border: #cbc8c0;
+  --input: #a9a59c;
   --ring: #e8ab6a;
   --radius: 0.25rem;
+  --panel-2: #e4e2dc;
+  --ink-2: #4f4c46;
+  --line-strong: #a9a59c;
+  --inv-bg: #1a1917;
+  --inv-ink: #f8f7f4;
+  --signal: #e8ab6a;
+  --signal-text: #8f531a;
+  --signal-soft: rgb(232 171 106 / 18%);
+  --status-ok: #3d7536;
+  --status-warn: #8e5e0e;
+  --status-crit: #b0362d;
+  --status-unknown: #6f6a61;
+  --logo-stroke: #131215;
+  --logo-shadow: #c9c2b6;
+
+  color-scheme: light;
 }
 
 .dark {
-  --background: #141413;
-  --foreground: #ecebe8;
-  --card: #1b1a19;
-  --card-foreground: #ecebe8;
-  --popover: #1b1a19;
-  --popover-foreground: #ecebe8;
+  --background: #0f0f0e;
+  --foreground: #ece8e1;
+  --card: #171716;
+  --card-foreground: #ece8e1;
+  --popover: #171716;
+  --popover-foreground: #ece8e1;
   --primary: #e8ab6a;
-  --primary-foreground: #141413;
-  --secondary: #242321;
-  --secondary-foreground: #ecebe8;
-  --muted: #242321;
-  --muted-foreground: #9a968e;
-  --accent: #e8ab6a;
-  --accent-foreground: #141413;
-  --destructive: #ea7a4a;
-  --border: #33312e;
-  --input: #33312e;
+  --primary-foreground: #171716;
+  --secondary: #1f1e1c;
+  --secondary-foreground: #ece8e1;
+  --muted: #1f1e1c;
+  --muted-foreground: #939087;
+  --accent: #1f1e1c;
+  --accent-foreground: #ece8e1;
+  --destructive: #e2857f;
+  --border: #2e2d2a;
+  --input: #4a4843;
   --ring: #e8ab6a;
+  --panel-2: #1f1e1c;
+  --ink-2: #b3aea4;
+  --line-strong: #4a4843;
+  --inv-bg: #ece8e1;
+  --inv-ink: #171716;
+  --signal-text: #edb77c;
+  --signal-soft: rgb(232 171 106 / 16%);
+  --status-ok: #a9c9a1;
+  --status-warn: #e4b268;
+  --status-crit: #e2857f;
+  --status-unknown: #8a8578;
+  --logo-stroke: #f2ece2;
+  --logo-shadow: #4a4540;
+
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -69,6 +104,18 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-panel-2: var(--panel-2);
+  --color-ink-2: var(--ink-2);
+  --color-line-strong: var(--line-strong);
+  --color-inv-bg: var(--inv-bg);
+  --color-inv-ink: var(--inv-ink);
+  --color-signal: var(--signal);
+  --color-signal-text: var(--signal-text);
+  --color-signal-soft: var(--signal-soft);
+  --color-status-ok: var(--status-ok);
+  --color-status-warn: var(--status-warn);
+  --color-status-crit: var(--status-crit);
+  --color-status-unknown: var(--status-unknown);
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) + 2px);
