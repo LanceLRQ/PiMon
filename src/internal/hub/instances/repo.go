@@ -58,7 +58,7 @@ func scanRow(sc rowScanner) (row, error) {
 	r.Config = map[string]any{}
 	if err := json.Unmarshal([]byte(cfgJSON), &r.Config); err != nil {
 		r.Config = map[string]any{}
-		r.Corrupt = fmt.Sprintf("实例配置已损坏（不是合法 JSON：%v），请删除后重建", err)
+		r.Corrupt = fmt.Sprintf("实例配置已损坏（不是合法 JSON：%v），请在编辑页重新填写配置", err)
 	}
 	var err error
 	if r.CreatedAt, err = store.ParseTime(created); err != nil {
