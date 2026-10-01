@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/netip"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
@@ -15,8 +16,12 @@ func Defaults(timezone string) model.Settings {
 		Language:       "zh",
 		Timezone:       timezone,
 		TrustedProxies: []string{},
-		Retention:      model.RetentionSettings{RawHours: 24, FiveMinDays: 30, HourDays: 365},
-		Backup:         model.BackupSettings{DailyAt: "04:00", Keep: 7},
+		Screen: model.ScreenDisplaySettings{
+			CarouselMode: model.CarouselAuto, IdleHomeSeconds: 60, DefaultDwellSeconds: 15,
+			InputMode: model.InputAuto, UIScale: 1,
+		},
+		Retention: model.RetentionSettings{RawHours: 24, FiveMinDays: 30, HourDays: 365},
+		Backup:    model.BackupSettings{DailyAt: "04:00", Keep: 7},
 	}
 }
 
@@ -39,6 +44,7 @@ func Validate(s model.Settings) error {
 			fe[fmt.Sprintf("trusted_proxies[%d]", i)] = model.FieldInvalid
 		}
 	}
+	validateScreen(fe, s.Screen)
 	checkRange(fe, "retention.raw_hours", s.Retention.RawHours, 1, 168)
 	checkRange(fe, "retention.five_min_days", s.Retention.FiveMinDays, 1, 365)
 	checkRange(fe, "retention.hour_days", s.Retention.HourDays, 1, 1825)
@@ -85,4 +91,19 @@ func parseProxy(v string) (netip.Prefix, error) {
 		return netip.Prefix{}, err
 	}
 	return netip.PrefixFrom(a, a.BitLen()), nil
+}
+
+// validateScreen 校验屏幕显示参数。
+func validateScreen(fe model.FieldErrors, v model.ScreenDisplaySettings) {
+	if v.CarouselMode != model.CarouselHomeOnly && v.CarouselMode != model.CarouselAuto {
+		fe["screen.carousel_mode"] = model.FieldInvalid
+	}
+	checkRange(fe, "screen.idle_home_seconds", v.IdleHomeSeconds, 10, 3600)
+	checkRange(fe, "screen.default_dwell_seconds", v.DefaultDwellSeconds, 3, 3600)
+	if v.InputMode != model.InputAuto && v.InputMode != model.InputTouch && v.InputMode != model.InputNone {
+		fe["screen.input_mode"] = model.FieldInvalid
+	}
+	if !slices.Contains([]float64{1, 1.25, 1.5, 2}, v.UIScale) {
+		fe["screen.ui_scale"] = model.FieldInvalid
+	}
 }

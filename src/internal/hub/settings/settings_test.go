@@ -82,6 +82,14 @@ func TestValidate_非法用例(t *testing.T) {
 		{"备份时刻越界", func(s *model.Settings) { s.Backup.DailyAt = "25:00" }, "backup.daily_at", "invalid"},
 		{"备份份数为0", func(s *model.Settings) { s.Backup.Keep = 0 }, "backup.keep", "out_of_range"},
 		{"备份份数过大", func(s *model.Settings) { s.Backup.Keep = 31 }, "backup.keep", "out_of_range"},
+		{"轮播模式", func(s *model.Settings) { s.Screen.CarouselMode = "loop" }, "screen.carousel_mode", "invalid"},
+		{"回首页秒数过小", func(s *model.Settings) { s.Screen.IdleHomeSeconds = 9 }, "screen.idle_home_seconds", "out_of_range"},
+		{"回首页秒数过大", func(s *model.Settings) { s.Screen.IdleHomeSeconds = 3601 }, "screen.idle_home_seconds", "out_of_range"},
+		{"默认停留过小", func(s *model.Settings) { s.Screen.DefaultDwellSeconds = 2 }, "screen.default_dwell_seconds", "out_of_range"},
+		{"默认停留过大", func(s *model.Settings) { s.Screen.DefaultDwellSeconds = 3601 }, "screen.default_dwell_seconds", "out_of_range"},
+		{"输入方式", func(s *model.Settings) { s.Screen.InputMode = "mouse" }, "screen.input_mode", "invalid"},
+		{"界面缩放", func(s *model.Settings) { s.Screen.UIScale = 1.1 }, "screen.ui_scale", "invalid"},
+		{"界面缩放为0", func(s *model.Settings) { s.Screen.UIScale = 0 }, "screen.ui_scale", "invalid"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -99,6 +107,22 @@ func TestValidate_非法用例(t *testing.T) {
 				t.Fatalf("只应有一个错误: %v", fe)
 			}
 		})
+	}
+}
+
+func TestDefaults_屏幕参数(t *testing.T) {
+	want := model.ScreenDisplaySettings{
+		CarouselMode: "auto", IdleHomeSeconds: 60, DefaultDwellSeconds: 15, InputMode: "auto", UIScale: 1,
+	}
+	if got := Defaults("UTC").Screen; got != want {
+		t.Fatalf("屏幕参数默认值 = %+v，期望 %+v", got, want)
+	}
+	for _, scale := range []float64{1, 1.25, 1.5, 2} {
+		s := Defaults("UTC")
+		s.Screen.UIScale = scale
+		if err := Validate(s); err != nil {
+			t.Fatalf("缩放 %v 应合法: %v", scale, err)
+		}
 	}
 }
 
@@ -234,6 +258,9 @@ func TestLoad_旧JSON缺字段补默认值(t *testing.T) {
 	}
 	if g.TrustedProxies == nil {
 		t.Fatal("null 应规整为空切片")
+	}
+	if g.Screen != Defaults("Asia/Shanghai").Screen {
+		t.Fatalf("旧 JSON 没有 screen 时应取默认值: %+v", g.Screen)
 	}
 }
 

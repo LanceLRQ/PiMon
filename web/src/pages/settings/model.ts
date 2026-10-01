@@ -1,6 +1,7 @@
 import type { Settings } from '@/types/generated'
 
 // 设置页的脏状态检测与保存前规整。所有比较都基于规整后的值，首尾空白不算修改。
+// screen（屏幕显示参数）暂无界面，保存时原样回传，不参与脏检测。
 
 export type SettingsKey =
   | 'language'
@@ -20,6 +21,7 @@ export function normalizeForSave(s: Settings): Settings {
     ...s,
     access_url: s.access_url.trim(),
     trusted_proxies: s.trusted_proxies.map((p) => p.trim()).filter((p) => p !== ''),
+    screen: { ...s.screen },
     retention: { ...s.retention },
     backup: { ...s.backup },
   }

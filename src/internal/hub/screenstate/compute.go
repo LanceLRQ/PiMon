@@ -141,9 +141,9 @@ func visiblyDiffers(a, b model.ScreenState) bool {
 	return a.Mode != b.Mode || (a.Mode == model.ScreenModeOn && a.ThemeID != b.ThemeID)
 }
 
-// Compute 计算 now 时刻的屏幕状态与下一次可见变化的时刻。
+// compute 计算 now 时刻的屏幕状态与下一次可见变化的时刻。
 // 优先级：远程临时操作 > 时段计划；计划不合法时按默认计划计算。
-func Compute(s model.Schedule, loc *time.Location, now time.Time, ov *override) model.ScreenState {
+func compute(s model.Schedule, loc *time.Location, now time.Time, ov *override) model.ScreenState {
 	ps := sortedPeriods(s)
 	if len(ps) == 0 || len(ValidateSchedule(s)) > 0 {
 		ps = sortedPeriods(DefaultSchedule())

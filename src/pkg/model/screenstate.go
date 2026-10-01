@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
+)
 
 // 屏幕主题取值：时段计划里只能使用内置主题或关屏。
 const (
@@ -96,6 +100,13 @@ type ScreenStatus struct {
 	Viewport *Viewport `json:"viewport,omitempty"`
 	// CoarsePointer 是屏幕上报的触摸（粗指针）能力；未上报时缺省。
 	CoarsePointer *bool `json:"coarse_pointer,omitempty"`
+	// CurrentScreen 是屏幕会话最近一次上报的当前 screen id；未上报时缺省。
+	CurrentScreen string `json:"current_screen,omitempty"`
+	// Online 表示此刻有屏幕会话的 WebSocket 连着；LastSeen 是最近一次在线或掉线的时刻，从未连过时缺省。
+	Online   bool       `json:"online"`
+	LastSeen *time.Time `json:"last_seen,omitempty"`
+	// RecommendedGrid 是按已采信 viewport 推算出的推荐网格；尚无 viewport 时缺省。
+	RecommendedGrid *Grid `json:"recommended_grid,omitempty"`
 }
 
 // ScreenControlRequest 是 POST /api/screen/control 的请求体。
@@ -130,4 +141,17 @@ type ScreenControlResponse struct {
 type SetupCodeReveal struct {
 	Code      string    `json:"code"`
 	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// ScreenInstanceData 是屏幕端渲染一个小组件所需的实例数据：展示状态与最新报告的数据项。
+// 不含实例配置、密钥、事件与插件私有状态。
+type ScreenInstanceData struct {
+	InstanceID    string     `json:"instance_id"`
+	DisplayState  string     `json:"display_state"`
+	ReportStatus  string     `json:"report_status"`
+	ReportStale   bool       `json:"report_stale"`
+	Summary       string     `json:"summary"`
+	LastSuccessAt *time.Time `json:"last_success_at" tstype:"string | null,required"`
+	// Items 是最新报告的数据项；从未成功采集时为空数组。
+	Items []report.Item `json:"items"`
 }

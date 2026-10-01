@@ -5,7 +5,6 @@ package screenstate
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 )
@@ -147,7 +146,7 @@ func sortedPeriods(s model.Schedule) []period {
 func normalizeSchedule(s model.Schedule) model.Schedule {
 	out := model.Schedule{Periods: make([]model.SchedulePeriod, 0, len(s.Periods))}
 	for _, p := range s.Periods {
-		out.Periods = append(out.Periods, model.SchedulePeriod{Start: p.Start, End: p.End, Theme: strings.TrimSpace(p.Theme)})
+		out.Periods = append(out.Periods, model.SchedulePeriod{Start: p.Start, End: p.End, Theme: p.Theme})
 	}
 	sort.SliceStable(out.Periods, func(i, j int) bool { return out.Periods[i].Start < out.Periods[j].Start })
 	return out

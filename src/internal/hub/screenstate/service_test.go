@@ -191,6 +191,73 @@ func TestService_远程关屏与开屏(t *testing.T) {
 	}
 }
 
+func TestService_保存计划后远程关屏到期点按新计划重算(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, shanghai(t, 20, 0, 0))
+	if err := f.svc.SetSchedule(ctx, nightOff()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Control(ctx, model.ScreenControlRequest{Action: model.ScreenActionOff}, ""); err != nil {
+		t.Fatal(err)
+	}
+	early := model.Schedule{Periods: []model.SchedulePeriod{
+		per("07:00", "21:00", model.ThemeAmbient), per("21:00", "07:00", model.ThemeOff),
+	}}
+	if err := f.svc.SetSchedule(ctx, early); err != nil {
+		t.Fatal(err)
+	}
+	st := f.svc.State()
+	if st.Mode != model.ScreenModeOff || st.Until == nil || !st.Until.Equal(shanghai(t, 21, 0, 0)) {
+		t.Fatalf("到期点应改为新计划的 21:00: %+v", st)
+	}
+}
+
+func TestService_时区变化后远程开关屏到期点重算且亮屏时长不变(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, shanghai(t, 20, 0, 0)) // 伦敦 13:00（BST）
+	if err := f.svc.SetSchedule(ctx, nightOff()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Control(ctx, model.ScreenControlRequest{Action: model.ScreenActionOff}, ""); err != nil {
+		t.Fatal(err)
+	}
+	f.tz.set("Europe/London")
+	f.svc.Refresh()
+	want := time.Date(2026, 10, 1, 23, 0, 0, 0, mustLoc(t, "Europe/London"))
+	if st := f.svc.State(); st.Until == nil || !st.Until.Equal(want) {
+		t.Fatalf("到期点应按伦敦时区重算为 23:00: %+v", st)
+	}
+
+	if _, err := f.svc.Control(ctx, model.ScreenControlRequest{Action: model.ScreenActionWake, Minutes: 30}, ""); err != nil {
+		t.Fatal(err)
+	}
+	before := f.svc.State().Until
+	f.tz.set("Asia/Shanghai")
+	f.svc.Refresh()
+	if after := f.svc.State().Until; before == nil || after == nil || !after.Equal(*before) {
+		t.Fatalf("临时亮屏的到期点不应随时区变化: %v -> %v", before, after)
+	}
+}
+
+func TestService_屏幕在线与当前screen(t *testing.T) {
+	f := newFixture(t, shanghai(t, 12, 0, 0))
+	if on, seen := f.svc.Online(); on || seen != nil {
+		t.Fatalf("初始应为离线且无最近在线时间: %v %v", on, seen)
+	}
+	f.svc.SetScreenOnline(true)
+	f.svc.ReportCurrentScreen("screen2")
+	st := f.svc.Status()
+	if !st.Online || st.LastSeen == nil || !st.LastSeen.Equal(f.clk.Now()) || st.CurrentScreen != "screen2" {
+		t.Fatalf("Status = %+v", st)
+	}
+	f.clk.Advance(time.Minute)
+	f.svc.SetScreenOnline(false)
+	on, seen := f.svc.Online()
+	if on || seen == nil || !seen.Equal(f.clk.Now()) {
+		t.Fatalf("离线后应更新最近在线时间: %v %v", on, seen)
+	}
+}
+
 func TestService_操作记录与一次性指令回调(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t, shanghai(t, 12, 0, 0))

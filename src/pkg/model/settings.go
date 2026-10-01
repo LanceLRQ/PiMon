@@ -14,9 +14,35 @@ type Settings struct {
 	// HTTPSEnabled 是否启用 HTTPS；修改后需重启才生效。
 	HTTPSEnabled bool `json:"https_enabled"`
 	// ReduceEffects 降低屏幕特效。
-	ReduceEffects bool              `json:"reduce_effects"`
-	Retention     RetentionSettings `json:"retention"`
-	Backup        BackupSettings    `json:"backup"`
+	ReduceEffects bool `json:"reduce_effects"`
+	// Screen 是屏幕显示参数（轮播、输入方式、界面缩放）。
+	Screen    ScreenDisplaySettings `json:"screen"`
+	Retention RetentionSettings     `json:"retention"`
+	Backup    BackupSettings        `json:"backup"`
+}
+
+// 屏幕轮播模式与输入方式取值。
+const (
+	CarouselHomeOnly = "home_only"
+	CarouselAuto     = "auto"
+
+	InputAuto  = "auto"
+	InputTouch = "touch"
+	InputNone  = "none"
+)
+
+// ScreenDisplaySettings 是屏幕显示参数，随 ScreenSettings 下发给屏幕会话。
+type ScreenDisplaySettings struct {
+	// CarouselMode 轮播模式：home_only 只显示首页，auto 自动轮播。
+	CarouselMode string `json:"carousel_mode"`
+	// IdleHomeSeconds 无操作多少秒回到首页（10–3600）。
+	IdleHomeSeconds int `json:"idle_home_seconds"`
+	// DefaultDwellSeconds 未单独设置停留时长的 screen 的默认停留秒数（3–3600）。
+	DefaultDwellSeconds int `json:"default_dwell_seconds"`
+	// InputMode 输入方式：auto 按屏幕上报判断，touch 按触摸屏处理，none 按无触摸屏处理。
+	InputMode string `json:"input_mode"`
+	// UIScale 界面缩放：1、1.25、1.5 或 2。
+	UIScale float64 `json:"ui_scale"`
 }
 
 // RetentionSettings 历史数据保留期。

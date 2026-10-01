@@ -49,6 +49,9 @@ type Service struct {
 	last     model.ScreenState
 	haveLast bool
 	coarse   *bool
+	current  string
+	online   bool
+	lastSeen *time.Time
 	onChange func(model.ScreenState)
 	onCmd    func(Command)
 	onVP     func(model.Viewport)
@@ -71,7 +74,9 @@ func New(c Config) *Service {
 }
 
 // OnChange 注册屏幕状态变化的回调：状态（含 until、next_change）与上次通知的不同才调用，
-// 同步执行且不持内部锁，必须非阻塞；重复注册会覆盖前一个。
+// 同步执行且不持 mu，必须非阻塞；回调不可重入：执行期间持有通知顺序锁，
+// 不得在回调里调用 Refresh、Control、SetSchedule 等会再次计算并通知的方法（会死锁）。
+// 重复注册会覆盖前一个。
 func (s *Service) OnChange(f func(model.ScreenState)) {
 	s.mu.Lock()
 	s.onChange = f
@@ -152,10 +157,21 @@ func (s *Service) SetSchedule(ctx context.Context, n model.Schedule) error {
 	}
 	s.mu.Lock()
 	s.sched = n
+	s.reanchorLocked()
 	s.mu.Unlock()
 	s.recompute()
 	s.wake()
 	return nil
+}
+
+// reanchorLocked 在时段计划或时区变化后，把远程开屏、关屏的到期点按新计划重算为下一个时段边界
+// （临时亮屏是固定时长，不受影响）。调用方持 mu。
+func (s *Service) reanchorLocked() {
+	now := s.clk.Now()
+	if !s.ov.activeAt(now) || s.ov.kind == overlayWake {
+		return
+	}
+	s.ov = newOverride(s.sched, s.location(), now, s.ov.kind, 0)
 }
 
 // location 返回全局时区；名称非法时回退 UTC。
@@ -173,7 +189,7 @@ func (s *Service) computeLocked() model.ScreenState {
 	if s.ov != nil && !s.ov.activeAt(now) {
 		s.ov = nil
 	}
-	return Compute(s.sched, s.location(), now, s.ov)
+	return compute(s.sched, s.location(), now, s.ov)
 }
 
 // State 返回此刻的屏幕状态。
@@ -191,9 +207,43 @@ func (s *Service) Status() model.ScreenStatus {
 		c := *s.coarse
 		st.CoarsePointer = &c
 	}
+	st.CurrentScreen = s.current
+	st.Online = s.online
+	if s.lastSeen != nil {
+		t := *s.lastSeen
+		st.LastSeen = &t
+	}
 	s.mu.Unlock()
 	st.Viewport = s.vp.Current()
 	return st
+}
+
+// ReportCurrentScreen 记录屏幕会话正在显示的 screen id。
+func (s *Service) ReportCurrentScreen(id string) {
+	s.mu.Lock()
+	s.current = id
+	s.mu.Unlock()
+}
+
+// SetScreenOnline 记录屏幕会话的在线状态：有屏幕会话的 WebSocket 连着即在线；
+// 每次在线与离线的切换都更新最近在线时间。
+func (s *Service) SetScreenOnline(online bool) {
+	now := s.clk.Now().UTC()
+	s.mu.Lock()
+	s.online = online
+	s.lastSeen = &now
+	s.mu.Unlock()
+}
+
+// Online 返回屏幕是否在线，以及最近一次在线或掉线的时刻（从未连过为 nil）。
+func (s *Service) Online() (online bool, lastSeen *time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lastSeen != nil {
+		t := *s.lastSeen
+		lastSeen = &t
+	}
+	return s.online, lastSeen
 }
 
 // ReportViewport 处理屏幕会话上报的 viewport（来源校验由调用方负责）。
@@ -206,8 +256,11 @@ func (s *Service) ReportCoarsePointer(coarse bool) {
 	s.mu.Unlock()
 }
 
-// Refresh 立即重算状态；时区等外部输入变化后调用。
+// Refresh 立即重算状态；时区等外部输入变化后调用，远程开屏、关屏的到期点随之按新时区重算。
 func (s *Service) Refresh() {
+	s.mu.Lock()
+	s.reanchorLocked()
+	s.mu.Unlock()
 	s.recompute()
 	s.wake()
 }

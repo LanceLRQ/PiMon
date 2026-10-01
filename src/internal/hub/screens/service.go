@@ -54,6 +54,9 @@ type Service struct {
 	// mu 串行化写入（保存、回滚）。
 	mu sync.Mutex
 
+	// seeds 按网格取种子布局，供首次 viewport 自动选网格使用；为空则不自动选。
+	seeds SeedFunc
+
 	cbMu     sync.RWMutex
 	onChange func(model.LayoutState)
 }
