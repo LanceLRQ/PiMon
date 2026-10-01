@@ -1,5 +1,7 @@
-import { PlaceholderPage } from '@/ui/placeholder-page'
+import { useParams } from 'react-router'
+import { InstanceEditor } from './editor/InstanceEditor'
 
 export function InstanceEditPage() {
-  return <PlaceholderPage no="03" titleKey="pages.instanceEdit" />
+  const { id } = useParams()
+  return <InstanceEditor mode="edit" instanceId={id} />
 }

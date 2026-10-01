@@ -1,5 +1,5 @@
-import { PlaceholderPage } from '@/ui/placeholder-page'
+import { InstanceEditor } from './editor/InstanceEditor'
 
 export function InstanceNewPage() {
-  return <PlaceholderPage no="03" titleKey="pages.instanceNew" />
+  return <InstanceEditor mode="new" />
 }
