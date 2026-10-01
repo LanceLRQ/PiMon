@@ -1,6 +1,7 @@
 import type { Grid, Layout, LayoutScreen, LayoutWidget, WidgetSize } from '@/types/generated'
 import { evaluatePlacement, outOfBoundsWidgets, sizeAllowed, type GridWidgetRect } from './grid-ops'
 import { diffLayouts, undoChange, type Change } from './changes'
+import { MAX_SCREENS, SCREEN_ID_PATTERN, normalizeScreenName } from './screen-rules'
 import { applyOptionsPatch, type OptionsPatch } from './options'
 
 // 编辑器状态：保留服务端基线（base + baseVersion）与当前草稿（draft），
@@ -40,6 +41,8 @@ export type EditorAction =
   | { type: 'setOptions'; id: string; patch: OptionsPatch }
   | { type: 'setBinding'; id: string; binding: LayoutWidget['binding'] }
   | { type: 'setGrid'; grid: Grid; removeOutOfBounds?: boolean }
+  | { type: 'addScreen'; id: string; name: string }
+  | { type: 'renameScreen'; id: string; name: string }
   | { type: 'undoChange'; key: string }
   | { type: 'undoLast' }
   | { type: 'discard' }
@@ -138,6 +141,19 @@ function innerReducer(state: EditorState, action: EditorAction): EditorState {
         rejection: null,
       }
     }
+    case 'addScreen': {
+      const name = normalizeScreenName(action.name)
+      const ids = state.draft.screens.map((s) => s.id)
+      if (!name || !SCREEN_ID_PATTERN.test(action.id) || ids.includes(action.id) || ids.length >= MAX_SCREENS) return state
+      const screen: LayoutScreen = { id: action.id, name, dwell_seconds: 0, in_rotation: true, widgets: [] }
+      return { ...state, draft: { ...state.draft, screens: [...state.draft.screens, screen] }, screenId: action.id, selectedId: null, rejection: null }
+    }
+    case 'renameScreen': {
+      const name = normalizeScreenName(action.name)
+      const cur = state.draft.screens.find((s) => s.id === action.id)
+      if (!name || !cur || cur.name === name) return state
+      return { ...state, draft: { ...state.draft, screens: state.draft.screens.map((s) => (s.id === action.id ? { ...s, name } : s)) } }
+    }
     case 'undoChange':
       return applyUndo(state, diffLayouts(state.base, state.draft).find((c) => c.key === action.key))
     case 'undoLast':
@@ -162,7 +178,7 @@ function applyUndo(state: EditorState, change: Change | undefined): EditorState 
   return {
     ...state,
     draft: r.draft,
-    screenId: change.screenId && r.draft.screens.some((s) => s.id === change.screenId) ? change.screenId : state.screenId,
+    screenId: [change.screenId, state.screenId, r.draft.screens[0]?.id].find((id) => id && r.draft.screens.some((s) => s.id === id)) ?? 'index',
     selectedId: stillThere ? change.widgetId! : null,
     rejection: null,
   }
@@ -178,7 +194,8 @@ export function changeList(state: EditorState): Change[] {
 function touch(prev: EditorState, next: EditorState): string[] {
   const before = new Map(diffLayouts(next.base, prev.draft).map((c) => [c.key, c.sig]))
   const now = diffLayouts(next.base, next.draft)
-  const touched = now.filter((c) => before.get(c.key) !== c.sig).map((c) => c.key)
+  // 网格改动排在同批其他改动之后：缩小网格连带删除的小组件，要先撤网格才放得回去，顶栏撤销才不会卡住
+  const touched = now.filter((c) => before.get(c.key) !== c.sig).sort((a, b) => Number(a.kind === 'grid') - Number(b.kind === 'grid')).map((c) => c.key)
   const alive = new Set(now.map((c) => c.key))
   return [...prev.order.filter((k) => alive.has(k) && !touched.includes(k)), ...touched]
 }

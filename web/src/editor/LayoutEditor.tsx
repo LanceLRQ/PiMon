@@ -1,5 +1,5 @@
 import { History, Monitor, Power, Undo2, Upload } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import { http } from '@/api/client'
@@ -25,13 +25,15 @@ import { diffLayouts, widgetLabel, type Change } from './changes'
 import { ConflictDialog } from './ConflictDialog'
 import { DEFAULT_VIEWPORT } from './geometry'
 import { HistorySheet } from './HistorySheet'
+import { MAX_SCREENS, nextScreenId } from './screen-rules'
+import { ScreenTabs } from './ScreenTabs'
 import { EditorCanvas, type DragIntent } from './EditorCanvas'
 import { firstFreeSpot, moveByKey, occupiedCells, type Cell } from './grid-ops'
 import { Inspector } from './Inspector'
 import { allowedSizesOf, buildLibrary, createWidget, newWidgetId, templateOf, type LibraryEntry } from './library'
 import { applyPreviewState, previewStates, type PreviewState } from './preview-state'
 import { resolveScreen, referencedInstanceIds } from './resolve-draft'
-import { changeList, currentScreen, editorReducer, gridShrinkConflicts, initialEditorState, toRect, type Rejection } from './state'
+import { changeList, currentScreen, editorReducer, type EditorAction, gridShrinkConflicts, initialEditorState, toRect, type Rejection } from './state'
 import { useCanvasData } from './use-canvas-data'
 import { WidgetLibrary } from './WidgetLibrary'
 
@@ -101,7 +103,14 @@ interface ConflictInfo {
 function EditorBody() {
   const { t, i18n } = useTranslation()
   const toast = useToast()
-  const [state, dispatch] = useReducer(editorReducer, undefined, initialEditorState)
+  const [state, rawDispatch] = useReducer(editorReducer, undefined, initialEditorState)
+  // 保存在途时锁定所有编辑：成功后会用服务端返回整份替换草稿，期间的编辑会丢失（load 例外）
+  const savingRef = useRef(false)
+  const dispatch = useCallback((a: EditorAction) => {
+    if (savingRef.current && a.type !== 'load') return
+    rawDispatch(a)
+  }, [])
+  const [editingScreen, setEditingScreen] = useState<string | null>(null)
   const [server, setServer] = useState<ServerData | null>(null)
   const [loadError, setLoadError] = useState<unknown>(null)
   const [reloadKey, setReloadKey] = useState(0)
@@ -113,7 +122,11 @@ function EditorBody() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [discardOpen, setDiscardOpen] = useState(false)
   const [pendingGrid, setPendingGrid] = useState<Grid | null>(null)
-  const [saving, setSaving] = useState(false)
+  const [saving, setSavingState] = useState(false)
+  const setSaving = (v: boolean) => {
+    savingRef.current = v
+    setSavingState(v)
+  }
   const [conflict, setConflict] = useState<ConflictInfo | null>(null)
   const plugins = usePlugins()
   const instances = useLiveStore(selectInstances)
@@ -137,7 +150,7 @@ function EditorBody() {
         if (!ctrl.signal.aborted) setLoadError(e)
       })
     return () => ctrl.abort()
-  }, [reloadKey])
+  }, [reloadKey, dispatch])
 
   const catalog = server?.catalog ?? null
   const pluginList = useMemo(() => plugins.list?.plugins ?? [], [plugins.list])
@@ -173,7 +186,7 @@ function EditorBody() {
     toast.show(rejectionMessage(t, rejection), 'warn')
     const timer = setTimeout(() => dispatch({ type: 'clearRejection' }), 2500)
     return () => clearTimeout(timer)
-  }, [rejection, t, toast])
+  }, [rejection, t, toast, dispatch])
 
   const addEntry = (entry: LibraryEntry, cell?: Cell) => {
     // 点「添加」时取第一个放得下的尺寸与空位；拖入时用库里第一个尺寸，落点由指针决定
@@ -189,10 +202,13 @@ function EditorBody() {
 
   // 编辑器级快捷键：不要求焦点在画布上，输入控件里的按键不处理
   const selectedId = selected?.id ?? null
+  const modalOpen = historyOpen || discardOpen || pendingGrid !== null || conflict !== null
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.altKey || editableTarget(e.target)) return
+      if (e.defaultPrevented || e.altKey || editableTarget(e.target) || savingRef.current) return
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        // 模态打开时不撤销背后的草稿
+        if (modalOpen) return
         e.preventDefault()
         dispatch({ type: 'undoLast' })
         return
@@ -219,10 +235,11 @@ function EditorBody() {
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [selectedId, rects, grid])
+  }, [selectedId, rects, grid, modalOpen, dispatch])
 
   const onGridChange = (value: string) => {
     const [cols, rows] = value.split('x').map(Number)
+    if (savingRef.current) return
     const next = { cols, rows }
     // 有小组件放不进新网格：交给越界对话框处理，不再直接拒绝
     if (gridShrinkConflicts(state.draft, next).length) setPendingGrid(next)
@@ -236,6 +253,13 @@ function EditorBody() {
       return s && w ? [{ id: w.id, screen: `${s.id} ${s.name}`, label: widgetLabel(w), place: `c${w.col + 1} r${w.row + 1} · ${w.size.cols}×${w.size.rows}` }] : []
     })
 
+  const addScreen = () => {
+    const next = nextScreenId(state.draft)
+    if (!next) return
+    dispatch({ type: 'addScreen', id: next.id, name: t('layoutEd.screenTab.defaultName', { n: next.n }) })
+    setEditingScreen(next.id)
+  }
+
   const loadSaved = (st: LayoutState) => dispatch({ type: 'load', version: st.version, layout: st.layout })
 
   const save = async (baseVersion = state.baseVersion) => {
@@ -247,8 +271,11 @@ function EditorBody() {
       toast.show(t('layoutEd.saved', { version: st.version }))
     } catch (e) {
       if (isApiError(e) && e.code === 'layout.conflict') {
-        const latest = Number(e.details?.latest_version)
-        setConflict((c) => ({ latestVersion: Number.isFinite(latest) ? latest : (c?.latestVersion ?? baseVersion), theirs: null, busy: null, error: c ? t('layoutEd.conflict.again', { latest }) : null }))
+        const raw = Number(e.details?.latest_version)
+        setConflict((c) => {
+          const latestVersion = Number.isFinite(raw) ? raw : (c?.latestVersion ?? baseVersion)
+          return { latestVersion, theirs: null, busy: null, error: c ? t('layoutEd.conflict.again', { latest: latestVersion }) : null }
+        })
       } else if (isApiError(e) && e.code === 'layout.invalid') {
         const problems = Array.isArray(e.details?.problems) ? e.details.problems.length : 0
         toast.show(t('layoutEd.saveInvalid', { n: problems }), 'warn')
@@ -314,24 +341,16 @@ function EditorBody() {
           <NumberTag no="02" className="border-foreground text-foreground" />
           <h1 className="text-[15px] font-medium">{t('pages.layoutEditor')}</h1>
         </div>
-        <div role="tablist" aria-label={t('layoutEd.tabs')} className="flex gap-1">
-          {state.draft.screens.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              role="tab"
-              aria-selected={s.id === screen.id}
-              onClick={() => dispatch({ type: 'selectScreen', id: s.id })}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 rounded-[2px] border px-2.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                s.id === screen.id ? 'border-foreground bg-inv-bg text-inv-ink' : 'border-border hover:bg-panel-2',
-              )}
-            >
-              <span className="font-mono text-[11px] opacity-70">{s.id}</span>
-              {s.name}
-            </button>
-          ))}
-        </div>
+        <ScreenTabs
+          screens={state.draft.screens}
+          activeId={screen.id}
+          canAdd={state.draft.screens.length < MAX_SCREENS && !saving}
+          editingId={editingScreen}
+          onEditingChange={setEditingScreen}
+          onSelect={(id) => dispatch({ type: 'selectScreen', id })}
+          onAdd={addScreen}
+          onRename={(id, name) => dispatch({ type: 'renameScreen', id, name })}
+        />
         <div className="flex flex-wrap items-center gap-3 text-[12.5px]">
           <label className="flex items-center gap-1.5">
             <span className="text-muted-foreground">{t('layoutEd.grid.label')}</span>
@@ -361,7 +380,7 @@ function EditorBody() {
           </span>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <Button variant="ghost" size="sm" className="rounded-[2px]" disabled={!dirty} title={t('layoutEd.undo.title')} onClick={() => dispatch({ type: 'undoLast' })}>
+          <Button variant="ghost" size="sm" className="rounded-[2px]" disabled={!dirty || saving} title={t('layoutEd.undo.title')} onClick={() => dispatch({ type: 'undoLast' })}>
             <Undo2 size={15} />
             {t('layoutEd.undo.label')}
           </Button>
@@ -379,7 +398,7 @@ function EditorBody() {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)_260px] min-[1280px]:grid-cols-[260px_minmax(0,1fr)_300px]">
+      <div inert={saving} aria-busy={saving} className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)_260px] min-[1280px]:grid-cols-[260px_minmax(0,1fr)_300px]">
         <WidgetLibrary
           entries={library}
           onAdd={(e) => addEntry(e)}

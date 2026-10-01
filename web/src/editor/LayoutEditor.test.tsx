@@ -640,4 +640,128 @@ describe('未保存改动、保存与版本历史', () => {
       expect(await screen.findByText(/你有 1 处未保存的改动，回滚后会丢失/)).toBeInTheDocument()
     })
   })
+
+  describe('保存期间锁定、模态下的快捷键、screen 标签', () => {
+    it('保存在途时画布、检查器、库、快捷键与按钮都不响应，成功后以服务端结果为准且不丢失已发出的改动', async () => {
+      const user = userEvent.setup()
+      let release: (r: Response) => void = () => {}
+      const api = await mount((req) => (req.method === 'PUT' ? new Promise<Response>((res) => { release = res }) as unknown as Response : undefined))
+      await user.click(widgetEl('b'))
+      fireEvent.keyDown(document.body, { key: 'ArrowRight' })
+      await user.click(screen.getByRole('button', { name: '保存并推送' }))
+      expect(await screen.findByRole('button', { name: '正在保存…' })).toBeDisabled()
+      // 在途时的编辑一律被忽略
+      fireEvent.keyDown(document.body, { key: 'ArrowRight' })
+      fireEvent.keyDown(document.body, { key: 'Delete' })
+      fireEvent.keyDown(document.body, { key: 'z', metaKey: true })
+      expect(label('b')).toContain('第 5 列第 1 行')
+      expect(screen.getByRole('button', { name: /撤销$/ })).toBeDisabled()
+      expect(screen.getByRole('button', { name: '新增 screen' })).toBeDisabled()
+      expect(screen.getByTestId('layout-editor').querySelector('[inert]')).not.toBeNull()
+      const put = api.calls.find((c) => c.method === 'PUT')!
+      const sent = (put.body as { layout: Layout }).layout
+      release(json(200, { version: 4, source: 'edit', created_at: '2026-10-01T00:00:00Z', layout: sent, broken: [] }))
+      await waitFor(() => expect(screen.getByTestId('base-version')).toHaveTextContent('基于 v4'))
+      expect(label('b')).toContain('第 5 列第 1 行')
+      expect(screen.getByTestId('layout-editor').querySelector('[inert]')).toBeNull()
+    })
+
+    it('任一模态打开时 Cmd/Ctrl+Z 不撤销背后的草稿', async () => {
+      const user = userEvent.setup()
+      await mount()
+      await user.click(widgetEl('b'))
+      fireEvent.keyDown(document.body, { key: 'ArrowRight' })
+      await user.click(screen.getByRole('button', { name: '放弃' }))
+      await screen.findByRole('dialog')
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true })
+      expect(label('b')).toContain('第 5 列第 1 行')
+      await user.click(screen.getByRole('button', { name: '继续编辑' }))
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true })
+      expect(label('b')).toContain('第 4 列第 1 行')
+    })
+
+    it('冲突响应没有数字版本号时不出现 NaN，沿用已知的最新版本', async () => {
+      const user = userEvent.setup()
+      let n = 0
+      await mount((req) => {
+        if (req.method !== 'PUT') return undefined
+        n++
+        return apiError(409, 'layout.conflict', n === 1 ? { latest_version: 7 } : {})
+      })
+      await user.click(widgetEl('b'))
+      fireEvent.keyDown(document.body, { key: 'ArrowRight' })
+      await user.click(screen.getByRole('button', { name: '保存并推送' }))
+      const dlg = await screen.findByRole('dialog')
+      await user.click(within(dlg).getByRole('button', { name: '以我的为准，基于最新版本重新提交' }))
+      await waitFor(() => expect(screen.getByRole('dialog')).toHaveTextContent('最新版本又变了（v7）'))
+      expect(document.body.textContent).not.toContain('NaN')
+    })
+
+    it('缩小网格后顶栏撤销连续两次回到已与 v3 一致', async () => {
+      const user = userEvent.setup()
+      await mount()
+      await user.selectOptions(screen.getByRole('combobox', { name: '网格' }), '6x4')
+      await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /移除 1 个并缩小/ }))
+      await user.click(screen.getByRole('button', { name: /撤销$/ }))
+      await user.click(screen.getByRole('button', { name: /撤销$/ }))
+      expect(screen.getByTestId('dirty-chip')).toHaveTextContent('已与 v3 一致')
+      expect(widgetEl('far')).toBeInTheDocument()
+    })
+
+    it('网格已缩小时单条撤销被删小组件被拒，提示先撤销网格改动', async () => {
+      const user = userEvent.setup()
+      await mount()
+      await user.selectOptions(screen.getByRole('combobox', { name: '网格' }), '6x4')
+      await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /移除 1 个并缩小/ }))
+      const row = within(screen.getByTestId('changes-panel')).getAllByRole('listitem').find((r) => r.textContent?.includes('删除'))!
+      await user.click(within(row).getByRole('button', { name: '撤销此条' }))
+      expect(await screen.findByText(/请先撤销网格改动/)).toBeInTheDocument()
+    })
+
+    it('新增 screen：生成唯一 id、默认名可立即改，进入清单，可撤销', async () => {
+      const user = userEvent.setup()
+      await mount()
+      await user.click(screen.getByRole('button', { name: '新增 screen' }))
+      const input = screen.getByRole('textbox', { name: 'screen 名称' })
+      expect(input).toHaveValue('屏幕 1')
+      await user.clear(input)
+      await user.type(input, '网络{Enter}')
+      const tab = screen.getByRole('tab', { name: /screen1/ })
+      expect(tab).toHaveTextContent('网络')
+      expect(tab).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByTestId('dirty-chip')).toHaveTextContent('未保存 1 处')
+      await user.click(screen.getByRole('button', { name: '新增 screen' }))
+      await user.keyboard('{Enter}')
+      expect(screen.getByRole('tab', { name: /screen2/ })).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: /撤销$/ }))
+      await user.click(screen.getByRole('button', { name: /撤销$/ }))
+      expect(screen.queryByRole('tab', { name: /screen1/ })).toBeNull()
+      expect(screen.getByTestId('dirty-chip')).toHaveTextContent('已与 v3 一致')
+    })
+
+    it('重命名 screen：进清单并可撤销；空名不提交', async () => {
+      const user = userEvent.setup()
+      await mount()
+      await user.click(screen.getByRole('button', { name: '重命名 screen' }))
+      const input = screen.getByRole('textbox', { name: 'screen 名称' })
+      await user.clear(input)
+      await user.keyboard('{Enter}')
+      expect(screen.getByRole('tab', { name: /index/ })).toHaveTextContent('首页')
+      await user.click(screen.getByRole('button', { name: '重命名 screen' }))
+      await user.clear(screen.getByRole('textbox', { name: 'screen 名称' }))
+      await user.type(screen.getByRole('textbox', { name: 'screen 名称' }), '总览{Enter}')
+      expect(screen.getByRole('tab', { name: /index/ })).toHaveTextContent('总览')
+      const row = within(screen.getByTestId('changes-panel')).getAllByRole('listitem')[0]
+      expect(row).toHaveTextContent('首页')
+      await user.click(within(row).getByRole('button', { name: '撤销此条' }))
+      expect(screen.getByRole('tab', { name: /index/ })).toHaveTextContent('首页')
+    })
+
+    it('screen 数到上限时新增按钮禁用', async () => {
+      const lay = layout()
+      for (let i = 0; i < 30; i++) lay.screens.push({ id: `x${i}`, name: `n${i}`, dwell_seconds: 0, in_rotation: true, widgets: [] })
+      await mount((req) => (req.method === 'GET' && req.url === '/api/screens' ? json(200, { ...layoutState(), layout: lay }) : undefined))
+      expect(screen.getByRole('button', { name: '新增 screen' })).toBeDisabled()
+    })
+  })
 })

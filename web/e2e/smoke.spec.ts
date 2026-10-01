@@ -2,9 +2,9 @@ import type { Browser, BrowserContext, Page, TestInfo } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { collectConsoleErrors, findOverflow } from './support/checks.ts'
+import { adminPassword } from './support/admin.ts'
 import { expect, setupCode, test } from './support/fixtures.ts'
 
-const adminPassword = 'E2e-smoke-pass-1'
 const sizes = [
   { name: '桌面 1440×900', width: 1440, height: 900 },
   { name: '手机 390×844', width: 390, height: 844 },

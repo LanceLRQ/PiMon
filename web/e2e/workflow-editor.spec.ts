@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import { adminPassword, ensureAdminSetup } from './support/admin.ts'
 import { collectConsoleErrors } from './support/checks.ts'
 import { expect, test } from './support/fixtures.ts'
 
-// 依赖 smoke.spec.ts 先完成首次设置（管理员密码）；Playwright 按文件名顺序串行执行，本文件名排在 smoke 之后。
-const adminPassword = 'E2e-smoke-pass-1'
+// 管理员由 ensureAdminSetup 保证（已设置则跳过），可单独运行；本用例会改动共享 hub 的布局，文件名排在其他用例之后。
 // Ruling 21：布局推送不进合并窗口；验收按实测 ≤1 秒人工判定，断言放宽到 1.5 秒避免偶发抖动
 const hotUpdateBudgetMs = 1500
 
@@ -19,6 +19,7 @@ test('布局编辑器主路径：拖入 → 调整 → 保存 → 另一个标�
   const screenContext = await browser.newContext({ baseURL, locale: 'zh-CN', viewport: { width: 1024, height: 600 } })
   const adminContext = await browser.newContext({ baseURL, locale: 'zh-CN', viewport: { width: 1440, height: 900 } })
   try {
+    await ensureAdminSetup(adminContext.request, baseURL!)
     // 屏幕标签页：先上线，让显示器视口稳定为 1024×600（8×5 网格）
     const screenPage = await screenContext.newPage()
     const screenErrors = collectConsoleErrors(screenPage)

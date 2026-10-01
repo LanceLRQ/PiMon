@@ -1246,7 +1246,7 @@
       "label": "撤销",
       "title": "撤销最近一条改动（⌘Z）",
       "conflict": "无法撤销：恢复后会与当前草稿重叠，已在画布上标出冲突的小组件，请先处理它们。",
-      "outOfBounds": "无法撤销：恢复后会超出网格，请先撤销网格改动。"
+      "outOfBounds": "无法撤销：恢复后会超出当前网格。若网格被缩小过，请先撤销网格改动。"
     },
     "bar": {
       "history": "版本历史",
@@ -1267,7 +1267,9 @@
         "remove": "删除",
         "move": "移动",
         "resize": "尺寸",
-        "config": "设置"
+        "config": "设置",
+        "screenAdd": "新增 screen",
+        "screenRename": "重命名"
       }
     },
     "discardDlg": {
@@ -1327,6 +1329,13 @@
       "plugin_missing": "插件已不可用",
       "widget_missing": "插件不再提供该小组件",
       "size_unsupported": "插件不再提供该尺寸"
+    },
+    "screenTab": {
+      "nameLabel": "screen 名称",
+      "rename": "重命名 screen",
+      "add": "新增 screen",
+      "full": "screen 数已达上限 {{max}}",
+      "defaultName": "屏幕 {{n}}"
     }
   },
   "outOfBounds": {

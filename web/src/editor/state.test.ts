@@ -147,3 +147,56 @@ describe('改动清单与撤销', () => {
     expect(changeList(s)).toEqual([])
   })
 })
+
+describe('缩小网格后的连续撤销', () => {
+  it('越界确认缩小后，顶栏撤销（undoLast）连续两次回到 base，不会卡在被拒的删除上', () => {
+    let s = load(layoutOf([widget('a', 0, 0), widget('far', 5, 3)]))
+    s = editorReducer(s, { type: 'setGrid', grid: { cols: 4, rows: 3 }, removeOutOfBounds: true })
+    s = editorReducer(s, { type: 'undoLast' })
+    expect(s.rejection).toBeNull()
+    expect(s.draft.grid).toEqual({ cols: 6, rows: 4 })
+    s = editorReducer(s, { type: 'undoLast' })
+    expect(s.rejection).toBeNull()
+    expect(changeList(s)).toEqual([])
+    expect(ws(s).map((w) => w.id).sort()).toEqual(['a', 'far'])
+  })
+})
+
+describe('screen 新增与重命名', () => {
+  it('新增 screen：选中新 screen，进入清单，撤销后消失', () => {
+    let s = load(layoutOf([widget('a', 0, 0)]))
+    s = editorReducer(s, { type: 'addScreen', id: 'screen1', name: '  第三屏 ' })
+    expect(s.draft.screens.map((x) => x.id)).toEqual(['index', 's1', 'screen1'])
+    expect(s.draft.screens[2]).toMatchObject({ name: '第三屏', in_rotation: true, dwell_seconds: 0, widgets: [] })
+    expect(s.screenId).toBe('screen1')
+    expect(changeList(s).map((c) => c.key)).toEqual(['screenAdd:screen1'])
+    s = editorReducer(s, { type: 'undoLast' })
+    expect(s.draft.screens.map((x) => x.id)).toEqual(['index', 's1'])
+    expect(s.screenId).toBe('index')
+    expect(changeList(s)).toEqual([])
+  })
+
+  it('新增校验对齐后端：id 重复或格式不对、名称为空或超 64 字、screen 数到 32 都不生效', () => {
+    const s = load(layoutOf([]))
+    expect(editorReducer(s, { type: 'addScreen', id: 's1', name: 'x' })).toBe(s)
+    expect(editorReducer(s, { type: 'addScreen', id: '_bad', name: 'x' })).toBe(s)
+    expect(editorReducer(s, { type: 'addScreen', id: 'n1', name: '   ' })).toBe(s)
+    expect(editorReducer(s, { type: 'addScreen', id: 'n1', name: '字'.repeat(65) })).toBe(s)
+    expect(editorReducer(s, { type: 'addScreen', id: 'n1', name: '字'.repeat(64) }).draft.screens).toHaveLength(3)
+    let full = s
+    for (let i = 0; i < 30; i++) full = editorReducer(full, { type: 'addScreen', id: `x${i}`, name: 'n' })
+    expect(full.draft.screens).toHaveLength(32)
+    expect(editorReducer(full, { type: 'addScreen', id: 'more', name: 'n' })).toBe(full)
+  })
+
+  it('重命名：进清单（前后名称），撤销恢复原名；空名与同名不生效', () => {
+    let s = load(layoutOf([]))
+    expect(editorReducer(s, { type: 'renameScreen', id: 's1', name: ' ' })).toBe(s)
+    expect(editorReducer(s, { type: 'renameScreen', id: 's1', name: '二' })).toBe(s)
+    s = editorReducer(s, { type: 'renameScreen', id: 's1', name: '主机' })
+    expect(changeList(s)).toMatchObject([{ key: 'screenRename:s1', from: '二', to: '主机' }])
+    s = editorReducer(s, { type: 'undoChange', key: 'screenRename:s1' })
+    expect(s.draft.screens[1].name).toBe('二')
+    expect(changeList(s)).toEqual([])
+  })
+})

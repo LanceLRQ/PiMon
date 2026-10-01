@@ -4,7 +4,7 @@ import { evaluatePlacement, outOfBoundsWidgets, type GridWidgetRect } from './gr
 // 未保存改动清单：由基线（服务端版本）与草稿逐项比较得出，不单独存历史，
 // 因此「撤销此条」就是把该项恢复成基线的值，并先做碰撞检测。
 
-export type ChangeKind = 'grid' | 'add' | 'remove' | 'move' | 'resize' | 'config'
+export type ChangeKind = 'grid' | 'screenAdd' | 'screenRename' | 'add' | 'remove' | 'move' | 'resize' | 'config'
 
 export interface Change {
   /** 稳定键：同一小组件同一类改动永远是同一个键 */
@@ -65,6 +65,12 @@ export function diffLayouts(base: Layout, draft: Layout): Change[] {
     const to = `${draft.grid.cols}×${draft.grid.rows}`
     out.push({ key: 'grid', kind: 'grid', label: '', from: `${base.grid.cols}×${base.grid.rows}`, to, sig: to })
   }
+  const baseScreens = new Map(base.screens.map((s) => [s.id, s]))
+  for (const s of draft.screens) {
+    const old = baseScreens.get(s.id)
+    if (!old) out.push({ key: `screenAdd:${s.id}`, kind: 'screenAdd', screenId: s.id, label: s.name, to: s.id, sig: s.name })
+    else if (old.name !== s.name) out.push({ key: `screenRename:${s.id}`, kind: 'screenRename', screenId: s.id, label: s.id, from: old.name, to: s.name, sig: s.name })
+  }
   const was = index(base)
   const now = index(draft)
   for (const [id, { screen, widget }] of now) {
@@ -123,6 +129,13 @@ export function undoChange(base: Layout, draft: Layout, change: Change): UndoOut
       const bad = draft.screens.flatMap((s) => outOfBoundsWidgets(base.grid, s.widgets.map(rectOf)).map((w) => ({ w, screenId: s.id })))
       if (bad.length) return { ok: false, reason: 'out_of_bounds', conflicts: bad.map((b) => b.w), screenId: bad[0].screenId }
       return { ok: true, draft: { ...draft, grid: { ...base.grid } } }
+    }
+    case 'screenAdd':
+      return { ok: true, draft: { ...draft, screens: draft.screens.filter((s) => s.id !== change.screenId) } }
+    case 'screenRename': {
+      const old = base.screens.find((s) => s.id === change.screenId)
+      if (!old) return { ok: true, draft }
+      return { ok: true, draft: { ...draft, screens: draft.screens.map((s) => (s.id === old.id ? { ...s, name: old.name } : s)) } }
     }
     case 'add':
       return { ok: true, draft: { ...draft, screens: draft.screens.map((s) => ({ ...s, widgets: s.widgets.filter((w) => w.id !== id) })) } }

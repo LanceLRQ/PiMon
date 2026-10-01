@@ -1246,7 +1246,7 @@
       "label": "Undo",
       "title": "Undo the latest change (⌘Z)",
       "conflict": "Cannot undo: restoring it would overlap the current draft. The conflicting widgets are highlighted on the canvas; resolve them first.",
-      "outOfBounds": "Cannot undo: restoring it would fall outside the grid. Undo the grid change first."
+      "outOfBounds": "Cannot undo: restoring it would fall outside the current grid. If the grid was shrunk, undo the grid change first."
     },
     "bar": {
       "history": "History",
@@ -1267,7 +1267,9 @@
         "remove": "Removed",
         "move": "Moved",
         "resize": "Size",
-        "config": "Settings"
+        "config": "Settings",
+        "screenAdd": "New screen",
+        "screenRename": "Renamed"
       }
     },
     "discardDlg": {
@@ -1327,6 +1329,13 @@
       "plugin_missing": "The plugin is unavailable",
       "widget_missing": "The plugin no longer provides this widget",
       "size_unsupported": "The plugin no longer provides this size"
+    },
+    "screenTab": {
+      "nameLabel": "Screen name",
+      "rename": "Rename screen",
+      "add": "Add screen",
+      "full": "Screen limit reached ({{max}})",
+      "defaultName": "Screen {{n}}"
     }
   },
   "outOfBounds": {
