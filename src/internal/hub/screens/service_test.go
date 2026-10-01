@@ -26,6 +26,7 @@ timeout: 10s
 outputs:
   - {key: temp, type: number, title: {zh: 温度, en: Temperature}}
   - {key: load, type: gauge, title: {zh: 负载, en: Load}}
+  - {key: "target[*]", type: gauge, title: {zh: 目标, en: Targets}}
 widgets:
   - id: temp
     name: {zh: 温度, en: Temperature}
@@ -620,5 +621,55 @@ func TestCatalog聚合目录至少支持2x2与4x2(t *testing.T) {
 	}
 	if len(c.Generic) == 0 {
 		t.Fatal("通用目录为空")
+	}
+}
+
+func TestResolve为每个引用补数据项标题(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	gen := model.LayoutWidget{
+		ID: "g", Source: model.WidgetSourceGeneric, Template: "value",
+		Size:    model.WidgetSize{Cols: 1, Rows: 1},
+		Binding: model.WidgetBinding{Refs: []model.WidgetRef{{InstanceID: "i-early", Item: "load"}}},
+	}
+	agg := model.LayoutWidget{
+		ID: "a", Source: model.WidgetSourceAggregate, Template: "status-grid",
+		Size: model.WidgetSize{Cols: 2, Rows: 2}, Col: 2,
+		Binding: model.WidgetBinding{Refs: []model.WidgetRef{
+			{InstanceID: "i-early", Item: "temp"},
+			{InstanceID: "i-late", Item: "target[home]"},
+			{InstanceID: "i-early", Item: "nothing"},
+			{InstanceID: "i-other", Item: "temp"},
+		}},
+	}
+	mustSave(t, f, 0, layoutWith(pw("p", "load", 2, 2, 0, 2, "i-early"), gen, agg))
+	zh, err := f.svc.Resolve(ctx, "zh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := zh.Screens[0].Widgets
+	if got := ws[0].Slots["value"][0].Title; got != "负载" {
+		t.Fatalf("plugin 槽标题 = %q", got)
+	}
+	if got := ws[1].Slots["value"][0].Title; got != "负载" {
+		t.Fatalf("generic 槽标题 = %q", got)
+	}
+	var titles []string
+	for _, r := range ws[2].Slots["items"] {
+		titles = append(titles, r.Title)
+	}
+	// 动态键成员取方括号里的名字；manifest 没有声明的项与别的插件的实例没有标题
+	want := []string{"温度", "home", "", ""}
+	if len(titles) != len(want) {
+		t.Fatalf("titles = %v", titles)
+	}
+	for i := range want {
+		if titles[i] != want[i] {
+			t.Fatalf("聚合标题 = %v，期望 %v", titles, want)
+		}
+	}
+	en, _ := f.svc.Resolve(ctx, "en")
+	if got := en.Screens[0].Widgets[2].Slots["items"][0].Title; got != "Temperature" {
+		t.Fatalf("英文标题 = %q", got)
 	}
 }

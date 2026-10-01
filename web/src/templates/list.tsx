@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import type { Item, ResolvedWidget, WidgetRef } from '@/types/generated'
+import type { Item, ResolvedRef, ResolvedWidget } from '@/types/generated'
 import { findItem } from './data'
 import { useScreenEnv } from './env'
 import { WidgetFrame } from './frame'
@@ -35,7 +35,7 @@ function tableRows(item: Item, lang: 'zh' | 'en', pluginText: (s: string) => str
   })
 }
 
-function rowsOf(widget: ResolvedWidget, data: TemplateProps['data'], describe: (ref: WidgetRef) => ItemView, lang: 'zh' | 'en', pluginText: (s: string) => string): Row[] {
+function rowsOf(widget: ResolvedWidget, data: TemplateProps['data'], describe: (ref: ResolvedRef) => ItemView, lang: 'zh' | 'en', pluginText: (s: string) => string): Row[] {
   const refs = widget.slots.items ?? []
   if (refs.length > 0) return refs.map((ref, i) => ({ key: `${ref.instance_id}/${ref.item}/${i}`, view: describe(ref) }))
   const single = widget.slots.value?.[0]

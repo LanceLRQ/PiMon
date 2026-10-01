@@ -51,7 +51,7 @@ func (f *fakeLayouts) set(version int, displayState string, instanceIDs ...strin
 		ws = append(ws, model.ResolvedWidget{
 			ID: "w" + id, Source: model.WidgetSourcePlugin, PluginID: "p", Template: "value",
 			Size: model.WidgetSize{Cols: 1, Rows: 1}, Col: i, InstanceID: id, DisplayState: displayState,
-			Slots: map[string][]model.WidgetRef{"value": {{InstanceID: id, Item: "x"}}},
+			Slots: map[string][]model.ResolvedRef{"value": {{InstanceID: id, Item: "x"}}},
 		})
 	}
 	f.resolved = model.ResolvedLayout{Version: version, Grid: model.Grid{Cols: 8, Rows: 5}, Screens: []model.ResolvedScreen{

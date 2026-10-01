@@ -98,3 +98,26 @@ describe('status-grid 模板细节', () => {
     expect(container.textContent).toContain('未知')
   })
 })
+
+describe('status-grid 模板使用服务端解析的数据项标题（Ruling 46）', () => {
+  it('固定键用标题，动态成员用解析出的名字', async () => {
+    const items: Item[] = [
+      { key: 'status', type: 'state', state: 'ok', text: '正常' },
+      { key: 'target[home]', type: 'gauge', value: 100 },
+    ]
+    const widget = makeWidget({
+      template: 'status-grid',
+      source: 'aggregate',
+      size: { cols: 2, rows: 2 },
+      slots: {
+        items: [
+          { instance_id: 'i1', item: 'status', title: '检测结果' },
+          { instance_id: 'i1', item: 'target[home]', title: 'home' },
+        ],
+      },
+    })
+    const { container } = await renderIn(<WidgetView widget={widget} data={{ i1: makeData(items) }} />)
+    const names = [...container.querySelectorAll('.tpl-grid__name')].map((e) => e.textContent)
+    expect(names).toEqual(['检测结果', 'home'])
+  })
+})

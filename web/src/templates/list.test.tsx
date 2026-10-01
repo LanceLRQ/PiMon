@@ -131,3 +131,28 @@ describe('list 模板细节', () => {
     expect(err).not.toHaveBeenCalled()
   })
 })
+
+describe('list 模板使用服务端解析的数据项标题（Ruling 46）', () => {
+  it('固定键显示 manifest 标题，report 里的 label 优先，没有标题回落到键', async () => {
+    const items: Item[] = [
+      { key: 'status', type: 'state', state: 'ok', text: '正常' },
+      { key: 'latency', type: 'number', value: 12, unit: 'ms', label: '延迟（实测）' },
+      { key: 'code', type: 'number', value: 200 },
+    ]
+    const widget = makeWidget({
+      template: 'list',
+      size: { cols: 2, rows: 2 },
+      source: 'plugin',
+      slots: {
+        items: [
+          { instance_id: 'i1', item: 'status', title: '检测结果' },
+          { instance_id: 'i1', item: 'latency', title: '响应延迟' },
+          { instance_id: 'i1', item: 'code' },
+        ],
+      },
+    })
+    const { container } = await renderIn(<WidgetView widget={widget} data={{ i1: makeData(items) }} />)
+    const labels = [...container.querySelectorAll('.tpl-list__label')].map((e) => e.textContent)
+    expect(labels).toEqual(['检测结果', '延迟（实测）', 'code'])
+  })
+})

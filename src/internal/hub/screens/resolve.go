@@ -56,7 +56,7 @@ func (s *Service) resolveWidget(w model.LayoutWidget, lang string, sn *snapshot,
 	rw := model.ResolvedWidget{
 		ID: w.ID, Source: w.Source, PluginID: w.PluginID, WidgetID: w.WidgetID, Template: w.Template,
 		Size: w.Size, Col: w.Col, Row: w.Row, Options: w.Options,
-		Slots: map[string][]model.WidgetRef{},
+		Slots: map[string][]model.ResolvedRef{},
 	}
 	title, _ := w.Options["title"].(string)
 	title = strings.TrimSpace(title)
@@ -67,7 +67,7 @@ func (s *Service) resolveWidget(w model.LayoutWidget, lang string, sn *snapshot,
 	case model.WidgetSourceGeneric:
 		rw.DisplayState = refsState(w.Binding.Refs, sn, broken)
 		if !broken && len(w.Binding.Refs) == 1 {
-			rw.Slots["value"] = append([]model.WidgetRef(nil), w.Binding.Refs...)
+			rw.Slots["value"] = s.resolveRefs(w.Binding.Refs, lang, sn)
 			if title == "" {
 				title = s.itemTitle(w.Binding.Refs[0], lang, sn)
 			}
@@ -75,7 +75,7 @@ func (s *Service) resolveWidget(w model.LayoutWidget, lang string, sn *snapshot,
 	case model.WidgetSourceAggregate:
 		rw.DisplayState = refsState(w.Binding.Refs, sn, broken)
 		if !broken && len(w.Binding.Refs) > 0 {
-			rw.Slots["items"] = append([]model.WidgetRef(nil), w.Binding.Refs...)
+			rw.Slots["items"] = s.resolveRefs(w.Binding.Refs, lang, sn)
 		}
 	}
 	rw.Title = title
@@ -122,10 +122,48 @@ func (s *Service) resolvePlugin(rw *model.ResolvedWidget, w model.LayoutWidget, 
 			for _, r := range b.Refs {
 				refs = append(refs, model.WidgetRef{InstanceID: instID, Item: r.Item, Field: r.Field})
 			}
-			rw.Slots[b.Slot] = refs
+			rw.Slots[b.Slot] = s.resolveRefs(refs, lang, sn)
 		}
 		break
 	}
+}
+
+// resolveRefs 为每个引用补上数据项标题。
+func (s *Service) resolveRefs(refs []model.WidgetRef, lang string, sn *snapshot) []model.ResolvedRef {
+	out := make([]model.ResolvedRef, 0, len(refs))
+	for _, r := range refs {
+		out = append(out, model.ResolvedRef{
+			InstanceID: r.InstanceID, Item: r.Item, Field: r.Field, Title: s.refTitle(r, lang, sn),
+		})
+	}
+	return out
+}
+
+// refTitle 取引用的数据项标题：键与 manifest outputs 完全相同取其 title；
+// 键形如 base[name] 且 outputs 声明了 base[*] 时（动态成员）取方括号里的名字；其余为空串。
+func (s *Service) refTitle(r model.WidgetRef, lang string, sn *snapshot) string {
+	in, ok := sn.instances[r.InstanceID]
+	if !ok {
+		return ""
+	}
+	p, ok := s.reg.Get(in.PluginID)
+	if !ok || p.Manifest == nil {
+		return ""
+	}
+	for _, o := range p.Manifest.Outputs {
+		if o.Key == r.Item {
+			return o.Title.Get(lang)
+		}
+	}
+	if open := strings.IndexByte(r.Item, '['); open > 0 && strings.HasSuffix(r.Item, "]") {
+		pattern := r.Item[:open] + "[*]"
+		for _, o := range p.Manifest.Outputs {
+			if o.Key == pattern {
+				return r.Item[open+1 : len(r.Item)-1]
+			}
+		}
+	}
+	return ""
 }
 
 // itemTitle 取 generic 小组件所绑定数据项在插件 manifest 里声明的标题，取不到返回空串。

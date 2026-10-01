@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import type { Item, ResolvedWidget, WidgetRef } from '@/types/generated'
+import type { Item, ResolvedRef, ResolvedWidget, WidgetRef } from '@/types/generated'
 import type { StatusLevel } from '@/themes/types'
 import { findItem, levelOfValue, parseThreshold, readNumber, resolveValueLevel } from './data'
 import { useScreenEnv } from './env'
@@ -23,9 +23,12 @@ export interface ItemView {
 
 const bracket = /\[(.*)\]$/
 
-/** 数据项名称：优先 label，其次动态键方括号里的名字（target[Google] → Google），最后用键本身 */
-export function itemName(key: string, label?: string): string {
-  return label || bracket.exec(key)?.[1] || key
+/**
+ * 数据项名称：优先 report 里的 label，其次服务端解析的标题（manifest 的 title，动态成员为方括号里的名字），
+ * 再其次动态键方括号里的名字（target[Google] → Google），最后用键本身
+ */
+export function itemName(key: string, label?: string, title?: string): string {
+  return label || title || bracket.exec(key)?.[1] || key
 }
 
 /** net-reach 的 target[*] 是成功率：100 正常、0 严重、其余警告（成功率本身没有手动阈值时的约定） */
@@ -53,9 +56,9 @@ export function useItemDescriber(widget: ResolvedWidget, defaultThreshold?: Thre
 
   return {
     pluginText,
-    describe(ref: WidgetRef, data: InstanceDataMap): ItemView {
+    describe(ref: WidgetRef | ResolvedRef, data: InstanceDataMap): ItemView {
       const item = findItem(ref, data)
-      const name = itemName(ref.item, item?.label)
+      const name = itemName(ref.item, item?.label, 'title' in ref ? ref.title : undefined)
       if (!item) return { name, text: null, level: 'unknown', item }
       const reading = readItem(item, ref.field, lang, pluginText, levelLabel)
       let level: StatusLevel | null

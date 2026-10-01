@@ -69,6 +69,15 @@ type WidgetRef struct {
 	Field      string `json:"field,omitempty"`
 }
 
+// ResolvedRef 是解析后布局里的数据项引用：在 WidgetRef 之外带上按语言解析的数据项标题。
+// Title 取 manifest outputs 的 title；动态键成员（如 target[home]）取方括号里的名字；解析不出为空。
+type ResolvedRef struct {
+	InstanceID string `json:"instance_id"`
+	Item       string `json:"item"`
+	Field      string `json:"field,omitempty"`
+	Title      string `json:"title,omitempty"`
+}
+
 // WidgetBinding 是小组件的数据绑定。
 //   - plugin 来源：InstanceID 指定实例，数据项由 manifest 声明的槽决定；为空表示占位，
 //     解析布局时绑定到该插件最早创建的实例。
@@ -205,7 +214,7 @@ type ResolvedWidget struct {
 	Title string `json:"title"`
 	// Slots 是各槽解析出的数据项引用。plugin 来源的键为 manifest 声明的槽名；
 	// generic 来源的键固定为 value；aggregate 来源的键固定为 items。
-	Slots map[string][]WidgetRef `json:"slots"`
+	Slots map[string][]ResolvedRef `json:"slots"`
 	// DisplayState 是统一展示状态：无绑定为 unconfigured，引用失效为 broken，
 	// 否则为被绑定实例的展示状态（聚合取其中最严重的）。
 	DisplayState string         `json:"display_state"`
