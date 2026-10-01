@@ -68,6 +68,16 @@ describe('设置码输入', () => {
     expect(groupInputs()[1]).toHaveFocus()
   })
 
+  it('短粘贴含分隔符或空白时不丢字符', async () => {
+    const { user } = await mountSetup()
+    await pasteCode(user, ' 7K3Q')
+    expect(groupInputs()[0].value).toBe('7K3Q')
+    expect(groupInputs()[1]).toHaveFocus()
+    await user.click(groupInputs()[2])
+    await user.paste('7k-3q')
+    expect(groupInputs()[2].value).toBe('7K3Q')
+  })
+
   it('空段按退格回到上一段', async () => {
     const { user } = await mountSetup()
     await user.click(groupInputs()[1])
@@ -201,6 +211,23 @@ describe('提交与错误回跳', () => {
     expect(await screen.findByText('服务端不识别这个时区，请重新选择')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '基础设置' })).toBeInTheDocument()
     expect(screen.getByLabelText('时区')).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('未映射的字段错误在第三步兜底显示', async () => {
+    const { user } = await mountSetup((c) =>
+      c.url === '/api/setup' ? apiError(400, 'validation.failed', { fields: { retention: 'out_of_range' } }) : undefined,
+    )
+    await toStep3(user)
+    await user.click(screen.getByRole('button', { name: /完成设置/ }))
+    expect(await screen.findByText('retention')).toBeInTheDocument()
+    expect(screen.getByText(/超出允许范围/)).toBeInTheDocument()
+  })
+
+  it('已完成的步骤可用键盘（按钮）回退', async () => {
+    const { user } = await mountSetup()
+    await toStep2(user)
+    await user.click(screen.getByRole('button', { name: /输入设置码/ }))
+    expect(await screen.findByRole('heading', { name: '输入设置码' })).toBeInTheDocument()
   })
 
   it('访问地址字段错误高亮对应输入框', async () => {

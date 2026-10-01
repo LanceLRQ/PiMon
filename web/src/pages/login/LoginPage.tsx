@@ -81,7 +81,7 @@ export function LoginPage() {
           <h2 className="text-[13.5px] font-medium">{t('login.title')}</h2>
           <span className="ml-auto text-xs text-muted-foreground">{t('login.singleAdmin')}</span>
         </div>
-        <form className="px-4 pt-[18px] pb-4" onSubmit={submit} autoComplete="off">
+        <form className="px-4 pt-[18px] pb-4" onSubmit={submit}>
           {lock && (
             <Note tone="crit" role="alert" icon={<Lock size={16} />} className="mb-3.5">
               <b className="font-medium">{t('login.locked.title')}</b>
@@ -110,6 +110,7 @@ export function LoginPage() {
             hideLabel={t('common.hide')}
             placeholder={t('login.passwordPlaceholder')}
             autoFocus
+            autoComplete="current-password"
             value={password}
             disabled={locked}
             invalid={passwordFailed}

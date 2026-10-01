@@ -17,11 +17,10 @@ interface AuthShellProps {
 export function AuthShell({ topLabel, title, subtitle, widthClass, children }: AuthShellProps) {
   return (
     <div className="min-h-screen overflow-auto bg-background text-foreground">
-      <div className="fixed inset-x-0 top-0 flex h-12 items-center gap-2.5 px-5 font-mono text-[11.5px] text-muted-foreground">
-        <span>{topLabel}</span>
-        <span className="flex-1" />
-        <LanguageSwitch />
-        <ThemeSwitch />
+      <div className="fixed inset-x-0 top-0 flex h-12 items-center gap-2.5 px-5 mobile:gap-2 mobile:px-3 font-mono text-[11.5px] text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate">{topLabel}</span>
+        <LanguageSwitch className="shrink-0" />
+        <ThemeSwitch className="shrink-0" />
       </div>
       <main className="flex min-h-screen flex-col items-center justify-center px-5 py-8 mobile:justify-start mobile:pt-[72px]">
         <div className={`w-full ${widthClass}`}>

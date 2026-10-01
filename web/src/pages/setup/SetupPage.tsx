@@ -195,19 +195,7 @@ export function SetupPage() {
           const cur = i === step
           const done = i < step
           const hasError = stepsWithError.has(i)
-          return (
-            <li
-              key={i}
-              aria-current={cur ? 'step' : undefined}
-              data-error={hasError ? 'true' : undefined}
-              className={cn(
-                'flex min-w-0 items-center gap-2.5 border-l border-border px-3.5 py-2.5 text-[13px] first:border-l-0 mobile:nth-[3]:border-l-0 mobile:nth-[n+3]:border-t',
-                cur ? 'text-foreground shadow-[inset_0_-2px_0_var(--signal)]' : done ? 'text-ink-2' : 'text-muted-foreground',
-                hasError && 'text-status-crit',
-                step < 3 && done && 'cursor-pointer',
-              )}
-              onClick={() => step < 3 && done && setStep(i as StepIndex)}
-            >
+          const badge = (
               <span
                 className={cn(
                   'grid size-[22px] flex-none place-items-center rounded-[2px] border font-mono text-[11px]',
@@ -221,8 +209,34 @@ export function SetupPage() {
                 )}
               >
                 {`0${i + 1}`}
-              </span>
-              <span className="truncate">{label}</span>
+            </span>
+          )
+          return (
+            <li
+              key={i}
+              aria-current={cur ? 'step' : undefined}
+              data-error={hasError ? 'true' : undefined}
+              className={cn(
+                'flex min-w-0 items-center gap-2.5 border-l border-border px-3.5 py-2.5 text-[13px] first:border-l-0 mobile:nth-[3]:border-l-0 mobile:nth-[n+3]:border-t',
+                cur ? 'text-foreground shadow-[inset_0_-2px_0_var(--signal)]' : done ? 'text-ink-2' : 'text-muted-foreground',
+                hasError && 'text-status-crit',
+              )}
+            >
+              {step < 3 && done ? (
+                <button
+                  type="button"
+                  className="flex min-w-0 items-center gap-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => setStep(i as StepIndex)}
+                >
+                  {badge}
+                  <span className="truncate">{label}</span>
+                </button>
+              ) : (
+                <>
+                  {badge}
+                  <span className="truncate">{label}</span>
+                </>
+              )}
             </li>
           )
         })}
@@ -440,6 +454,13 @@ export function SetupPage() {
                 )}
               </div>
             </FormRow>
+            {Object.entries(fieldErrors)
+              .filter(([f]) => !(f in fieldStep))
+              .map(([f, code]) => (
+                <p key={f} role="alert" className="px-4 py-3 text-xs text-status-crit">
+                  <span className="font-mono">{f}</span>：{fieldErrorText(f, code)}
+                </p>
+              ))}
             {failure?.kind === 'other' && (
               <p role="alert" className="px-4 py-3 text-xs text-status-crit">
                 {failure.message}
