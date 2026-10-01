@@ -117,6 +117,11 @@ function HealthSummary({ instances, synced }: { instances: Instance[]; synced: b
                 </div>
               )}
             </div>
+          ) : counts.paused === counts.total ? (
+            <div className="flex items-center gap-2 text-[14px]">
+              <StatusShape state="unknown" size={16} />
+              <span>{t('overview.verdict.noActive', { count: counts.paused })}</span>
+            </div>
           ) : (
             <div className="flex items-center gap-2 text-[14px]">
               <StatusShape state="ok" size={16} />

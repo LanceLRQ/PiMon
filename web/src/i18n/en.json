@@ -462,6 +462,7 @@
       "offline": "{{count}} offline: {{name}}",
       "unconfigured": "{{count}} unconfigured: {{name}}",
       "allOk": "All OK",
+      "noActive": "No active instances ({{count}} paused)",
       "critical": "{{count}} critical: {{name}} {{reading}}",
       "error": "{{count}} collection failures: {{name}} {{reading}}",
       "warning": "{{count}} warnings: {{name}} {{reading}}",

@@ -134,6 +134,18 @@ describe('总览页', () => {
     expect(within(cell('需要处理')).getByText('没有需要处理的项')).toBeInTheDocument()
   })
 
+  it('健康汇总：全部实例已暂停时给出中性结论，不显示全部正常', async () => {
+    mockApi()
+    seedStore([
+      makeInstance({ id: 'p1', name: 'p1', paused: true }),
+      makeInstance({ id: 'p2', name: 'p2', display_state: 'critical', paused: true }),
+    ])
+    await renderWithApp(<OverviewPage />)
+    const health = cell('健康汇总')
+    expect(within(health).getByText('没有运行中的实例（2 个已暂停）')).toBeInTheDocument()
+    expect(within(health).queryByText('全部正常')).toBeNull()
+  })
+
   it('查看实例打开详情抽屉', async () => {
     const user = userEvent.setup()
     mockApi((req) => (req.url === '/api/instances/i01' ? json(200, { ...prototypeInstances[0], config: {}, report: null }) : undefined))

@@ -462,6 +462,7 @@
       "offline": "{{count}} 项离线：{{name}}",
       "unconfigured": "{{count}} 项未配置：{{name}}",
       "allOk": "全部正常",
+      "noActive": "没有运行中的实例（{{count}} 个已暂停）",
       "critical": "{{count}} 项严重：{{name}} {{reading}}",
       "error": "{{count}} 项采集失败：{{name}} {{reading}}",
       "warning": "{{count}} 项警告：{{name}} {{reading}}",
