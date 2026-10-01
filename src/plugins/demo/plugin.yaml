@@ -7,6 +7,15 @@ runtime: builtin
 runs_on: [hub]
 interval: 30s
 timeout: 10s
+config_schema:
+  - key: profile
+    type: enum
+    title: {zh: 数据档位, en: Data profile}
+    help: {zh: "default 为统一演示数据；extreme 额外输出 50 项列表、4 种币种余额与超长文本，用于检查小组件是否溢出。", en: "default is the standard demo data; extreme adds a 50-item list, four-currency balances and very long text to check widgets for overflow."}
+    default: default
+    options:
+      - {value: default, title: {zh: 默认, en: Default}}
+      - {value: extreme, title: {zh: 极端数据, en: Extreme data}}
 outputs:
   - {key: quota.codex.5h,    type: quota, title: {zh: Codex 5 小时窗口, en: Codex 5-hour window}}
   - {key: quota.codex.tool,  type: quota, title: {zh: Codex 工具调用, en: Codex tool calls}}
@@ -17,6 +26,7 @@ outputs:
   - {key: money.deepseek,    type: money, title: {zh: DeepSeek 余额, en: DeepSeek balance}}
   - {key: money.openrouter,  type: money, title: {zh: OpenRouter 余额, en: OpenRouter balance}}
   - {key: "host[*]",         type: state, title: {zh: 主机, en: Hosts}}
+  - {key: "balance[*]",      type: money, title: {zh: 多币种余额, en: Multi-currency balances}}
   - {key: cpu.pi,            type: gauge, title: {zh: 树莓派 CPU, en: Raspberry Pi CPU}}
   - {key: mem.pi,            type: gauge, title: {zh: 树莓派内存, en: Raspberry Pi memory}}
   - {key: disk.ubuntu-srv,   type: quota, title: {zh: ubuntu-srv 磁盘, en: ubuntu-srv disk}}
@@ -39,6 +49,11 @@ widgets:
     name: {zh: 主机灯组, en: Host lights}
     sizes:
       2x2: {template: status-grid, bind: {items: {item: "host[*]"}}}
+  - id: hostlist
+    name: {zh: 主机列表, en: Host list}
+    sizes:
+      2x2: {template: list, bind: {items: {item: "host[*]"}}}
+      4x3: {template: list, bind: {items: {item: "host[*]"}}}
   - id: cpu
     name: {zh: CPU, en: CPU}
     sizes:

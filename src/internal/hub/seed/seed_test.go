@@ -254,3 +254,34 @@ func TestLayoutUnavailableWhenInstanceListFails(t *testing.T) {
 		t.Fatalf("不应写入布局: %+v", st)
 	}
 }
+
+// 10x6 种子布局要铺满整屏：每个格子恰好被一个小组件覆盖，不留空行。
+func TestTenBySixSeedFillsGrid(t *testing.T) {
+	f := newFixture(t)
+	if err := f.seeder.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	g := model.Grid{Cols: 10, Rows: 6}
+	l, ok := f.seeder.Layout(g)
+	if !ok {
+		t.Fatal("10x6 应有种子")
+	}
+	covered := map[[2]int]string{}
+	for _, w := range l.Screens[0].Widgets {
+		for c := w.Col; c < w.Col+w.Size.Cols; c++ {
+			for r := w.Row; r < w.Row+w.Size.Rows; r++ {
+				if prev, dup := covered[[2]int{c, r}]; dup {
+					t.Fatalf("格 (%d,%d) 被 %s 与 %s 重复覆盖", c, r, prev, w.ID)
+				}
+				covered[[2]int{c, r}] = w.ID
+			}
+		}
+	}
+	for r := 0; r < g.Rows; r++ {
+		for c := 0; c < g.Cols; c++ {
+			if _, ok := covered[[2]int{c, r}]; !ok {
+				t.Errorf("格 (%d,%d) 没有小组件", c, r)
+			}
+		}
+	}
+}

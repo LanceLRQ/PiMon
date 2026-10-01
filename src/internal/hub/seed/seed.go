@@ -159,7 +159,19 @@ func (s *Seeder) Layout(grid model.Grid) (model.Layout, bool) {
 			ID: p.id, Size: model.WidgetSize{Cols: p.w, Rows: p.h}, Col: p.col, Row: p.row,
 			Options: map[string]any{},
 		}
-		if p.aggregate {
+		switch {
+		case p.generic:
+			id, ok := ids[p.refPlugin]
+			if !ok {
+				continue
+			}
+			w.Source, w.Template = model.WidgetSourceGeneric, p.template
+			w.Binding.Refs = []model.WidgetRef{{InstanceID: id, Item: p.refItem}}
+			w.Options["title"] = p.titleZh
+			if s.lang() == "en" {
+				w.Options["title"] = p.titleEn
+			}
+		case p.aggregate:
 			id, ok := ids[pluginReach]
 			if !ok {
 				continue
@@ -167,7 +179,7 @@ func (s *Seeder) Layout(grid model.Grid) (model.Layout, bool) {
 			w.Source, w.Template = model.WidgetSourceAggregate, p.template
 			w.Binding.Refs = []model.WidgetRef{{InstanceID: id, Item: "target[*]"}}
 			w.Options["title"] = reachTitle
-		} else {
+		default:
 			w.Source, w.PluginID, w.WidgetID = model.WidgetSourcePlugin, p.plugin, p.widget
 			w.Binding.InstanceID = ids[p.plugin] // 实例不存在时为空，即占位
 		}

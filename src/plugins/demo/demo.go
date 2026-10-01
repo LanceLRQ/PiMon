@@ -5,6 +5,8 @@ package demo
 import (
 	"context"
 	_ "embed"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
@@ -34,12 +36,57 @@ func (p *plugin) Collect(_ context.Context, in runtime.Input) (*report.Report, e
 		clk = clock.Real{}
 	}
 	now := clk.Now()
+	list := items(now)
+	if profile, _ := in.Config["profile"].(string); profile == profileExtreme {
+		list = extremeItems(list)
+	}
 	return &report.Report{
 		Status:      report.StatusCritical,
 		Summary:     "演示数据 / Demo data",
 		CollectedAt: now.UnixMilli(),
-		Items:       items(now),
+		Items:       list,
 	}, nil
+}
+
+// profile 配置取值：default 是统一演示数据；extreme 在此之上叠加极端数据，用于验证小组件不溢出。
+const profileExtreme = "extreme"
+
+// extremeItems 把默认数据项里的主机、告警与任务表替换为极端版本，并追加 4 币种余额：
+// 50 项列表、超长文本、很长的名称与很大的金额。
+func extremeItems(base []report.Item) []report.Item {
+	out := make([]report.Item, 0, len(base)+54)
+	for _, it := range base {
+		if strings.HasPrefix(it.Key, "host[") || it.Key == "alert.disk" || it.Key == "tasks" {
+			continue
+		}
+		out = append(out, it)
+	}
+	for i := 1; i <= 50; i++ {
+		st := report.StatusOK
+		switch {
+		case i%17 == 0:
+			st = report.StatusCritical
+		case i%7 == 0:
+			st = report.StatusWarning
+		}
+		h := state(fmt.Sprintf("host[node-%02d]", i), st,
+			fmt.Sprintf("production-cluster-worker-node-%02d.internal.example.com · CPU 37%% · 46.2°C", i))
+		h.Label = fmt.Sprintf("production-cluster-worker-node-%02d", i)
+		out = append(out, h)
+	}
+	out = append(out,
+		money("balance[cny]", 123456789.12, "CNY"),
+		money("balance[usd]", 9876543.21, "USD"),
+		money("balance[eur]", 1234567.89, "EUR"),
+		money("balance[jpy]", 98765432100, "JPY"),
+		state("alert.disk", report.StatusCritical, strings.Repeat("ubuntu-srv 系统盘 / 使用率 95%，已持续 6 分钟，请尽快清理日志与缓存目录。", 4)),
+	)
+	rows := make([][]any, 0, 30)
+	for i := 1; i <= 30; i++ {
+		rows = append(rows, []any{"Claude Code", fmt.Sprintf("第 %d 个很长的任务名称：重构整个监控面板的布局编辑器并补全端到端测试用例", i), "running", fmt.Sprintf("%d min", i)})
+	}
+	out = append(out, report.Item{Key: "tasks", Type: report.TypeTable, Columns: []string{"agent", "task", "state", "since"}, Rows: rows})
+	return out
 }
 
 func items(now time.Time) []report.Item {

@@ -14,13 +14,15 @@ import (
 // 周一深夜 22:47（DESIGN-SPEC 第 4 节的场景时刻）。
 var monday = time.Date(2026, 9, 28, 22, 47, 0, 0, time.UTC)
 
-func collect(t *testing.T) *report.Report {
+func collect(t *testing.T) *report.Report { return collectWith(t, nil) }
+
+func collectWith(t *testing.T, cfg map[string]any) *report.Report {
 	t.Helper()
 	src, ok := runtime.Builtin("demo")
 	if !ok {
 		t.Fatal("demo 应在 init 中注册")
 	}
-	rep, err := src.Collect(context.Background(), runtime.Input{Clock: clock.NewFake(monday)})
+	rep, err := src.Collect(context.Background(), runtime.Input{Config: cfg, Clock: clock.NewFake(monday)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,5 +146,69 @@ func TestTasksAndAlert(t *testing.T) {
 	al := rep.Find("alert.disk")
 	if al == nil || al.State != report.StatusCritical || !strings.Contains(al.Text, "95%") {
 		t.Fatalf("严重告警示例错误: %+v", al)
+	}
+}
+
+func TestProfileFieldInManifest(t *testing.T) {
+	src, _ := runtime.Builtin("demo")
+	var found bool
+	for _, f := range src.Manifest().ConfigSchema {
+		if f.Key != "profile" {
+			continue
+		}
+		found = true
+		if f.Type != "enum" || f.Default != "default" || len(f.Options) != 2 || f.Options[0].Value != "default" || f.Options[1].Value != "extreme" {
+			t.Errorf("profile 应为 default|extreme 的枚举且默认 default: %+v", f)
+		}
+	}
+	if !found {
+		t.Fatal("manifest 缺少 profile 配置项")
+	}
+}
+
+func TestDefaultProfileHasNoExtremeData(t *testing.T) {
+	for _, cfg := range []map[string]any{nil, {}, {"profile": "default"}} {
+		rep := collectWith(t, cfg)
+		if n := len(rep.Select("host[*]")); n != 4 {
+			t.Errorf("默认 profile 应有 4 台主机，实际 %d（config=%v）", n, cfg)
+		}
+		if n := len(rep.Select("balance[*]")); n != 0 {
+			t.Errorf("默认 profile 不应有多币种余额: %d", n)
+		}
+	}
+}
+
+func TestExtremeProfile(t *testing.T) {
+	rep := collectWith(t, map[string]any{"profile": "extreme"})
+	if err := rep.Validate(nil); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(rep.Select("host[*]")); n != 50 {
+		t.Errorf("extreme 应输出 50 项列表: %d", n)
+	}
+	cur := map[string]bool{}
+	for _, it := range rep.Select("balance[*]") {
+		cur[it.Currency] = true
+	}
+	if len(cur) != 4 {
+		t.Errorf("extreme 应有 4 种币种的 money: %v", cur)
+	}
+	long := rep.Find("alert.disk")
+	if long == nil || len([]rune(long.Text)) < 120 {
+		t.Errorf("extreme 的告警文本应超长: %+v", long)
+	}
+	if tb := rep.Find("tasks"); tb == nil || len(tb.Rows) < 20 {
+		t.Errorf("extreme 的任务表应有很多行: %+v", tb)
+	}
+	// 其余默认数据项仍在，保证种子布局与既有小组件照常有数据。
+	if rep.Find("cpu.pi") == nil || rep.Find("quota.codex.5h") == nil {
+		t.Error("extreme 应保留默认数据项")
+	}
+}
+
+func TestUnknownProfileFallsBackToDefault(t *testing.T) {
+	rep := collectWith(t, map[string]any{"profile": "nope"})
+	if n := len(rep.Select("host[*]")); n != 4 {
+		t.Errorf("未知 profile 按默认处理: %d", n)
 	}
 }
