@@ -40,6 +40,12 @@ export function ScreenGate({ cache = defaultSnapshotCache, pollMs = 5000, wakeLo
     if (!import.meta.env.DEV) void registerScreenServiceWorker()
   }, [])
 
+  // 令牌失效后不再保留本地存档：旧数据不该被一个已失效的屏幕继续展示
+  const tokenInvalid = status === 'ready' && info !== null && !info.authenticated
+  useEffect(() => {
+    if (tokenInvalid) void cache.clear()
+  }, [tokenInvalid, cache])
+
   useEffect(() => {
     if (status !== 'error') return
     const id = setInterval(() => void refresh(), pollMs)

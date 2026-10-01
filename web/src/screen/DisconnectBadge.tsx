@@ -11,7 +11,7 @@ export interface DisconnectBadgeProps {
 }
 
 /**
- * 断线角标：连接中断时在顶部显示「连接中断，显示 hh:mm 的数据」，不清空屏幕。
+ * 断线角标：连接中断时在右上角显示「连接中断，显示 hh:mm 的数据」，不清空屏幕。
  * 时间是屏幕上数据对应的服务端时间，按屏幕设置的时区显示；重连收到 snapshot 后连接恢复，角标消失。
  * 没有任何数据时不显示（由「hub 未运行」页接管）；关屏时保持纯黑，不显示。
  */
@@ -30,9 +30,9 @@ export function DisconnectBadge({ store, graceMs = 3000 }: DisconnectBadgeProps)
     <div
       role="status"
       data-disconnect-badge
-      className="pointer-events-none fixed top-0 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-b-lg border border-t-0 border-s-warning bg-s-card px-4 py-1 text-sm text-s-fg"
+      className="pointer-events-none fixed top-1 right-1 z-40 flex items-center gap-1.5 rounded-md border border-s-warning bg-s-card px-2 py-0.5 text-xs text-s-fg"
     >
-      <WifiOff size={14} className="text-s-warning" aria-hidden />
+      <WifiOff size={12} className="text-s-warning" aria-hidden />
       <span>{t('screenApp.disconnected', { time })}</span>
     </div>
   )

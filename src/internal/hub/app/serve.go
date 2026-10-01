@@ -35,6 +35,7 @@ func (a *App) Serve(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	a.listenAddr.Store(ln.Addr().String())
 
 	bg, stop := context.WithCancel(ctx)
 	var wg sync.WaitGroup

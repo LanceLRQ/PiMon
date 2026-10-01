@@ -43,7 +43,7 @@ function storedFromSnapshot(): StoredScreenData {
   return { v: 1, savedAt: Date.now(), lastDataAt: s.lastDataAt, settings: s.settings, layout: s.layout, screenState: s.screenState, data: s.data }
 }
 
-const emptyCache: SnapshotCache = { save: async () => {}, load: async () => null }
+const emptyCache: SnapshotCache = { save: async () => {}, load: async () => null, clear: async () => {} }
 
 async function mount(opts: { cache?: SnapshotCache; lng?: 'zh' | 'en'; pollMs?: number } = {}) {
   const i18n = await createI18n(opts.lng ?? 'zh')
@@ -77,6 +77,21 @@ describe('屏幕端守卫', () => {
     expect(await screen.findByRole('heading', { name: '屏幕令牌失效' })).toBeInTheDocument()
     expect(screen.getByText(/重启 kiosk/)).toBeInTheDocument()
     expect(screen.queryByTestId('screen-app')).toBeNull()
+  })
+
+  it('令牌失效时清除本地存档；正常会话不清', async () => {
+    const clear = vi.fn(async () => {})
+    const cache: SnapshotCache = { save: async () => {}, load: async () => null, clear }
+    route({ session: () => json(200, sess({})) })
+    const view = await mount({ cache })
+    await screen.findByTestId('screen-app')
+    expect(clear).not.toHaveBeenCalled()
+    view.unmount()
+
+    route({ session: () => json(200, { authenticated: false, needs_setup: false }) })
+    await mount({ cache })
+    await screen.findByRole('heading', { name: '屏幕令牌失效' })
+    await waitFor(() => expect(clear).toHaveBeenCalledTimes(1))
   })
 
   it('令牌失效页有英文文案', async () => {
@@ -118,6 +133,41 @@ describe('屏幕端守卫', () => {
     expect(screen.getByText(/用手机打开/)).toBeInTheDocument()
     expect(screen.getByText(/http:\/\/.+:\d+/)).toBeInTheDocument()
     expect(screen.queryByTestId('screen-app')).toBeNull()
+  })
+
+  it('hub 给出的候选地址大字显示第一个，其余小字，不再用占位', async () => {
+    route({
+      session: () => json(200, sess({ needs_setup: true })),
+      setupCode: () =>
+        json(200, { code: 'ABCD-1234', expires_at: '2099-01-01T00:00:00Z', urls: ['http://192.168.1.20:31415', 'http://10.0.0.5:31415'] }),
+    })
+    await mount()
+    const big = await screen.findByText(/用手机打开 http:\/\/192\.168\.1\.20:31415 完成设置/)
+    expect(big).toBeInTheDocument()
+    expect(screen.queryByText(/树莓派地址/)).toBeNull()
+    expect(screen.getByText(/也可以试试：http:\/\/10\.0\.0\.5:31415/)).toBeInTheDocument()
+  })
+
+  it('会话刷新失败时轮询不会停：之后仍继续取设置码', async () => {
+    let sessionCalls = 0
+    let codeCalls = 0
+    route({
+      session: () => {
+        sessionCalls++
+        // 1 初始、2 第一轮、3 第二轮（报告设置已完成）→ 4 是 refresh 本身，失败；之后恢复 needs_setup
+        if (sessionCalls === 4) return Promise.reject(new TypeError('Failed to fetch'))
+        return json(200, sess({ needs_setup: sessionCalls !== 3 }))
+      },
+      setupCode: () => {
+        codeCalls++
+        return json(200, { code: 'ABCD-1234', expires_at: '2099-01-01T00:00:00Z', urls: [] })
+      },
+    })
+    await mount()
+    await screen.findByText('ABCD-1234')
+    await waitFor(() => expect(sessionCalls).toBeGreaterThanOrEqual(6))
+    const before = codeCalls
+    await waitFor(() => expect(codeCalls).toBeGreaterThan(before))
   })
 
   it('设置码接口 404（无有效码）时提示等待而不是报错', async () => {
@@ -163,7 +213,7 @@ describe('屏幕端守卫：hub 不可达', () => {
 
   it('会话查询失败但有缓存的 snapshot：带着缓存进入屏幕端应用', async () => {
     route({ session: () => Promise.reject(new TypeError('Failed to fetch')) })
-    const cache: SnapshotCache = { save: async () => {}, load: async () => storedFromSnapshot() }
+    const cache: SnapshotCache = { save: async () => {}, load: async () => storedFromSnapshot(), clear: async () => {} }
     await mount({ cache })
     const app = await screen.findByTestId('screen-app')
     expect(app).toHaveAttribute('data-restored', 'yes')
@@ -172,7 +222,7 @@ describe('屏幕端守卫：hub 不可达', () => {
 
   it('正常在线时也把缓存传给屏幕端应用（冷启动先显示上次数据）', async () => {
     route({ session: () => json(200, sess({})) })
-    const cache: SnapshotCache = { save: async () => {}, load: async () => storedFromSnapshot() }
+    const cache: SnapshotCache = { save: async () => {}, load: async () => storedFromSnapshot(), clear: async () => {} }
     await mount({ cache })
     expect(await screen.findByTestId('screen-app')).toHaveAttribute('data-restored', 'yes')
   })

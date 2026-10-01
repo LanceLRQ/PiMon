@@ -1107,7 +1107,8 @@
       "openOnPhone": "Open {{url}} on your phone to finish setup",
       "unavailable": "The setup code is not available yet, please wait…",
       "hint": "Enter the code on your phone and set the admin password; this screen will open the dashboard automatically.",
-      "raspberryHost": "Pi address"
+      "raspberryHost": "Pi address",
+      "alsoTry": "Or try: {{urls}}"
     }
   }
 }

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/api"
@@ -60,7 +61,9 @@ type App struct {
 	ws          *ws.Hub
 	notifier    *sdnotify.Notifier
 	handler     http.Handler
-	closed      bool
+	// listenAddr 是 Serve 实际监听的地址（host:port），设置码页据此拼手机访问地址。
+	listenAddr atomic.Value
+	closed     bool
 }
 
 // Open 按固定顺序启动：建数据目录 → 密钥 → 打开数据库 → 版本变化时升级前备份 →
@@ -205,7 +208,11 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		a.screenState.Refresh()
 	})
 	a.handler = api.New(api.Deps{
-		DataDir:     a.cfg.DataDir,
+		DataDir: a.cfg.DataDir,
+		ListenAddr: func() string {
+			v, _ := a.listenAddr.Load().(string)
+			return v
+		},
 		Plugins:     a.plugins,
 		Instances:   a.instances,
 		History:     a.history,

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -121,6 +122,8 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 			ProcWriteBytes: func() (int64, bool) { return 0, false },
 		}),
 		DataDir:      dir,
+		ListenAddr:   func() string { return "0.0.0.0:41999" },
+		LocalIPs:     func() []net.IP { return []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("192.168.7.8")} },
 		Plugins:      reg,
 		Instances:    inst,
 		History:      hist,

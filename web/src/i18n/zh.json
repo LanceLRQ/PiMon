@@ -1107,7 +1107,8 @@
       "openOnPhone": "用手机打开 {{url}} 完成设置",
       "unavailable": "设置码暂不可用，请稍候…",
       "hint": "在手机上输入设置码并设置管理员密码，本屏幕会自动进入面板。",
-      "raspberryHost": "树莓派地址"
+      "raspberryHost": "树莓派地址",
+      "alsoTry": "也可以试试：{{urls}}"
     }
   }
 }

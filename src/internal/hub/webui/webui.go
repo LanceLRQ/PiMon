@@ -113,9 +113,11 @@ func (h *spa) serveFile(w http.ResponseWriter, r *http.Request, name string, dat
 		w.Header().Set("Cache-Control", cacheNoCache)
 	}
 	if name == screenServiceWorker {
-		// 脚本放在 /screen/ 下，默认作用域是 /screen/，覆盖不到 /screen 本身；放宽后由页面注册时指定 scope 为 /screen，
-		// 脚本内部只处理 /screen 与 /assets/ 的请求。
-		w.Header().Set("Service-Worker-Allowed", "/")
+		// 脚本放在 /screen/ 下，默认最大作用域是 /screen/，覆盖不到不带斜杠的 /screen（kiosk 实际访问的路径）；
+		// 放宽到 /screen，页面注册时指定 scope 为 /screen。作用域按前缀匹配，也会覆盖 /screens 等管理页，
+		// 但脚本只处理 /screen 导航与 /assets/ 请求，其余原样直通；管理页的 /assets 请求走 cache-first，
+		// 文件名带哈希、内容不可变，无害。
+		w.Header().Set("Service-Worker-Allowed", "/screen")
 	}
 	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
 }

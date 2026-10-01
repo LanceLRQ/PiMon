@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Patch } from '@/types/protocol.generated'
 import { createScreenStore } from './screen-store'
 import { createSnapshotCache, startSnapshotPersistence, type CacheStorageLike } from './snapshot-cache'
 import { snapshotOf } from './test-utils'
@@ -15,6 +16,9 @@ function fakeStorage() {
         async match(key) {
           const text = files.get(key)
           return text === undefined ? undefined : new Response(text)
+        },
+        async delete(key) {
+          return files.delete(key)
         },
       }
     },
@@ -49,9 +53,22 @@ describe('snapshot 本地存储', () => {
     expect(await cache.load()).toBeNull()
   })
 
+  it('clear 删除存档，之后读回 null；没有存档时清除也不报错', async () => {
+    const { storage } = fakeStorage()
+    const cache = createSnapshotCache(storage)
+    const store = createScreenStore()
+    store.applySnapshot(snapshotOf())
+    await cache.save(store.getState())
+    expect(await cache.load()).not.toBeNull()
+    await cache.clear()
+    expect(await cache.load()).toBeNull()
+    await expect(cache.clear()).resolves.toBeUndefined()
+  })
+
   it('没有 CacheStorage（非安全上下文）时静默跳过', async () => {
     const cache = createSnapshotCache(null)
     await expect(cache.save(createScreenStore().getState())).resolves.toBeUndefined()
+    await expect(cache.clear()).resolves.toBeUndefined()
     expect(await cache.load()).toBeNull()
   })
 
@@ -103,42 +120,99 @@ describe('startSnapshotPersistence', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
-  it('首次收到 snapshot 立即落盘，之后节流合并，只存最新状态', async () => {
+  const dataPatch = (summary: string, time: string): Patch => ({
+    type: 'patch',
+    server_time: time,
+    entity: 'screen_data',
+    screen_data: [{ instance_id: 'i1', display_state: 'ok', report_status: 'ok', report_stale: false, summary, last_success_at: null, items: [] }],
+  })
+
+  it('首次收到数据立即落盘，之后每 60 秒至多一次，合并期间只存最新状态', async () => {
     const save = vi.fn().mockResolvedValue(undefined)
     const store = createScreenStore()
-    const stop = startSnapshotPersistence(store, { save, load: vi.fn() }, { intervalMs: 5000 })
+    const stop = startSnapshotPersistence(store, { save, load: vi.fn(), clear: vi.fn() })
     store.applySnapshot(snapshotOf({ server_time: '2026-10-01T06:00:00Z' }))
     await vi.advanceTimersByTimeAsync(0)
     expect(save).toHaveBeenCalledTimes(1)
 
-    store.applyPatch({ type: 'patch', server_time: '2026-10-01T06:00:01Z', entity: 'screen_data', screen_data: [] })
-    store.applyPatch({ type: 'patch', server_time: '2026-10-01T06:00:02Z', entity: 'screen_data', screen_data: [] })
-    await vi.advanceTimersByTimeAsync(1000)
+    store.applyPatch(dataPatch('a', '2026-10-01T06:00:01Z'))
+    store.applyPatch(dataPatch('b', '2026-10-01T06:00:02Z'))
+    await vi.advanceTimersByTimeAsync(59_000)
     expect(save).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(4000)
+    await vi.advanceTimersByTimeAsync(1_000)
     expect(save).toHaveBeenCalledTimes(2)
-    expect(save.mock.calls[1][0].lastDataAt).toBe(Date.parse('2026-10-01T06:00:02Z'))
+    expect(save.mock.calls[1][0].data.i1.summary).toBe('b')
     stop()
   })
 
-  it('没有真实数据（只是恢复出来的）或没有新数据时不落盘；停止后不再落盘', async () => {
+  it('内容没有变化（只是数据时间戳在走）就不重写', async () => {
     const save = vi.fn().mockResolvedValue(undefined)
     const store = createScreenStore()
-    const stop = startSnapshotPersistence(store, { save, load: vi.fn() }, { intervalMs: 1000 })
+    const stop = startSnapshotPersistence(store, { save, load: vi.fn(), clear: vi.fn() })
+    store.applySnapshot(snapshotOf({ server_time: '2026-10-01T06:00:00Z' }))
+    await vi.advanceTimersByTimeAsync(0)
+    store.applyPatch(dataPatch('x', '2026-10-01T06:00:01Z'))
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(save).toHaveBeenCalledTimes(2)
+    // 相同内容反复到来，只有时间戳变化
+    for (let i = 2; i < 10; i++) {
+      store.applyPatch(dataPatch('x', `2026-10-01T06:00:${String(10 + i).padStart(2, '0')}Z`))
+      await vi.advanceTimersByTimeAsync(60_000)
+    }
+    expect(save).toHaveBeenCalledTimes(2)
+    stop()
+  })
+
+  it('页面隐藏与 pagehide 时有未落盘的变化就立即补写', async () => {
+    const save = vi.fn().mockResolvedValue(undefined)
+    const target = new EventTarget()
+    const doc = {
+      visibilityState: 'visible' as DocumentVisibilityState,
+      addEventListener: target.addEventListener.bind(target),
+      removeEventListener: target.removeEventListener.bind(target),
+    }
+    const win = { addEventListener: target.addEventListener.bind(target), removeEventListener: target.removeEventListener.bind(target) }
+    const store = createScreenStore()
+    const stop = startSnapshotPersistence(store, { save, load: vi.fn(), clear: vi.fn() }, { doc, win: win as never })
+    store.applySnapshot(snapshotOf())
+    await vi.advanceTimersByTimeAsync(0)
+    expect(save).toHaveBeenCalledTimes(1)
+
+    store.applyPatch(dataPatch('p1', '2026-10-01T06:00:05Z'))
+    doc.visibilityState = 'visible'
+    target.dispatchEvent(new Event('visibilitychange'))
+    expect(save).toHaveBeenCalledTimes(1)
+    doc.visibilityState = 'hidden'
+    target.dispatchEvent(new Event('visibilitychange'))
+    expect(save).toHaveBeenCalledTimes(2)
+
+    store.applyPatch(dataPatch('p2', '2026-10-01T06:00:06Z'))
+    target.dispatchEvent(new Event('pagehide'))
+    expect(save).toHaveBeenCalledTimes(3)
+    // 补写后内容没变，再触发不重复写
+    target.dispatchEvent(new Event('pagehide'))
+    expect(save).toHaveBeenCalledTimes(3)
+    stop()
+    store.applyPatch(dataPatch('p3', '2026-10-01T06:00:07Z'))
+    target.dispatchEvent(new Event('pagehide'))
+    expect(save).toHaveBeenCalledTimes(3)
+  })
+
+  it('没有真实数据（只是恢复出来的）不落盘；停止后不再落盘', async () => {
+    const save = vi.fn().mockResolvedValue(undefined)
+    const store = createScreenStore()
+    const stop = startSnapshotPersistence(store, { save, load: vi.fn(), clear: vi.fn() })
     store.setConnected(true)
-    await vi.advanceTimersByTimeAsync(2000)
+    await vi.advanceTimersByTimeAsync(120_000)
     expect(save).not.toHaveBeenCalled()
 
     store.applySnapshot(snapshotOf())
     await vi.advanceTimersByTimeAsync(0)
     expect(save).toHaveBeenCalledTimes(1)
-    store.setConnected(false)
-    await vi.advanceTimersByTimeAsync(5000)
-    expect(save).toHaveBeenCalledTimes(1)
 
     stop()
-    store.applySnapshot(snapshotOf({ server_time: '2030-01-01T00:00:00Z' }))
-    await vi.advanceTimersByTimeAsync(5000)
+    store.applyPatch(dataPatch('late', '2030-01-01T00:00:00Z'))
+    await vi.advanceTimersByTimeAsync(120_000)
     expect(save).toHaveBeenCalledTimes(1)
   })
 })

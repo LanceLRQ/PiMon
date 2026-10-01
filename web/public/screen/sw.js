@@ -7,6 +7,9 @@
 const SHELL_CACHE = 'pimon-screen-shell-v1'
 // 所有 /screen 下的导航共用同一份外壳（index.html 与路径无关）
 const SHELL_KEY = '/screen'
+// /assets 缓存条目上限：文件名带哈希，升级后旧文件不会再被引用，超出按写入顺序淘汰最旧的。
+// 一个 build 约 20 个文件，80 条够留下三四个版本。
+const MAX_ASSETS = 80
 
 const OFFLINE_PAGE = `<!doctype html>
 <html lang="zh-CN">
@@ -51,6 +54,8 @@ async function navigate(request, deps) {
       await cache.put(SHELL_KEY, res.clone())
       return res
     }
+    // 只有服务端故障（5xx，如反代 502、hub 正在重启）才回落外壳；302、401、404 等是真实的应答，不能被旧外壳掩盖
+    if (res.status < 500) return res
     const cached = await cache.match(SHELL_KEY)
     return cached || res
   } catch {
@@ -64,8 +69,17 @@ async function asset(request, deps) {
   const hit = await cache.match(request)
   if (hit) return hit
   const res = await deps.fetch(request)
-  if (res.ok) await cache.put(request, res.clone())
+  if (res.ok) {
+    await cache.put(request, res.clone())
+    await trimAssets(cache)
+  }
   return res
+}
+
+async function trimAssets(cache) {
+  const keys = await cache.keys()
+  const assets = keys.filter((k) => new URL(k.url).pathname.startsWith('/assets/'))
+  for (const k of assets.slice(0, Math.max(0, assets.length - MAX_ASSETS))) await cache.delete(k)
 }
 
 // 返回 null 表示不处理（交给浏览器走网络）；否则返回响应的 Promise

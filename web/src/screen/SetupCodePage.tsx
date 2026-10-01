@@ -33,6 +33,7 @@ export function SetupCodePage({ pollMs }: SetupCodePageProps) {
   const { t } = useTranslation()
   const { refresh } = useSession()
   const [code, setCode] = useState<string | null>(null)
+  const [urls, setUrls] = useState<string[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -43,11 +44,15 @@ export function SetupCodePage({ pollMs }: SetupCodePageProps) {
         // 设置完成（或会话失效）时交给 refresh 更新全局会话，守卫随即切换页面
         const current = await fetchSession()
         if (!current.needs_setup || !current.authenticated) {
+          // refresh 失败不会抛，也不能让轮询停下：下面照常排下一轮，直到组件卸载
           if (!cancelled) await refresh()
-          return
+        } else {
+          const r = await http.get<SetupCodeReveal>('/api/screen/setup-code')
+          if (!cancelled) {
+            setCode(r.code)
+            setUrls(r.urls ?? [])
+          }
         }
-        const r = await http.get<SetupCodeReveal>('/api/screen/setup-code')
-        if (!cancelled) setCode(r.code)
       } catch (e) {
         // 404：暂时没有有效设置码；网络错误保持现状，下一轮再试
         if (!cancelled && e instanceof ApiError && e.status === 404) setCode(null)
@@ -61,7 +66,9 @@ export function SetupCodePage({ pollMs }: SetupCodePageProps) {
     }
   }, [refresh, pollMs])
 
-  const url = phoneAddress(window.location, t('screenApp.setup.raspberryHost'))
+  // hub 给出的候选地址优先（kiosk 走回环地址，页面自己看不到局域网地址）；都没有才用占位
+  const [first, ...others] = urls
+  const url = first ?? phoneAddress(window.location, t('screenApp.setup.raspberryHost'))
   return (
     <ShellFrame>
       <h1 className="text-3xl font-semibold">{t('screenApp.setup.title')}</h1>
@@ -73,7 +80,10 @@ export function SetupCodePage({ pollMs }: SetupCodePageProps) {
       ) : (
         <p className="text-2xl text-s-muted-fg">{t('screenApp.setup.unavailable')}</p>
       )}
-      <p className="text-xl">{t('screenApp.setup.openOnPhone', { url })}</p>
+      <p data-setup-url className="text-2xl font-semibold">
+        {t('screenApp.setup.openOnPhone', { url })}
+      </p>
+      {others.length > 0 && <p className="text-sm text-s-muted-fg">{t('screenApp.setup.alsoTry', { urls: others.join('  ') })}</p>}
       <p className="max-w-xl text-base text-s-muted-fg">{t('screenApp.setup.hint')}</p>
     </ShellFrame>
   )

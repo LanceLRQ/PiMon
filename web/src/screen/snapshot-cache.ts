@@ -25,6 +25,8 @@ export interface StoredScreenData {
 export interface SnapshotCache {
   save(state: ScreenStoreState): Promise<void>
   load(): Promise<StoredScreenData | null>
+  /** 删除存档（令牌失效后不再保留旧数据） */
+  clear(): Promise<void>
 }
 
 /** CacheStorage 的最小子集，便于测试注入 */
@@ -32,6 +34,7 @@ export interface CacheStorageLike {
   open(name: string): Promise<{
     put(key: string, res: Response): Promise<void>
     match(key: string): Promise<Response | undefined>
+    delete(key: string): Promise<boolean>
   }>
 }
 
@@ -65,6 +68,15 @@ export function createSnapshotCache(storage: CacheStorageLike | null | undefined
         // 配额或存储不可用：只是少了离线数据，不影响正常显示
       }
     },
+    async clear() {
+      if (!storage) return
+      try {
+        const cache = await storage.open(snapshotCacheName)
+        await cache.delete(snapshotKey)
+      } catch {
+        // 存储不可用时没有存档可清
+      }
+    },
     async load() {
       if (!storage) return null
       try {
@@ -87,46 +99,67 @@ function defaultStorage(): CacheStorageLike | null {
 export const defaultSnapshotCache: SnapshotCache = {
   save: (s) => createSnapshotCache().save(s),
   load: () => createSnapshotCache().load(),
+  clear: () => createSnapshotCache().clear(),
 }
 
 export interface PersistenceOptions {
-  /** 两次落盘的最小间隔，默认 5 秒；patch 频繁到来时合并 */
+  /** 两次落盘的最小间隔，默认 60 秒：kiosk 全天运行，写得太勤会磨损 SD 卡 */
   intervalMs?: number
+  /** 页面隐藏、卸载事件的来源，测试注入 */
+  doc?: Pick<Document, 'visibilityState' | 'addEventListener' | 'removeEventListener'>
+  win?: Pick<Window, 'addEventListener' | 'removeEventListener'>
+}
+
+function fingerprint(state: ScreenStoreState): string {
+  return JSON.stringify([state.settings, state.layout, state.screenState, state.data])
 }
 
 /**
- * 订阅屏幕 store，把最新的真实数据节流写入本地存档：首次收到数据立即写，之后至多每 intervalMs 写一次。
- * 只有从中枢收到过数据（synced）且服务端数据时间有更新才写，所以恢复出来的旧数据不会被原样重写。
- * 返回停止函数。
+ * 订阅屏幕 store，把最新的真实数据节流写入本地存档：首次收到数据立即写，之后至多每 intervalMs 写一次，
+ * 且只在内容（设置、布局、屏幕状态、实例数据）与上次写入的不同时才写，数据时间戳单独变化不算。
+ * 页面隐藏（visibilitychange=hidden）与 pagehide 时补写一次，避免丢最后一段数据。
+ * 只有从中枢收到过数据（synced）才写，所以恢复出来的旧数据不会被原样重写。返回停止函数。
  */
 export function startSnapshotPersistence(store: ScreenStore, cache: SnapshotCache, opts: PersistenceOptions = {}): () => void {
-  const intervalMs = opts.intervalMs ?? 5000
+  const intervalMs = opts.intervalMs ?? 60_000
+  const doc = opts.doc ?? (typeof document === 'undefined' ? undefined : document)
+  const win = opts.win ?? (typeof window === 'undefined' ? undefined : window)
   let savedAt = Number.NEGATIVE_INFINITY
-  let savedDataAt: number | null = null
+  let savedPrint: string | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
   let stopped = false
 
   const flush = () => {
+    if (timer !== null) clearTimeout(timer)
     timer = null
     if (stopped) return
     const state = store.getState()
     if (!state.synced || !state.layout) return
-    if (state.lastDataAt === savedDataAt) return
+    const print = fingerprint(state)
+    if (print === savedPrint) return
     savedAt = Date.now()
-    savedDataAt = state.lastDataAt
+    savedPrint = print
     void cache.save(state)
   }
 
   const unsubscribe = store.subscribe(() => {
     if (timer !== null || stopped) return
     const state = store.getState()
-    if (!state.synced || !state.layout || state.lastDataAt === savedDataAt) return
+    if (!state.synced || !state.layout) return
     timer = setTimeout(flush, Math.max(0, savedAt + intervalMs - Date.now()))
   })
+
+  const onVisibility = () => {
+    if (doc?.visibilityState === 'hidden') flush()
+  }
+  doc?.addEventListener('visibilitychange', onVisibility)
+  win?.addEventListener('pagehide', flush)
 
   return () => {
     stopped = true
     unsubscribe()
+    doc?.removeEventListener('visibilitychange', onVisibility)
+    win?.removeEventListener('pagehide', flush)
     if (timer !== null) clearTimeout(timer)
     timer = null
   }

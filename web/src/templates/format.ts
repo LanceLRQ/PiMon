@@ -83,7 +83,12 @@ export function formatBytes(value: number, unit: string, lang: Lang): { text: st
     scaled /= 1024
     level++
   }
-  const rounded = Number(scaled.toPrecision(3))
+  let rounded = Number(scaled.toPrecision(3))
+  // 取整后到了 1000 以上（如 1023.6 B、1023.9 KB）说明已经逼近下一级，进位后重新取三位有效数字
+  while (rounded >= 1000 && level < byteUnits.length - 1) {
+    rounded = Number((rounded / 1024).toPrecision(3))
+    level++
+  }
   const signed = value < 0 ? -rounded : rounded
   return { text: formatNumber(signed, lang, 2), unit: `${byteUnits[level]}${suffix}` }
 }

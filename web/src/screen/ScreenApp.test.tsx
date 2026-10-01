@@ -35,7 +35,7 @@ function stored(): StoredScreenData {
   return { v: 1, savedAt: Date.now(), lastDataAt: s.lastDataAt, settings: s.settings, layout: s.layout, screenState: s.screenState, data: s.data }
 }
 
-const nullCache: SnapshotCache = { save: vi.fn(async () => {}), load: async () => null }
+const nullCache: SnapshotCache = { save: vi.fn(async () => {}), load: async () => null, clear: async () => {} }
 
 beforeEach(() => {
   screenStore.reset()

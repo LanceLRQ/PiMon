@@ -2,6 +2,7 @@ package api
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
@@ -44,6 +45,10 @@ type Deps struct {
 	System       *system.Service
 	// DataDir 是数据目录，品牌标识从其 logos 子目录读取；为空时标识接口一律 404。
 	DataDir string
+	// ListenAddr 返回实际监听地址（host:port），用来拼设置码页的手机访问地址；nil 时退回请求的 Host。
+	ListenAddr func() string
+	// LocalIPs 枚举本机可用于局域网访问的 IPv4 地址；nil 时枚举网卡，测试里注入。
+	LocalIPs func() []net.IP
 	// Web 是前端 SPA 处理器，挂在 "/" 兜底；为 nil 时不提供前端（测试用）。
 	Web http.Handler
 	// WS 是 UI WebSocket 的握手处理器，挂在 GET /ws；为 nil 时不提供（测试用）。

@@ -132,8 +132,8 @@ func TestScreenServiceWorkerScript(t *testing.T) {
 	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
 		t.Fatalf("sw.js 必须每次校验，缓存头 %q", cc)
 	}
-	// 脚本在 /screen/ 下，要把作用域放宽到 /screen（不带斜杠）必须有这个头
-	if got := rec.Header().Get("Service-Worker-Allowed"); got != "/" {
+	// 脚本在 /screen/ 下，要把作用域放宽到 /screen（不带斜杠）必须有这个头，且只放宽到 /screen
+	if got := rec.Header().Get("Service-Worker-Allowed"); got != "/screen" {
 		t.Fatalf("Service-Worker-Allowed %q", got)
 	}
 	// 其它静态文件不带该头

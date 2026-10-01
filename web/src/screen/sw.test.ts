@@ -11,6 +11,8 @@ interface Deps {
 interface FakeCache {
   match(key: unknown): Promise<Response | undefined>
   put(key: unknown, res: Response): Promise<void>
+  keys(): Promise<{ url: string }[]>
+  delete(key: { url: string }): Promise<boolean>
 }
 interface SwApi {
   handleFetch(req: unknown, deps: Deps): Promise<Response> | null
@@ -36,6 +38,13 @@ function makeCaches() {
     },
     async put(key, res) {
       store.set(keyOf(key), res)
+    },
+    // Map 保持写入顺序，与 Cache.keys() 的顺序一致
+    async keys() {
+      return [...store.keys()].map((k) => ({ url: k.startsWith('http') ? k : origin + k }))
+    },
+    async delete(key) {
+      return store.delete(key.url)
     },
   }
   const caches: Deps['caches'] = { open: async () => cache }
@@ -100,6 +109,18 @@ describe('Service Worker：导航 network-first', () => {
     expect(await res.text()).toBe('旧外壳')
   })
 
+  it('302、401、404 是真实应答，不用缓存外壳掩盖', async () => {
+    fetchMock.mockResolvedValueOnce(html('旧外壳'))
+    await sw.handleFetch(nav('/screen'), deps())!
+    for (const status of [302, 401, 404]) {
+      fetchMock.mockResolvedValueOnce(new Response('x', { status }))
+      const res = await sw.handleFetch(nav('/screen'), deps())!
+      expect(res.status).toBe(status)
+    }
+    // 外壳缓存没有被错误响应覆盖
+    expect(await (await env.caches.open('x').then((c) => c.match('/screen')))!.text()).toBe('旧外壳')
+  })
+
   it('网络 5xx 且没有缓存时原样返回；错误响应不写入缓存', async () => {
     fetchMock.mockResolvedValue(html('bad gateway', 502))
     const res = await sw.handleFetch(nav('/screen'), deps())!
@@ -136,6 +157,21 @@ describe('Service Worker：/assets/* cache-first', () => {
     fetchMock.mockResolvedValueOnce(new Response('ok'))
     await sw.handleFetch(req('/assets/b.js'), deps())!
     expect(env.store.size).toBe(1)
+  })
+
+  it('缓存的资源超过上限时按写入顺序淘汰最旧的，外壳不受影响', async () => {
+    fetchMock.mockResolvedValueOnce(html('外壳'))
+    await sw.handleFetch(nav('/screen'), deps())!
+    for (let i = 0; i < 85; i++) {
+      fetchMock.mockResolvedValueOnce(new Response(`a${i}`))
+      await sw.handleFetch(req(`/assets/f-${i}.js`), deps())!
+    }
+    const keys = [...env.store.keys()]
+    const assets = keys.filter((k) => k.includes('/assets/'))
+    expect(assets).toHaveLength(80)
+    expect(assets[0]).toContain('/assets/f-5.js')
+    expect(assets.at(-1)).toContain('/assets/f-84.js')
+    expect(keys).toContain('/screen')
   })
 
   it('离线且未缓存：请求失败（由浏览器处理），不吞成假成功', async () => {

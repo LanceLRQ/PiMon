@@ -133,5 +133,5 @@ func (s *server) revealSetupCode(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusNotFound, httpx.CodeNotFound, nil)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, model.SetupCodeReveal{Code: code, ExpiresAt: exp})
+	httpx.WriteJSON(w, http.StatusOK, model.SetupCodeReveal{Code: code, ExpiresAt: exp, URLs: s.setupURLs(r)})
 }

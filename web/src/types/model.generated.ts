@@ -1094,6 +1094,11 @@ export interface ScreenControlResponse {
 export interface SetupCodeReveal {
   code: string;
   expires_at: string;
+  /**
+   * URLs 是手机完成首次设置时可用的访问地址（最多 3 个，第一个最优先）：
+   * 先是设置里配置的对外访问地址，其后是本机非回环、非链路本地的 IPv4 地址加实际监听端口。
+   */
+  urls: string[];
 }
 /**
  * ScreenInstanceData 是屏幕端渲染一个小组件所需的实例数据：展示状态与最新报告的数据项。
