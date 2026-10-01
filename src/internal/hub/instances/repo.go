@@ -236,9 +236,10 @@ func (s *Service) ListByProxy(ctx context.Context, proxyID string) ([]model.Prox
 	return out, rows.Err()
 }
 
-// ResetToDirect 把引用该代理的实例改为直连（proxies.Referrers），幂等：
-// 配置里的代理字段改为 direct，随后让受影响的实例按新配置重新排程。
-func (s *Service) ResetToDirect(ctx context.Context, proxyID string) error {
+// DetachAndPause 清除引用该代理的实例的代理设置并暂停它们（proxies.Referrers），幂等：
+// 配置里的代理字段改为 direct、paused 置位，随后移出调度器并通知变更；
+// 用户为实例重新选择代理后再手动恢复。
+func (s *Service) DetachAndPause(ctx context.Context, proxyID string) error {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	refs, err := s.ListByProxy(ctx, proxyID)
@@ -253,25 +254,27 @@ func (s *Service) ResetToDirect(ctx context.Context, proxyID string) error {
 		if err != nil {
 			return err
 		}
-		if err := s.resetRowToDirect(ctx, r); err != nil {
+		if err := s.detachRowAndPause(ctx, r); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Service) resetRowToDirect(ctx context.Context, r row) error {
+func (s *Service) detachRowAndPause(ctx context.Context, r row) error {
 	if p, ok := s.reg.Get(r.PluginID); ok {
 		if key := proxyKey(p.Manifest.ConfigSchema); key != "" {
 			r.Config[key] = proxy.DirectValue
 		}
 	}
 	r.ProxyID = ""
+	r.Paused = true
 	r.ConfigHash = contentHash(r.PluginID, r.Config, r.SecretsEnc)
 	r.UpdatedAt = s.clk.Now()
 	if err := s.updateRow(ctx, r); err != nil {
 		return err
 	}
 	s.syncRow(ctx, r)
+	s.notify(r.ID)
 	return nil
 }

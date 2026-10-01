@@ -28,7 +28,7 @@ func (f *fakeReferrers) ListByProxy(_ context.Context, id string) ([]model.Proxy
 	return append([]model.ProxyReferrer(nil), f.refs[id]...), nil
 }
 
-func (f *fakeReferrers) ResetToDirect(_ context.Context, id string) error {
+func (f *fakeReferrers) DetachAndPause(_ context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.resets = append(f.resets, id)

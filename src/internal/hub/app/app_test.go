@@ -407,7 +407,7 @@ func TestPluginRegistryScansOnOpenAndWatchesWhileServing(t *testing.T) {
 	}
 }
 
-// 代理被实例引用时删除返回 409 并列出实例；force 则先把引用改为直连（实例仓库实现 Referrers）。
+// 代理被实例引用时删除返回 409 并列出实例；force 则先把引用清除代理并暂停（实例仓库实现 Referrers）。
 func TestProxyDeleteUsesInstanceReferrers(t *testing.T) {
 	cfg := testConfig(t)
 	d := filepath.Join(cfg.PluginDir(), "probe")
@@ -474,8 +474,8 @@ func TestProxyDeleteUsesInstanceReferrers(t *testing.T) {
 	}
 	_, data = call(t, c, srv.URL, "GET", "/api/instances/"+inst.ID, nil)
 	var got model.InstanceDetail
-	if err := json.Unmarshal(data, &got); err != nil || got.Config["proxy"] != "direct" {
-		t.Fatalf("实例应改为直连: %s (%v)", data, err)
+	if err := json.Unmarshal(data, &got); err != nil || got.Config["proxy"] != "direct" || !got.Paused {
+		t.Fatalf("实例应改为直连并暂停: %s (%v)", data, err)
 	}
 }
 

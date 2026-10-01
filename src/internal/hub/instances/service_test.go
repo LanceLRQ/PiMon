@@ -818,10 +818,19 @@ func TestReferrersAndMissingProxy(t *testing.T) {
 		t.Fatalf("应经代理运行: %v", f.probe.last().Proxy)
 	}
 
+	f.start()
+	if !f.svc.isScheduled(a.ID) {
+		t.Fatal("摘除前应在调度器里")
+	}
+	log := &changeLog{}
+	f.svc.OnChange(log.add)
 	for i := 0; i < 2; i++ { // 幂等
-		if err := f.svc.ResetToDirect(bg, "px1"); err != nil {
+		if err := f.svc.DetachAndPause(bg, "px1"); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if !slices.Contains(log.take(), a.ID) {
+		t.Fatal("摘除并暂停应通知该实例")
 	}
 	if refs, _ = f.svc.ListByProxy(bg, "px1"); len(refs) != 0 {
 		t.Fatalf("改直连后不应再有引用: %v", refs)
@@ -829,6 +838,18 @@ func TestReferrersAndMissingProxy(t *testing.T) {
 	g, _ := f.svc.Get(bg, a.ID)
 	if g.Config["proxy"] != "direct" {
 		t.Fatalf("配置应改为 direct: %v", g.Config["proxy"])
+	}
+	if !g.Paused || f.svc.isScheduled(a.ID) {
+		t.Fatalf("被引用实例应暂停并移出调度器: paused=%v", g.Paused)
+	}
+	others, _ := f.svc.List(bg)
+	for _, o := range others {
+		if o.ID != a.ID && o.Paused {
+			t.Fatal("未引用的实例不应被暂停")
+		}
+	}
+	if _, err := f.svc.Resume(bg, a.ID); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := f.svc.Run(bg, a.ID); err != nil {
 		t.Fatal(err)

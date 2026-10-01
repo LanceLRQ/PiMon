@@ -46,8 +46,8 @@ func (e *InUseError) Error() string {
 type Referrers interface {
 	// ListByProxy 按代理 id 列出引用它的实例（至少含 id 与名称）。
 	ListByProxy(ctx context.Context, proxyID string) ([]model.ProxyReferrer, error)
-	// ResetToDirect 把所有引用该代理的实例改为直连。
-	ResetToDirect(ctx context.Context, proxyID string) error
+	// DetachAndPause 把所有引用该代理的实例改为直连并暂停（用户重选代理后再恢复）。
+	DetachAndPause(ctx context.Context, proxyID string) error
 }
 
 // Config 是 Store 的依赖。
@@ -315,8 +315,8 @@ func (s *Store) Update(ctx context.Context, id string, in model.ProxyInput) (mod
 	return s.Get(ctx, id)
 }
 
-// Delete 删除代理。被引用且 force=false 返回 *InUseError；force=true 先把引用改为直连再删除
-// （两步不在同一事务内：改直连成功而删除失败时，引用已是直连，重试即可）。
+// Delete 删除代理。被引用且 force=false 返回 *InUseError；force=true 先把引用的实例清除代理设置并暂停再删除
+// （两步不在同一事务内：先改实例，失败即返回错误且不删代理；改成功而删除失败时，实例已暂停且为直连，重试即可）。
 func (s *Store) Delete(ctx context.Context, id string, force bool) error {
 	if _, _, err := s.get(ctx, id); err != nil {
 		return err
@@ -329,7 +329,7 @@ func (s *Store) Delete(ctx context.Context, id string, force bool) error {
 		if !force {
 			return &InUseError{Referrers: refs}
 		}
-		if err := s.refs.ResetToDirect(ctx, id); err != nil {
+		if err := s.refs.DetachAndPause(ctx, id); err != nil {
 			return err
 		}
 	}
