@@ -1060,6 +1060,17 @@
     "never": "从未",
     "textEmpty": "未设置文本",
     "more": "+{{n}}",
+    "chart": {
+      "loading": "加载中",
+      "empty": "暂无历史数据",
+      "unsupported": "该数据项没有历史曲线"
+    },
+    "weather": {
+      "attribution": "Weather data by Open-Meteo.com",
+      "humidity": "湿度",
+      "wind": "风",
+      "tomorrow": "明日"
+    },
     "level": {
       "ok": "正常",
       "warning": "警告",

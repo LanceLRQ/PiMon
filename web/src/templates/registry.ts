@@ -1,12 +1,17 @@
 import type { ComponentType } from 'react'
 import type { WidgetSize } from '@/types/generated'
+import { ChartTemplate } from './chart'
 import { ClockTemplate } from './clock'
 import { GaugeTemplate } from './gauge'
+import { ListTemplate } from './list'
 import { PendingTemplate } from './pending'
 import { StateTemplate } from './state'
+import { StatusGridTemplate } from './status-grid'
+import { TableTemplate } from './table'
 import { TextTemplate } from './text'
 import type { TemplateProps } from './types'
 import { ValueTemplate } from './value'
+import { WeatherTemplate } from './weather'
 
 export interface TemplateDef {
   name: string
@@ -33,13 +38,18 @@ export const templateDefs: readonly TemplateDef[] = [
     contract: '.tpl-gauge > [role=meter] + .tpl-gauge__reading' },
   { name: 'state', component: StateTemplate, sizes: [sz(1, 1), sz(2, 1)], implemented: true,
     contract: '.tpl-state > .tpl-state__marker + .tpl-state__label' },
-  pending('status-grid'),
-  pending('list'),
-  pending('table'),
-  pending('chart'),
+  { name: 'status-grid', component: StatusGridTemplate, sizes: [sz(2, 2), sz(4, 2), sz(4, 3), sz(6, 2)], implemented: true,
+    contract: '.tpl-grid > .tpl-grid__cell（标记 + 名称 + 副文本）；放不下折成 .tpl-grid__more' },
+  { name: 'list', component: ListTemplate, sizes: [sz(2, 1), sz(2, 2), sz(2, 3), sz(4, 2), sz(4, 3)], implemented: true,
+    contract: '.tpl-list__rows > .tpl-list__row（标记 + 标签 + 读数）；放不下折成 .tpl-list__more' },
+  { name: 'table', component: TableTemplate, sizes: [sz(2, 2), sz(4, 2), sz(4, 3), sz(6, 1)], implemented: true,
+    contract: '.tpl-table > .tpl-table__header + .tpl-table__row × N；放不下折成 .tpl-table__more' },
+  { name: 'chart', component: ChartTemplate, sizes: [sz(2, 1), sz(2, 2), sz(4, 2)], implemented: true,
+    contract: '.tpl-chart[data-chart-state] > .tpl-chart__reading + .tpl-chart__plot；历史经 HistoryContext 注入' },
   { name: 'clock', component: ClockTemplate, sizes: [sz(1, 1), sz(2, 1), sz(4, 2)], implemented: true,
     contract: '.tpl-clock > .tpl-clock__time（hour:minute[:second]）+ .tpl-clock__date' },
-  pending('weather'),
+  { name: 'weather', component: WeatherTemplate, sizes: [sz(2, 1), sz(2, 2), sz(4, 2)], implemented: true,
+    contract: '.tpl-weather > icon + temp + condition + location；2x2、4x2 加湿度、风、明日；角落署名；未选城市 .tpl-weather__setup' },
   { name: 'text', component: TextTemplate, sizes: [sz(2, 1), sz(2, 2), sz(4, 1), sz(4, 2)], implemented: true,
     contract: '.tpl-text > .tpl-text__body[data-lines]' },
   pending('quota'),

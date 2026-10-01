@@ -1060,6 +1060,17 @@
     "never": "Never",
     "textEmpty": "No text set",
     "more": "+{{n}}",
+    "chart": {
+      "loading": "Loading",
+      "empty": "No history yet",
+      "unsupported": "No history curve for this item"
+    },
+    "weather": {
+      "attribution": "Weather data by Open-Meteo.com",
+      "humidity": "Humidity",
+      "wind": "Wind",
+      "tomorrow": "Tomorrow"
+    },
     "level": {
       "ok": "Normal",
       "warning": "Warning",

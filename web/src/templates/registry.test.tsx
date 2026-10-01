@@ -1,5 +1,6 @@
 /// <reference types="node" />
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getTemplateDef, isImplemented, templateNames } from './registry'
 import { WidgetView } from './widget-view'
@@ -39,6 +40,31 @@ describe('尺寸表与 Go 侧对照', () => {
   })
 })
 
+describe('D5b 模板尺寸表与 Go 侧、各插件 plugin.yaml 对照', () => {
+  const sizeKeys = (name: string) => getTemplateDef(name).sizes.map((s) => `${s.cols}x${s.rows}`).sort()
+  const catalog = read('../../../src/internal/hub/screens/catalog.go')
+  const pluginsDir = join(import.meta.dirname, '../../../src/plugins')
+  const manifests = readdirSync(pluginsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .flatMap((e) => { try { return [readFileSync(join(pluginsDir, e.name, 'plugin.yaml'), 'utf8')] } catch { return [] } })
+
+  // 目录（catalog.go）与各插件 manifest 声明过的尺寸并集
+  const declared = (name: string): string[] => {
+    const set = new Set<string>()
+    const line = new RegExp(`Template: "${name}", Sizes: \\[\\]model\\.WidgetSize\\{([^}]*)\\}`).exec(catalog)?.[1] ?? ''
+    for (const m of line.matchAll(/sz\((\d+), (\d+)\)/g)) set.add(`${m[1]}x${m[2]}`)
+    const re = new RegExp(`(\\d+x\\d+):\\s*(?:\\{template: ${name},|\\n\\s+template: ${name}\\b)`, 'g')
+    for (const src of manifests) for (const m of src.matchAll(re)) set.add(m[1])
+    return [...set].sort()
+  }
+
+  it.each(['list', 'table', 'status-grid', 'chart', 'weather'])('%s 的尺寸 = 目录与插件声明的并集', (name) => {
+    const want = declared(name)
+    expect(want.length).toBeGreaterThan(0)
+    expect(sizeKeys(name)).toEqual(want)
+  })
+})
+
 describe('未实现的模板（Ruling 16）', () => {
   afterEach(() => vi.restoreAllMocks())
 
@@ -60,8 +86,8 @@ describe('未实现的模板（Ruling 16）', () => {
     expect(container.querySelector('[data-template-pending="nope"]')).not.toBeNull()
   })
 
-  it('本子任务的五个模板已实现', () => {
-    for (const n of ['value', 'gauge', 'state', 'text', 'clock']) expect(isImplemented(n)).toBe(true)
+  it('已实现的模板', () => {
+    for (const n of ['value', 'gauge', 'state', 'text', 'clock', 'list', 'table', 'status-grid', 'chart', 'weather']) expect(isImplemented(n)).toBe(true)
   })
 })
 
