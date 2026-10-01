@@ -1156,7 +1156,20 @@
     },
     "stage": {
       "occupied": "占用 {{used}}/{{total}}",
-      "preview": "预览主题"
+      "preview": "预览主题",
+      "previewState": "预览状态",
+      "state": {
+        "real": "实际",
+        "ok": "ok",
+        "warning": "warning",
+        "critical": "critical"
+      },
+      "stateTitle": {
+        "real": "按真实数据显示",
+        "ok": "全部按 ok 显示（仅画布）",
+        "warning": "全部按 warning 显示（仅画布）",
+        "critical": "全部按 critical 显示（仅画布）"
+      }
     },
     "canvas": {
       "label": "屏幕画布",

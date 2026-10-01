@@ -48,6 +48,13 @@ const inputCls =
 /** 数值输入：本地保留输入过程中的文本（如「-」「1.」），能解析时才提交，清空视为未设置 */
 function NumberField({ value, onCommit, label }: { value: number | undefined; onCommit: (v: number | undefined) => void; label: string }) {
   const [text, setText] = useState(value === undefined ? '' : String(value))
+  const [seen, setSeen] = useState(value)
+  // 外部改了值（如撤销）而输入框里的文本与之不符时同步；自己输入引起的变化不改动文本
+  if (value !== seen) {
+    setSeen(value)
+    const typed = text.trim() === '' ? undefined : Number(text)
+    if (typed !== value) setText(value === undefined ? '' : String(value))
+  }
   return (
     <input
       type="text"

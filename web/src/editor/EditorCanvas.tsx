@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type PointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { screenHistoryProvider } from '@/screen/history-provider'
 import { computeGrid, widgetRect } from '@/screen/grid'
@@ -10,7 +10,7 @@ import type { Grid, ResolvedScreen, WidgetSize } from '@/types/generated'
 // 三套主题 token 只在编辑器画布与屏幕根引入，不进 main.tsx（管理端与屏幕端共用 index.html）
 import '@/themes/index.css'
 import { cn } from '@/lib/utils'
-import { DEFAULT_VIEWPORT, RULER_SIZE, fitScale, pointerToScreen } from './geometry'
+import { DEFAULT_VIEWPORT, RULER_SIZE, fitCanvasScale, pointerToScreen } from './geometry'
 import { evaluatePlacement, snapToCell, type Cell, type GridWidgetRect } from './grid-ops'
 
 export interface DragIntent {
@@ -37,7 +37,6 @@ export interface EditorCanvasProps {
   onSelect: (id: string | null) => void
   onMove: (id: string, cell: Cell) => void
   onDropEntry: (cell: Cell) => void
-  onKeyDown: (e: KeyboardEvent<HTMLElement>) => void
   /** 主题运行时读数变化（含主题切换后重新 watch）时回调 */
   onThemeRuntime?: (rt: ThemeRuntime) => void
 }
@@ -93,7 +92,7 @@ function Rulers({ cols, rows, cellW, cellH, scale, sel }: { cols: number; rows: 
  * 上层是同位置的交互层（选中、拖动、幽灵块）与标尺。主题 token 通过画布容器上的 data-theme 生效。
  */
 export function EditorCanvas(props: EditorCanvasProps) {
-  const { screen, grid, data, themeId, reduceEffects, selectedId, conflictIds, dragEntry, lang, timezone, now, onSelect, onMove, onDropEntry, onKeyDown, onThemeRuntime } = props
+  const { screen, grid, data, themeId, reduceEffects, selectedId, conflictIds, dragEntry, lang, timezone, now, onSelect, onMove, onDropEntry, onThemeRuntime } = props
   const { t } = useTranslation()
   const vw = props.viewport.w > 0 ? props.viewport.w : DEFAULT_VIEWPORT.w
   const vh = props.viewport.h > 0 ? props.viewport.h : DEFAULT_VIEWPORT.h
@@ -106,7 +105,7 @@ export function EditorCanvas(props: EditorCanvasProps) {
   useLayoutEffect(() => {
     const el = areaRef.current
     if (!el) return
-    const measure = () => setScale(fitScale(el.clientWidth - RULER_SIZE - 8, el.clientHeight - RULER_SIZE - 8, vw, vh))
+    const measure = () => setScale(fitCanvasScale(el.clientWidth, el.clientHeight, vw, vh))
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
@@ -156,9 +155,13 @@ export function EditorCanvas(props: EditorCanvasProps) {
     if (!m || m.pointer !== e.pointerId) return
     moveRef.current = null
     e.currentTarget.releasePointerCapture?.(e.pointerId)
-    const g = ghost
     setGhost(null)
-    if (commit && m.active && g) onMove(m.id, g.cell)
+    if (!commit || !m.active) return
+    // 松手时按 pointerup 的坐标重新算落点，不依赖上一帧的 ghost 状态
+    const r = rects.find((x) => x.id === m.id)
+    if (!r) return
+    const p = bezelPoint(e.clientX, e.clientY)
+    onMove(m.id, ghostAt(p.x - m.offX, p.y - m.offY, { cols: r.w, rows: r.h }, m.id).cell)
   }
 
   // 从库拖入：落点以指针为中心
@@ -179,18 +182,16 @@ export function EditorCanvas(props: EditorCanvasProps) {
     onDropEntry(g.cell)
   }
 
-  const bw = Math.round(vw * scale)
-  const bh = Math.round(vh * scale)
+  const bw = Math.floor(vw * scale)
+  const bh = Math.floor(vh * scale)
   const ghostRect = ghost ? widgetRect(metrics, { col: ghost.cell.col, row: ghost.cell.row, size: ghost.size }) : null
 
   return (
     <div
       ref={areaRef}
       data-testid="editor-canvas-area"
-      tabIndex={0}
       aria-label={t('layoutEd.canvas.label')}
-      onKeyDown={onKeyDown}
-      className="grid min-h-0 flex-1 place-items-center overflow-hidden bg-panel-2 p-3 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+      className="grid min-h-0 min-w-0 flex-1 place-items-center overflow-hidden bg-panel-2 p-3"
       onClick={(e) => {
         if (e.target === e.currentTarget) onSelect(null)
       }}

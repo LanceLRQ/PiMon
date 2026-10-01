@@ -330,6 +330,68 @@ describe('布局编辑器', () => {
     })
   })
 
+  describe('预览状态', () => {
+    const frame = (id: string) => document.querySelector(`[data-widget-frame][data-widget-id="${id}"]`) as HTMLElement
+
+    it('切换后画布所有小组件按该级别显示，切回实际恢复；草稿不变', async () => {
+      const user = userEvent.setup()
+      await mount()
+      const real = frame('a').getAttribute('data-status-level')
+      expect(real).not.toBe('critical')
+      await user.click(widgetEl('b'))
+      const switchBefore = screen.getByRole('switch', { name: '手动阈值配色' }).getAttribute('aria-checked')
+      const labelsBefore = ['a', 'b', 'far'].map(label)
+      const seg = screen.getByRole('radiogroup', { name: '预览状态' })
+      await user.click(within(seg).getByRole('radio', { name: '全部按 critical 显示（仅画布）' }))
+      for (const id of ['a', 'b', 'far']) expect(frame(id)).toHaveAttribute('data-status-level', 'critical')
+      // 草稿：检查器读到的手动阈值开关、位置与尺寸都没被预览改动
+      expect(screen.getByRole('switch', { name: '手动阈值配色' }).getAttribute('aria-checked')).toBe(switchBefore)
+      expect(['a', 'b', 'far'].map(label)).toEqual(labelsBefore)
+      await user.click(within(seg).getByRole('radio', { name: '全部按 ok 显示（仅画布）' }))
+      expect(frame('a')).toHaveAttribute('data-status-level', 'ok')
+      await user.click(within(seg).getByRole('radio', { name: '按真实数据显示' }))
+      expect(frame('a').getAttribute('data-status-level')).toBe(real)
+      expect(screen.getByRole('switch', { name: '手动阈值配色' }).getAttribute('aria-checked')).toBe(switchBefore)
+    })
+  })
+
+  describe('编辑器级快捷键与检查器重置', () => {
+    it('焦点不在画布时 Esc 与方向键仍生效，输入控件内不生效', async () => {
+      const user = userEvent.setup()
+      await mount()
+      await user.click(widgetEl('b'))
+      fireEvent.keyDown(document.body, { key: 'ArrowRight' })
+      expect(label('b')).toContain('第 5 列第 1 行')
+      fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'ArrowRight' })
+      expect(label('b')).toContain('第 5 列第 1 行')
+      fireEvent.keyDown(document.body, { key: 'Escape' })
+      expect(widgetEl('b')).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('切换选中的小组件时检查器内部状态重置', async () => {
+      const user = userEvent.setup()
+      await mount()
+      await user.click(widgetEl('a'))
+      await user.click(screen.getByRole('switch', { name: '手动阈值配色' }))
+      await user.type(screen.getByLabelText('警告阈值'), '55')
+      await user.click(widgetEl('b'))
+      expect(screen.getByRole('switch', { name: '手动阈值配色' })).toHaveAttribute('aria-checked', 'false')
+      await user.click(widgetEl('a'))
+      expect(screen.getByLabelText('警告阈值')).toHaveValue('55')
+    })
+
+    it('拖动松手按 pointerup 的坐标落点，而不是上一帧的幽灵块', async () => {
+      await mount()
+      const bezel = screen.getByTestId('editor-bezel')
+      bezel.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1024, height: 600, right: 1024, bottom: 600, x: 0, y: 0, toJSON() {} })
+      const b = widgetEl('b')
+      fireEvent.pointerDown(b, { button: 0, pointerId: 1, clientX: 3 * 128 + 64, clientY: 60 })
+      fireEvent.pointerMove(b, { pointerId: 1, clientX: 4 * 128 + 64, clientY: 60 })
+      fireEvent.pointerUp(b, { pointerId: 1, clientX: 6 * 128 + 64, clientY: 2 * 120 + 60 })
+      expect(label('b')).toContain('第 7 列第 3 行')
+    })
+  })
+
   it('载入失败显示错误并可重试', async () => {
     const user = userEvent.setup()
     let fail = true

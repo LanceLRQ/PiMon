@@ -16,3 +16,14 @@ export function pointerToScreen(clientX: number, clientY: number, rect: { left: 
   const s = scale > 0 ? scale : 1
   return { x: (clientX - rect.left) / s, y: (clientY - rect.top) / s }
 }
+
+/** 画布区的内边距（四周各一份） */
+export const CANVAS_PAD = 12
+
+/**
+ * 画布加标尺整体 contain 缩放进容器：areaW、areaH 是容器的内容尺寸（含内边距），
+ * 缩放后 屏幕宽 + 标尺槽 ≤ 容器宽 - 2×内边距，高同理；只缩小不放大。
+ */
+export function fitCanvasScale(areaW: number, areaH: number, vw: number, vh: number, ruler = RULER_SIZE, pad = CANVAS_PAD): number {
+  return fitScale(areaW - 2 * pad - ruler, areaH - 2 * pad - ruler, vw, vh)
+}

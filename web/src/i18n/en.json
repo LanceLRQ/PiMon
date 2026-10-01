@@ -1156,7 +1156,20 @@
     },
     "stage": {
       "occupied": "used {{used}}/{{total}}",
-      "preview": "Preview theme"
+      "preview": "Preview theme",
+      "previewState": "Preview state",
+      "state": {
+        "real": "Actual",
+        "ok": "ok",
+        "warning": "warning",
+        "critical": "critical"
+      },
+      "stateTitle": {
+        "real": "Show real data",
+        "ok": "Show everything as ok (canvas only)",
+        "warning": "Show everything as warning (canvas only)",
+        "critical": "Show everything as critical (canvas only)"
+      }
     },
     "canvas": {
       "label": "Screen canvas",

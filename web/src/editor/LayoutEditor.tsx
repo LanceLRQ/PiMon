@@ -1,5 +1,5 @@
 import { Monitor, Power } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useReducer, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import { http } from '@/api/client'
@@ -13,6 +13,7 @@ import type { Grid, LayoutState, ScreenStatus, WidgetCatalog, WidgetSize } from 
 import { Button } from '@/ui/button'
 import { NumberTag } from '@/ui/numbered-label'
 import { Note } from '@/ui/note'
+import { Segmented } from '@/ui/segmented'
 import { Select } from '@/ui/select'
 import { useToast } from '@/ui/toast'
 import { DEFAULT_VIEWPORT } from './geometry'
@@ -20,6 +21,7 @@ import { EditorCanvas, type DragIntent } from './EditorCanvas'
 import { firstFreeSpot, moveByKey, occupiedCells, type Cell } from './grid-ops'
 import { Inspector } from './Inspector'
 import { allowedSizesOf, buildLibrary, createWidget, newWidgetId, templateOf, type LibraryEntry } from './library'
+import { applyPreviewState, previewStates, type PreviewState } from './preview-state'
 import { resolveScreen, referencedInstanceIds } from './resolve-draft'
 import { currentScreen, editorReducer, gridShrinkConflicts, initialEditorState, toRect, type Rejection } from './state'
 import { useCanvasData } from './use-canvas-data'
@@ -31,7 +33,9 @@ const gridPresets: Grid[] = [
   { cols: 10, rows: 6 },
 ]
 
-const editableTarget = (t: EventTarget | null) => t instanceof HTMLElement && t.closest('input, textarea, select, [contenteditable="true"]') !== null
+// 输入控件里的按键归输入控件；单选组与标签页自己用方向键切换
+const editableTarget = (t: EventTarget | null) => t instanceof HTMLElement && t.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]') !== null
+const ownsArrows = (t: EventTarget | null) => t instanceof HTMLElement && t.closest('[role="radiogroup"], [role="tablist"]') !== null
 
 interface ServerData {
   catalog: WidgetCatalog | null
@@ -83,6 +87,8 @@ function EditorBody() {
   const [previewTheme, setPreviewTheme] = useState<ThemeId | null>(null)
   const [dragEntry, setDragEntry] = useState<(DragIntent & { entry: LibraryEntry }) | null>(null)
   const [runtime, setRuntime] = useState<ThemeRuntime | null>(null)
+  // 预览状态只存在于这个组件，不进 reducer，不写草稿
+  const [previewState, setPreviewState] = useState<PreviewState>('real')
   const plugins = usePlugins()
   const instances = useLiveStore(selectInstances)
   const settings = useLiveStore(selectSettings)
@@ -125,6 +131,7 @@ function EditorBody() {
   )
   const instanceIds = useMemo(() => referencedInstanceIds(resolved?.widgets ?? []), [resolved])
   const data = useCanvasData(instanceIds, instances)
+  const canvasView = useMemo(() => (resolved ? applyPreviewState(resolved, data, previewState) : null), [resolved, data, previewState])
 
   const statusTheme = server?.status?.state.theme_id
   const themeId: ThemeId = previewTheme ?? (isThemeId(statusTheme) ? statusTheme : DEFAULT_THEME_ID)
@@ -152,26 +159,33 @@ function EditorBody() {
     dispatch({ type: 'add', widget: createWidget(entry, size, at, newWidgetId(ids), instances) })
   }
 
-  const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
-    if (editableTarget(e.target)) return
-    if (e.key === 'Escape') {
-      dispatch({ type: 'select', id: null })
-      return
-    }
-    if (!selected) return
-    if (e.key === 'Delete' || e.key === 'Backspace') {
+  // 编辑器级快捷键：不要求焦点在画布上，输入控件里的按键不处理
+  const selectedId = selected?.id ?? null
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || editableTarget(e.target)) return
+      if (e.key === 'Escape') {
+        dispatch({ type: 'select', id: null })
+        return
+      }
+      const sel = selectedId ? rects.find((r) => r.id === selectedId) : undefined
+      if (!sel) return
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault()
+        dispatch({ type: 'remove', id: sel.id })
+        return
+      }
+      if (!e.key.startsWith('Arrow') || ownsArrows(e.target)) return
       e.preventDefault()
-      dispatch({ type: 'remove', id: selected.id })
-      return
+      const next = moveByKey(e.key, grid, rects, sel)
+      if (next) return dispatch({ type: 'move', id: sel.id, ...next })
+      // 走不动时把想去的格交给状态层，给出越界或冲突的反馈
+      const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key]
+      if (d) dispatch({ type: 'move', id: sel.id, col: sel.col + d[0], row: sel.row + d[1] })
     }
-    if (!e.key.startsWith('Arrow')) return
-    e.preventDefault()
-    const next = moveByKey(e.key, grid, rects, toRect(selected))
-    if (next) return dispatch({ type: 'move', id: selected.id, ...next })
-    // 走不动时把想去的格交给状态层，给出越界或冲突的反馈
-    const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key]
-    if (d) dispatch({ type: 'move', id: selected.id, col: selected.col + d[0], row: selected.row + d[1] })
-  }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [selectedId, rects, grid])
 
   const onGridChange = (value: string) => {
     const [cols, rows] = value.split('x').map(Number)
@@ -192,7 +206,7 @@ function EditorBody() {
       </div>
     )
   }
-  if (!server || !screen || !resolved) {
+  if (!server || !screen || !resolved || !canvasView) {
     return <div role="status" className="p-6 text-[13px] text-muted-foreground">{t('layoutEd.loading')}</div>
   }
 
@@ -203,6 +217,7 @@ function EditorBody() {
   const tpl = selected ? templateOf(selected, pluginList) || selected.template || '' : ''
   const status = server.status
   const occupied = occupiedCells(grid, rects)
+  const stageInfo = `${runtime?.themeId ?? themeId} · ${viewport.w}×${viewport.h} · ${grid.cols}×${grid.rows} · ${t('layoutEd.stage.occupied', { used: occupied, total: grid.cols * grid.rows })}`
 
   return (
     <div data-testid="layout-editor" className="flex min-h-0 flex-1 flex-col">
@@ -251,7 +266,7 @@ function EditorBody() {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)_300px]">
+      <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)_260px] min-[1280px]:grid-cols-[260px_minmax(0,1fr)_300px]">
         <WidgetLibrary
           entries={library}
           onAdd={(e) => addEntry(e)}
@@ -259,29 +274,41 @@ function EditorBody() {
           onDragEnd={() => setDragEntry(null)}
         />
         <div className="flex min-h-0 min-w-0 flex-col">
-          <div className="flex items-center gap-3 border-b border-border bg-card px-3.5 py-1.5 text-[12px]">
-            <span>
-              <b className="font-medium">{screen.id}</b> {screen.name}
-            </span>
-            <span className="font-mono text-muted-foreground" data-testid="stage-info">
-              {runtime?.themeId ?? themeId} · {viewport.w}×{viewport.h} · {grid.cols}×{grid.rows} · {t('layoutEd.stage.occupied', { used: occupied, total: grid.cols * grid.rows })}
-            </span>
-            <span className="flex-1" />
-            <label className="flex items-center gap-1.5">
-              <span className="text-muted-foreground">{t('layoutEd.stage.preview')}</span>
-              <Select aria-label={t('layoutEd.stage.preview')} value={themeId} onChange={(e) => setPreviewTheme(e.target.value as ThemeId)} className="w-[150px]">
-                {themes.map((th) => (
-                  <option key={th.id} value={th.id}>
-                    {th.name[lang]}
-                  </option>
-                ))}
-              </Select>
-            </label>
+          <div className="flex min-w-0 flex-col gap-1.5 border-b border-border bg-card px-3.5 py-1.5 text-[12px]">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="max-w-[40%] shrink-0 truncate">
+                <b className="font-medium">{screen.id}</b> {screen.name}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground" data-testid="stage-info" title={stageInfo}>
+                {stageInfo}
+              </span>
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">{t('layoutEd.stage.previewState')}</span>
+                <Segmented
+                  ariaLabel={t('layoutEd.stage.previewState')}
+                  options={previewStates.map((p) => ({ value: p, label: t(`layoutEd.stage.state.${p}`), title: t(`layoutEd.stage.stateTitle.${p}`) }))}
+                  value={previewState}
+                  onChange={setPreviewState}
+                />
+              </div>
+              <label className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">{t('layoutEd.stage.preview')}</span>
+                <Select aria-label={t('layoutEd.stage.preview')} value={themeId} onChange={(e) => setPreviewTheme(e.target.value as ThemeId)} className="w-[150px]">
+                  {themes.map((th) => (
+                    <option key={th.id} value={th.id}>
+                      {th.name[lang]}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            </div>
           </div>
           <EditorCanvas
-            screen={resolved}
+            screen={canvasView.screen}
             grid={grid}
-            data={data}
+            data={canvasView.data}
             themeId={themeId}
             reduceEffects={settings?.reduce_effects ?? false}
             viewport={viewport}
@@ -297,7 +324,6 @@ function EditorBody() {
               if (dragEntry) addEntry(dragEntry.entry, cell)
               setDragEntry(null)
             }}
-            onKeyDown={onKeyDown}
             onThemeRuntime={setRuntime}
           />
           <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border bg-card px-3.5 py-1.5 text-[11.5px] text-muted-foreground">
@@ -315,6 +341,7 @@ function EditorBody() {
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             <Inspector
+              key={selected?.id ?? 'screen'}
               widget={selected}
               screen={screen}
               grid={grid}

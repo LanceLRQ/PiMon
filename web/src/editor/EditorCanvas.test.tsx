@@ -21,7 +21,6 @@ const baseProps = (themeId: ThemeId, onThemeRuntime: (rt: ThemeRuntime) => void)
   onSelect() {},
   onMove() {},
   onDropEntry() {},
-  onKeyDown() {},
   onThemeRuntime,
 })
 
