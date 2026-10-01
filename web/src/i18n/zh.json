@@ -50,6 +50,8 @@
       "offline": "实时连接已断开，正在重连"
     },
     "loading": "加载中",
+    "pageLoadFailed": "页面资源加载失败，可能是中枢刚升级过，请刷新页面重试",
+    "reload": "刷新页面",
     "sessionError": "无法获取登录状态，请确认中枢是否在运行",
     "retry": "重试",
     "notFound": "页面不存在",

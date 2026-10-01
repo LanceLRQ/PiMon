@@ -1,17 +1,38 @@
+import { lazy, Suspense, type ComponentType, type ReactNode } from 'react'
 import { Route, Routes } from 'react-router'
-import { InstanceEditPage } from '@/pages/instances/InstanceEditPage'
-import { InstanceNewPage } from '@/pages/instances/InstanceNewPage'
-import { InstancesPage } from '@/pages/instances/InstancesPage'
-import { LoginPage } from '@/pages/login/LoginPage'
-import { OverviewPage } from '@/pages/overview/OverviewPage'
-import { ProxiesPage } from '@/pages/proxies/ProxiesPage'
-import { LayoutEditorPage, RemotePage, SchedulePage, ScreensPage } from '@/pages/screens/ScreensPages'
-import { SettingsPage } from '@/pages/settings/SettingsPage'
-import { SetupPage } from '@/pages/setup/SetupPage'
-import { SystemPage } from '@/pages/system/SystemPage'
 import { AdminLayout } from './AdminLayout'
 import { NotFoundPage } from './NotFoundPage'
 import { PublicRoute, RequireSession } from './guard'
+import { LazyBoundary, RouteFallback } from './route-fallback'
+
+// 页面按路由拆成独立代码块，首屏只下载外壳与当前页。
+// 各页面文件用具名导出，这里按名字取出并适配成 React.lazy 需要的默认导出。
+function page<M>(load: () => Promise<M>, pick: (module: M) => ComponentType) {
+  const Page = lazy(async () => ({ default: pick(await load()) }))
+  return function LazyPage(): ReactNode {
+    return (
+      <LazyBoundary>
+        <Suspense fallback={<RouteFallback />}>
+          <Page />
+        </Suspense>
+      </LazyBoundary>
+    )
+  }
+}
+
+const InstanceEditPage = page(() => import('@/pages/instances/InstanceEditPage'), (m) => m.InstanceEditPage)
+const InstanceNewPage = page(() => import('@/pages/instances/InstanceNewPage'), (m) => m.InstanceNewPage)
+const InstancesPage = page(() => import('@/pages/instances/InstancesPage'), (m) => m.InstancesPage)
+const LoginPage = page(() => import('@/pages/login/LoginPage'), (m) => m.LoginPage)
+const OverviewPage = page(() => import('@/pages/overview/OverviewPage'), (m) => m.OverviewPage)
+const ProxiesPage = page(() => import('@/pages/proxies/ProxiesPage'), (m) => m.ProxiesPage)
+const ScreensPage = page(() => import('@/pages/screens/ScreensPages'), (m) => m.ScreensPage)
+const LayoutEditorPage = page(() => import('@/pages/screens/ScreensPages'), (m) => m.LayoutEditorPage)
+const SchedulePage = page(() => import('@/pages/screens/ScreensPages'), (m) => m.SchedulePage)
+const RemotePage = page(() => import('@/pages/screens/ScreensPages'), (m) => m.RemotePage)
+const SettingsPage = page(() => import('@/pages/settings/SettingsPage'), (m) => m.SettingsPage)
+const SetupPage = page(() => import('@/pages/setup/SetupPage'), (m) => m.SetupPage)
+const SystemPage = page(() => import('@/pages/system/SystemPage'), (m) => m.SystemPage)
 
 // 路由表：登录与首次设置是独立页（不带外壳），其余页面都在会话守卫与外壳之内
 export function AppRoutes() {

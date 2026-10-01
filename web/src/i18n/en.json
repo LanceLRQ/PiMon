@@ -50,6 +50,8 @@
       "offline": "Live connection lost, reconnecting"
     },
     "loading": "Loading",
+    "pageLoadFailed": "Failed to load the page resources. The hub may have just been upgraded; reload the page and try again.",
+    "reload": "Reload page",
     "sessionError": "Cannot read the session state. Check that the hub is running.",
     "retry": "Retry",
     "notFound": "Page not found",
