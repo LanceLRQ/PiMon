@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -958,5 +959,74 @@ func TestMinIntervalEnforced(t *testing.T) {
 	// 未声明 min_interval 的插件仍只受全局下限约束。
 	if _, err := f.svc.Create(bg, model.InstanceInput{PluginID: "plain", Name: "p", Config: cfg, IntervalSeconds: 5}); err != nil {
 		t.Fatalf("无 min_interval 的插件 5 秒应通过: %v", err)
+	}
+}
+
+// changeLog 记录 OnChange 回调收到的实例 id。
+type changeLog struct {
+	mu  sync.Mutex
+	ids []string
+}
+
+func (c *changeLog) add(id string) {
+	c.mu.Lock()
+	c.ids = append(c.ids, id)
+	c.mu.Unlock()
+}
+
+func (c *changeLog) take() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := c.ids
+	c.ids = nil
+	return out
+}
+
+func (c *changeLog) only(id string) bool {
+	got := c.take()
+	return len(got) > 0 && slices.Compact(got)[0] == id && len(slices.Compact(got)) == 1
+}
+
+func TestOnChangeNotifiesEveryMutation(t *testing.T) {
+	f := newFx(t)
+	log := &changeLog{}
+	f.svc.OnChange(log.add)
+
+	d := f.create("probe", "a", probeCfg("a"))
+	if !log.only(d.ID) {
+		t.Fatal("新建应通知该实例")
+	}
+	if _, err := f.svc.Update(bg, d.ID, model.InstanceInput{Name: "改名", Config: map[string]any{"host": "a"}}); err != nil {
+		t.Fatal(err)
+	}
+	if !log.only(d.ID) {
+		t.Fatal("更新应通知该实例")
+	}
+	if _, err := f.svc.Pause(bg, d.ID); err != nil || !log.only(d.ID) {
+		t.Fatalf("暂停应通知该实例: %v", err)
+	}
+	if _, err := f.svc.Resume(bg, d.ID); err != nil || !log.only(d.ID) {
+		t.Fatalf("恢复应通知该实例: %v", err)
+	}
+	cp, err := f.svc.Copy(bg, d.ID, "副本")
+	if err != nil || !log.only(cp.ID) {
+		t.Fatalf("复制应通知新实例: %v", err)
+	}
+	log.take()
+	if _, err := f.svc.Run(bg, d.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := log.take(); !slices.Contains(got, d.ID) {
+		t.Fatalf("采集结果写入状态后应通知: %v", got)
+	}
+	if _, err := f.svc.Delete(bg, d.ID); err != nil || !log.only(d.ID) {
+		t.Fatalf("删除应通知该实例: %v", err)
+	}
+	if _, err := f.svc.View(bg, d.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("删除后 View 应返回 ErrNotFound: %v", err)
+	}
+	v, err := f.svc.View(bg, cp.ID)
+	if err != nil || v.ID != cp.ID || v.Name != "副本" {
+		t.Fatalf("View = %+v %v", v, err)
 	}
 }

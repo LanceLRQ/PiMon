@@ -74,6 +74,8 @@ type Service struct {
 	flushEvery time.Duration
 
 	proxies   ProxyResolver
+	cbMu      sync.RWMutex
+	onChange  func(id string)
 	writeErrs atomic.Int64
 
 	// opMu 串行化会改变实例集合或调度的操作（增删改、暂停恢复、重新排程），

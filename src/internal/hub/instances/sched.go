@@ -29,6 +29,7 @@ func (s *Service) Resync(ctx context.Context) {
 		alive[r.ID] = true
 		s.ensureState(r.ID, r.ConfigHash)
 		s.syncRow(ctx, r)
+		s.notify(r.ID)
 	}
 	s.mu.Lock()
 	var stale []string
@@ -45,6 +46,7 @@ func (s *Service) Resync(ctx context.Context) {
 	s.mu.Unlock()
 	for _, id := range stale {
 		s.dropTask(id)
+		s.notify(id)
 	}
 }
 
@@ -54,6 +56,7 @@ func (s *Service) resyncOne(ctx context.Context, id string) {
 	defer s.opMu.Unlock()
 	if r, err := s.getRow(ctx, id); err == nil {
 		s.syncRow(ctx, r)
+		s.notify(id)
 	}
 }
 

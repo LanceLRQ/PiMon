@@ -122,6 +122,7 @@ func (s *Service) Create(ctx context.Context, in model.InstanceInput) (model.Ins
 	}
 	s.ensureState(id, r.ConfigHash)
 	s.syncRow(ctx, r)
+	s.notify(id)
 	return s.toDetail(r), nil
 }
 
@@ -177,6 +178,7 @@ func (s *Service) Update(ctx context.Context, id string, in model.InstanceInput)
 		s.resetState(id, hash)
 	}
 	s.syncRow(ctx, r)
+	s.notify(id)
 	return s.toDetail(r), nil
 }
 
@@ -219,6 +221,7 @@ func (s *Service) Copy(ctx context.Context, id, name string) (model.InstanceDeta
 	}
 	s.ensureState(r.ID, r.ConfigHash)
 	s.syncRow(ctx, r)
+	s.notify(r.ID)
 	return s.toDetail(r), nil
 }
 
@@ -245,6 +248,7 @@ func (s *Service) Delete(ctx context.Context, id string) (model.InstanceDeleteRe
 	s.dropTask(id)
 	s.dropState(id)
 	s.setSyncIssue(id, nil)
+	s.notify(id)
 	return model.InstanceDeleteResult{AffectedScreens: []model.ScreenRef{}}, nil
 }
 
@@ -273,6 +277,7 @@ func (s *Service) setPaused(ctx context.Context, id string, paused bool) (model.
 		}
 	}
 	s.syncRow(ctx, r)
+	s.notify(r.ID)
 	return s.toInstance(r), nil
 }
 
