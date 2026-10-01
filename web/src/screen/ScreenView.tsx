@@ -124,9 +124,19 @@ export function ScreenView({ store, nav, reporter, topInset = 0 }: ScreenViewPro
     if (hasScreenState) persistScreenTheme(themeId)
   }, [hasScreenState, themeId])
 
+  // 屏幕语言只在屏幕挂载期间生效：记下进入前的语言，卸载时恢复（管理员预览不能改掉管理端语言）
+  const enterLanguageRef = useRef<string | null>(null)
   useEffect(() => {
+    if (enterLanguageRef.current === null) enterLanguageRef.current = i18n.language
     if (i18n.language !== lang) void i18n.changeLanguage(lang)
   }, [i18n, lang])
+  useEffect(
+    () => () => {
+      const prev = enterLanguageRef.current
+      if (prev !== null && i18n.language !== prev) void i18n.changeLanguage(prev)
+    },
+    [i18n],
+  )
 
   // 页面不滚动、不出滚动条
   useEffect(() => {

@@ -25,7 +25,17 @@ test('hub 停掉后重新加载屏幕：外壳与最后一份快照照常显示�
     const widgets = await page.locator('section[data-widget-id]').count()
     // 快照按 60 秒节流落盘，页面隐藏与 pagehide 时补写一次：主动触发
     await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
-    await page.waitForTimeout(500)
+    // 确定性等待：轮询存档缓存里出现快照条目，再关 hub
+    await expect
+      .poll(
+        () =>
+          page.evaluate(async () => {
+            const cache = await caches.open('pimon-screen-data-v1')
+            return (await cache.keys()).length
+          }),
+        { timeout: 15_000 },
+      )
+      .toBeGreaterThan(0)
 
     await hub.dispose()
     await page.reload()

@@ -394,6 +394,22 @@ describe('屏幕根：卸载清理', () => {
   })
 })
 
+describe('屏幕根：语言', () => {
+  it('屏幕只在挂载期间使用全局设置语言，卸载后恢复进入前的语言（管理员预览不改管理端语言）', async () => {
+    const i18n = await createI18n('en')
+    const { unmount } = render(
+      <I18nextProvider i18n={i18n}>
+        <ScreenView store={storeWith()} nav={new ScreenNavigator()} />
+      </I18nextProvider>,
+    )
+    await act(async () => {})
+    expect(i18n.language).toBe('zh')
+    unmount()
+    await act(async () => {})
+    expect(i18n.language).toBe('en')
+  })
+})
+
 describe('屏幕根：渲染开销', () => {
   it('时钟校正（pong）与连接状态变化不触发整棵网格重渲', async () => {
     const store = storeWith()

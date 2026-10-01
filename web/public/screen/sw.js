@@ -1,4 +1,4 @@
-// 屏幕端离线外壳：手写 Service Worker，作用域 /screen（由 hub 以 Service-Worker-Allowed: / 放行）。
+// 屏幕端离线外壳：手写 Service Worker，作用域 /screen（由 hub 以 Service-Worker-Allowed: /screen 放行）。
 // - /screen 下的页面导航：network-first，网络失败或 5xx 时回落到缓存的外壳，连外壳都没有就返回自带的「hub 未运行」页。
 // - /assets/*：cache-first（文件名带哈希，内容不可变）。
 // - 不维护预缓存清单，不碰 WebSocket；最后一份 snapshot 由页面自己存（见 src/screen/snapshot-cache.ts）。
