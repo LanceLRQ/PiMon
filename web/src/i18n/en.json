@@ -141,5 +141,112 @@
       "failed": "Cannot reach the hub. Check your network."
     }
   },
-  "errorFallback": "Operation failed ({{code}})"
+  "errorFallback": "Operation failed ({{code}})",
+  "common": {
+    "show": "Show password",
+    "hide": "Hide password"
+  },
+  "login": {
+    "title": "Sign in to the admin console",
+    "singleAdmin": "Single admin",
+    "password": "Admin password",
+    "passwordPlaceholder": "Enter password",
+    "submit": "Sign in",
+    "wrongPassword": "Wrong password, {{remaining}} attempts left",
+    "locked": {
+      "title": "Too many failed attempts, locked",
+      "until": "You can try again after {{time}}",
+      "untilWithIp": "You can try again after {{time}} (by source IP {{ip}})",
+      "remaining": "{{remaining}} left"
+    },
+    "httpWarning": "This is an HTTP connection: the password travels in plain text on your LAN. Consider enabling HTTPS via nginx.",
+    "originMismatch": "Origin check failed. You are most likely behind an HTTPS reverse proxy that is not yet a trusted proxy (the list is empty by default and the first-time setup endpoint cannot change it). Finish setup by connecting to the hub directly, then add the proxy address on the Settings page.",
+    "sessionHint": "Session 30 days",
+    "lockHint": "10 failures lock for 15 min",
+    "forgot": "Forgot the password? Run this on the Raspberry Pi:"
+  },
+  "setup": {
+    "topLabel": "pimon-hub · no admin yet",
+    "title": "First-time setup",
+    "noAdmin": "No administrator yet",
+    "steps": {
+      "code": "Setup code",
+      "password": "Admin password",
+      "basics": "Basics",
+      "done": "Done"
+    },
+    "prev": "Back",
+    "next": "Next",
+    "finish": "Finish setup",
+    "position": "Step {{n}} / 3",
+    "originMismatch": "Origin check failed. You are most likely behind an HTTPS reverse proxy that is not yet a trusted proxy (the list is empty by default and the first-time setup endpoint cannot change it). Finish setup by connecting to the hub directly, then add the proxy address on the Settings page.",
+    "code": {
+      "label": "Setup code",
+      "meta": "6 groups × 4 chars",
+      "group": "Group {{n}}",
+      "help": "Case-insensitive. Pasting the whole code splits it into groups.",
+      "incomplete": "Enter the full 24-character setup code",
+      "wrongRemaining": "Wrong setup code, {{remaining}} attempts left",
+      "where": "Where to find it",
+      "whereBody": "The code is shown on the Raspberry Pi screen and in the install terminal. It is valid for 24 hours and single-use. If it expired, run"
+    },
+    "password": {
+      "title": "Set the admin password",
+      "meta": "Single admin · no username",
+      "label": "Password",
+      "confirm": "Confirm password",
+      "length": "{{n}} chars",
+      "min": "At least {{min}} chars",
+      "tooShort": "Password must be at least {{min}} characters",
+      "mismatch": "The two entries do not match",
+      "match": "The two entries match"
+    },
+    "strength": {
+      "label": "Strength",
+      "0": "Very weak",
+      "1": "Weak",
+      "2": "Fair",
+      "3": "Good",
+      "4": "Strong"
+    },
+    "basics": {
+      "meta": "Can be changed later in Settings",
+      "language": "Language",
+      "timezone": "Time zone",
+      "fromBrowser": "from browser",
+      "timezoneHelp": "Schedules and log times use this time zone.",
+      "accessUrl": "Access URL",
+      "optional": "optional",
+      "accessUrlHelp": "Used for links in push messages; leave empty to send messages without links."
+    },
+    "fieldError": {
+      "invalid": "Invalid value",
+      "required": "Required",
+      "out_of_range": "Out of the allowed range",
+      "pattern_mismatch": "Wrong format",
+      "duplicate": "Already exists",
+      "password": {
+        "out_of_range": "Password must be at least 8 characters"
+      },
+      "timezone": {
+        "invalid": "The server does not recognise this time zone, pick another"
+      },
+      "language": {
+        "invalid": "Unsupported language"
+      },
+      "access_url": {
+        "invalid": "The access URL must be a valid address starting with http:// or https://"
+      }
+    },
+    "done": {
+      "title": "Setup complete",
+      "body": "The screen will show the home page in a few seconds.",
+      "admin": "Admin",
+      "adminValue": "Set · {{strength}}",
+      "langTz": "Language · time zone",
+      "code": "Setup code",
+      "codeValue": "Used",
+      "enter": "Open overview"
+    }
+  }
 }

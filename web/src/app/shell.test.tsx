@@ -87,13 +87,13 @@ describe('应用外壳与会话守卫', () => {
 
   it('未登录时跳到 /login 并记住原页面', async () => {
     await mount({ session: { authenticated: false, needs_setup: false }, path: '/instances/new' })
-    expect(await screen.findByRole('heading', { name: '登录' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '登录管理界面' })).toBeInTheDocument()
     expect(screen.getByTestId('loc')).toHaveTextContent('/login?next=%2Finstances%2Fnew')
   })
 
   it('未登录访问根路径时不带 next', async () => {
     await mount({ session: { authenticated: false, needs_setup: false } })
-    await screen.findByRole('heading', { name: '登录' })
+    await screen.findByRole('heading', { name: '登录管理界面' })
     expect(screen.getByTestId('loc')).toHaveTextContent(/^\/login$/)
   })
 
@@ -125,7 +125,7 @@ describe('应用外壳与会话守卫', () => {
 
   it('已完成设置时访问 /setup 跳到登录页', async () => {
     await mount({ session: { authenticated: false, needs_setup: false }, path: '/setup' })
-    await screen.findByRole('heading', { name: '登录' })
+    await screen.findByRole('heading', { name: '登录管理界面' })
   })
 
   it('页面运行中任意 API 返回 401：跳登录页并记住当前页面', async () => {
@@ -133,7 +133,7 @@ describe('应用外壳与会话守卫', () => {
     await screen.findByRole('heading', { name: '监控实例' })
     fetchMock.mockImplementation(async () => json(401, { error: { code: 'auth.required', details: {} } }))
     await expect(http.get('/api/instances')).rejects.toMatchObject({ code: 'auth.required' })
-    await screen.findByRole('heading', { name: '登录' })
+    await screen.findByRole('heading', { name: '登录管理界面' })
     expect(screen.getByTestId('loc')).toHaveTextContent('/login?next=%2Finstances')
   })
 
@@ -178,7 +178,7 @@ describe('应用外壳与会话守卫', () => {
   it('退出登录：请求 /api/logout 后回到登录页', async () => {
     await mount({ session: admin })
     await userEvent.click(await screen.findByRole('button', { name: '退出登录' }))
-    await screen.findByRole('heading', { name: '登录' })
+    await screen.findByRole('heading', { name: '登录管理界面' })
     expect(fetchMock.mock.calls.some(([u, init]) => u === '/api/logout' && init.method === 'POST')).toBe(true)
   })
 })
