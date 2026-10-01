@@ -49,7 +49,7 @@ export function MobileTabBar() {
       markSignedOut()
       navigate('/login', { replace: true })
     } catch (e) {
-      setLogoutError(`${t('shell.logoutFailed')}：${translateErrorValue(i18n, e)}`)
+      setLogoutError(t('common.withDetail', { summary: t('shell.logoutFailed'), detail: translateErrorValue(i18n, e) }))
     }
   }
 
@@ -103,7 +103,7 @@ export function MobileTabBar() {
                 {darkNow ? t('shell.theme.toLight') : t('shell.theme.toDark')}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => void setLanguage(i18n, i18n.language.startsWith('zh') ? 'en' : 'zh')}>
-                {t('shell.language.label')}：{i18n.language.startsWith('zh') ? 'EN' : '中'}
+                {t('common.withDetail', { summary: t('shell.language.label'), detail: i18n.language.startsWith('zh') ? 'EN' : '中' })}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => void onLogout()}>

@@ -119,7 +119,8 @@ export function PluginsPanel() {
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px] text-muted-foreground">
             <Folder size={15} className="shrink-0" />
             <span className="min-w-0 break-all">
-              {t('system.plugins.dir')}：<code className="font-mono text-[12px] text-foreground">{list.plugin_dir}</code>
+              {t('system.plugins.dir')}{' '}
+              <code className="font-mono text-[12px] text-foreground">{list.plugin_dir}</code>
             </span>
             <Button size="xs" variant="outline" className="ml-auto rounded-[2px]" disabled={scanning} onClick={() => void scan()}>
               <RefreshCw /> {scanning ? t('system.plugins.rescanning') : t('system.plugins.rescan')}

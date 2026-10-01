@@ -7,6 +7,7 @@ import { formatAgo, formatDateTime, parseTime, useNow } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { selectConnected, selectInstances, useLiveStore, type LiveState } from '@/store/live-store'
 import { formatUptime } from '@/lib/format'
+import { useUptimeSeconds } from '@/lib/use-uptime'
 import type { BackupInfo, Instance, SystemInfo } from '@/types/generated'
 import { useInstanceManager } from '@/pages/instances/actions'
 import { InstanceDetailDrawer } from '@/pages/instances/InstanceDetailDrawer'
@@ -159,19 +160,19 @@ function HubSummary({ instanceCount }: { instanceCount: number }) {
   const settings = useLiveStore(selectSettings)
   // undefined 表示还没取到；null 表示取到了但没有备份
   const [lastBackup, setLastBackup] = useState<number | null | undefined>(undefined)
-  // 中枢启动时刻（毫秒）；取不到时为 undefined，运行时长显示未知
-  const [startedAt, setStartedAt] = useState<number | undefined>(undefined)
-  const now = useNow(10_000)
+  // 中枢已运行秒数（取自接口）；取不到时为 undefined，显示未知
+  const [uptimeBase, setUptimeBase] = useState<number | undefined>(undefined)
+  const uptime = useUptimeSeconds(uptimeBase, 10_000)
 
   useEffect(() => {
     let cancelled = false
     http
       .get<SystemInfo>('/api/system')
       .then((info) => {
-        if (!cancelled) setStartedAt(parseTime(info.started_at) ?? undefined)
+        if (!cancelled) setUptimeBase(typeof info.uptime_seconds === 'number' ? info.uptime_seconds : undefined)
       })
       .catch(() => {
-        if (!cancelled) setStartedAt(undefined)
+        if (!cancelled) setUptimeBase(undefined)
       })
     http
       .get<BackupInfo[]>('/api/backups')
@@ -191,7 +192,7 @@ function HubSummary({ instanceCount }: { instanceCount: number }) {
   const unknown = <span className="text-muted-foreground">{t('items.unknown')}</span>
   const rows: { k: string; v: React.ReactNode }[] = [
     { k: t('overview.hub.version'), v: build && build !== '__PIMON_BUILD__' ? build : unknown },
-    { k: t('overview.hub.uptime'), v: startedAt === undefined ? unknown : formatUptime(t, (now - startedAt) / 1000) },
+    { k: t('overview.hub.uptime'), v: uptime === null ? unknown : formatUptime(t, uptime) },
     {
       k: t('overview.hub.connection'),
       v: (

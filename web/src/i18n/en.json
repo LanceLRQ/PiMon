@@ -161,6 +161,7 @@
     "download": "Download",
     "saving": "Saving…",
     "withDetail": "{{summary}}: {{detail}}",
+    "colon": ": ",
     "loadFailed": "Failed to load",
     "stay": "Stay",
     "leave": "Leave"

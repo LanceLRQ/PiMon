@@ -458,7 +458,9 @@ export function SetupPage() {
               .filter(([f]) => !(f in fieldStep))
               .map(([f, code]) => (
                 <p key={f} role="alert" className="px-4 py-3 text-xs text-status-crit">
-                  <span className="font-mono">{f}</span>：{fieldErrorText(f, code)}
+                  <span className="font-mono">{f}</span>
+                  {t('common.colon')}
+                  {fieldErrorText(f, code)}
                 </p>
               ))}
             {failure?.kind === 'other' && (

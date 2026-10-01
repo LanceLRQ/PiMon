@@ -94,7 +94,7 @@ function DeleteBody({ proxy, onClose, onDeleted }: { proxy: Proxy; onClose(): vo
             </ul>
             <label className="flex cursor-pointer items-start gap-2.5">
               <Checkbox checked={ack} onChange={setAck} ariaLabel={t('proxies.deleteDialog.ack')} className="mt-0.5" />
-              <span onClick={() => setAck(!ack)}>{t('proxies.deleteDialog.ack')}</span>
+              <span>{t('proxies.deleteDialog.ack')}</span>
             </label>
           </>
         )}

@@ -216,7 +216,7 @@ export function InstanceDetailDrawer({ id, instance, synced, now, outputs, plugi
                   <ul className="mt-0.5 font-mono text-[12px]">
                     {Object.entries(data.problems).map(([field, code]) => (
                       <li key={field}>
-                        {field}：{code}
+                        {t('common.withDetail', { summary: field, detail: code })}
                       </li>
                     ))}
                   </ul>

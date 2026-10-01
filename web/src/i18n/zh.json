@@ -161,6 +161,7 @@
     "download": "下载",
     "saving": "保存中…",
     "withDetail": "{{summary}}：{{detail}}",
+    "colon": "：",
     "loadFailed": "加载失败",
     "stay": "留下",
     "leave": "离开"

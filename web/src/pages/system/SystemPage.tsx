@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatBytes, formatUptime } from '@/lib/format'
-import { formatDateTime, parseTime, useNow } from '@/lib/time'
+import { formatDateTime, parseTime } from '@/lib/time'
+import { useUptimeSeconds } from '@/lib/use-uptime'
 import type { SystemInfo } from '@/types/generated'
 import { Note } from '@/ui/note'
 import { PageHeader } from '@/ui/page-header'
@@ -31,16 +32,16 @@ function Placeholder({ text }: { text: string }) {
 export function SystemPage() {
   const { t, i18n } = useTranslation()
   const { info, error, reload } = useSystemInfo()
-  const now = useNow()
+  const uptimeSeconds = useUptimeSeconds(info?.uptime_seconds)
   const unknown = <span className="font-sans text-muted-foreground">{t('items.unknown')}</span>
 
   const startedMs = info ? parseTime(info.started_at) : null
-  const uptime = startedMs !== null ? formatUptime(t, (now - startedMs) / 1000) : null
+  const uptime = uptimeSeconds !== null ? formatUptime(t, uptimeSeconds) : null
 
   const readout = info ? (
     <div className="flex items-center gap-4 font-mono text-[12px] text-muted-foreground mobile:hidden">
       <span>{t('system.readout.hub', { version: info.version })}</span>
-      <span>{t('system.readout.uptime', { uptime: uptime ?? '' })}</span>
+      <span>{t('system.readout.uptime', { uptime: uptime ?? t('items.unknown') })}</span>
     </div>
   ) : undefined
 
@@ -66,7 +67,7 @@ export function SystemPage() {
                 </div>
                 <KV
                   rows={[
-                    { k: t('system.version.uptime'), v: uptime },
+                    { k: t('system.version.uptime'), v: uptime ?? unknown },
                     { k: t('system.version.go'), v: `${info.go_version} ${info.os}/${info.arch}` },
                     { k: t('system.version.startedAt'), v: startedMs !== null ? formatDateTime(startedMs, i18n.language) : unknown },
                   ]}

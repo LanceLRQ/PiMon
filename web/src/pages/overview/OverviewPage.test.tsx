@@ -128,9 +128,8 @@ describe('总览页', () => {
     expect(await within(hub).findByText(/9\/30/)).toBeInTheDocument()
   })
 
-  it('hub 概况：运行时长取自 /api/system，取不到时显示未知', async () => {
-    const started = new Date(Date.now() - (2 * 86400 + 5 * 3600 + 60) * 1000).toISOString()
-    mockApi((req) => (req.url === '/api/system' ? json(200, { version: 'v', started_at: started, uptime_seconds: 0 }) : undefined))
+  it('hub 概况：运行时长取自 /api/system 的 uptime_seconds（不用浏览器时间），取不到时显示未知', async () => {
+    mockApi((req) => (req.url === '/api/system' ? json(200, { version: 'v', started_at: '2000-01-01T00:00:00Z', uptime_seconds: 2 * 86400 + 5 * 3600 + 60 }) : undefined))
     seedStore(prototypeInstances)
     await renderWithApp(<OverviewPage />)
     const hub = cell('hub 概况')

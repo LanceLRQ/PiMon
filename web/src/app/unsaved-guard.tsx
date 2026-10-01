@@ -4,6 +4,12 @@ import { UNSAFE_DataRouterContext, useBlocker } from 'react-router'
 import { Button } from '@/ui/button'
 import { Dialog, DialogContent } from '@/ui/dialog'
 
+// 会话失效或退出登录时的跳转不应被未保存修改拦住；由 SessionProvider 在这些时刻置位
+let bypass = false
+export function setUnsavedGuardBypass(v: boolean) {
+  bypass = v
+}
+
 interface UnsavedGuardProps {
   // 有未保存的修改时为 true
   dirty: boolean
@@ -33,7 +39,7 @@ export function UnsavedGuard({ dirty, textKey }: UnsavedGuardProps) {
 
 function RouteBlocker({ dirty, textKey }: UnsavedGuardProps) {
   const { t } = useTranslation()
-  const blocker = useBlocker(dirty)
+  const blocker = useBlocker(() => dirty && !bypass)
   const blocked = blocker.state === 'blocked'
   return (
     <Dialog open={blocked} onOpenChange={(o) => !o && blocker.state === 'blocked' && blocker.reset()}>

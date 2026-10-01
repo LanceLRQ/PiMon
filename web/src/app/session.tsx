@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { setUnauthorizedHandler } from '@/api/client'
+import { setUnsavedGuardBypass } from './unsaved-guard'
 import { fetchSession, type SessionInfo } from '@/api/session'
 
 export type SessionStatus = 'loading' | 'ready' | 'error'
@@ -28,7 +29,9 @@ export function SessionProvider({ children, redirectExternal }: SessionProviderP
 
   const refresh = useCallback(async () => {
     try {
-      setInfo(await fetchSession())
+      const next = await fetchSession()
+      setUnsavedGuardBypass(!next.authenticated)
+      setInfo(next)
       setStatus('ready')
     } catch {
       // 已经有会话信息时（hub 重启、短暂不可达）保持原状，外壳与实时连接不能因此卸载；仅首次加载失败才报错
@@ -37,6 +40,7 @@ export function SessionProvider({ children, redirectExternal }: SessionProviderP
   }, [])
 
   const markSignedOut = useCallback(() => {
+    setUnsavedGuardBypass(true)
     setInfo((prev) => (prev ? { ...prev, authenticated: false, kind: undefined } : prev))
   }, [])
 

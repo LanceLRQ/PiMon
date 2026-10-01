@@ -65,7 +65,7 @@ export function Sidebar() {
       markSignedOut()
       navigate('/login', { replace: true })
     } catch (e) {
-      setLogoutError(`${t('shell.logoutFailed')}：${translateErrorValue(i18n, e)}`)
+      setLogoutError(t('common.withDetail', { summary: t('shell.logoutFailed'), detail: translateErrorValue(i18n, e) }))
     }
   }
 
