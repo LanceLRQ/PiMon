@@ -1,16 +1,18 @@
-package auth
+package ratelimit
 
 import (
 	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 )
 
 func TestLimiter_九次失败剩一次_第十次锁定(t *testing.T) {
 	clk := newClock()
 	l := NewLimiter(clk, 10, 15*time.Minute)
-	key := KeyLogin + "1.2.3.4"
+	key := "login:1.2.3.4"
 	if l.Locked(key) != 0 {
 		t.Fatal("初始不应锁定")
 	}
@@ -62,12 +64,12 @@ func TestLimiter_成功清零(t *testing.T) {
 
 func TestLimiter_key相互独立(t *testing.T) {
 	l := NewLimiter(newClock(), 2, time.Minute)
-	l.Fail(KeyLogin + "a")
-	l.Fail(KeyLogin + "a")
-	if l.Locked(KeyLogin+"a") == 0 {
+	l.Fail("login:a")
+	l.Fail("login:a")
+	if l.Locked("login:a") == 0 {
 		t.Fatal("a 应锁定")
 	}
-	if l.Locked(KeyLogin+"b") != 0 || l.Locked(KeySetup+"a") != 0 {
+	if l.Locked("login:b") != 0 || l.Locked("setup:a") != 0 {
 		t.Fatal("其他 key 不应受影响")
 	}
 }
@@ -122,4 +124,8 @@ func TestLimiter_条目数硬上限淘汰最旧(t *testing.T) {
 	if oldest || !newest {
 		t.Fatalf("应淘汰最旧保留最新: oldest=%v newest=%v", oldest, newest)
 	}
+}
+
+func newClock() *clock.Fake {
+	return clock.NewFake(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 }
