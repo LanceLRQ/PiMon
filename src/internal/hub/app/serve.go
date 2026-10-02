@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/LanceLRQ/PiMon/src/internal/certs"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/sdnotify"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/server"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/tlscert"
@@ -29,7 +30,11 @@ func (a *App) Serve(ctx context.Context) error {
 			return fmt.Errorf("准备 HTTPS 证书: %w", err)
 		}
 		cert = &c
-		slog.Info("HTTPS 已启用", "fingerprint", tlscert.Fingerprint(c))
+		spki, err := certs.SPKIOf(c)
+		if err != nil {
+			return fmt.Errorf("计算证书指纹: %w", err)
+		}
+		slog.Info("HTTPS 已启用", "fingerprint", spki.String())
 	}
 	ln, err := server.Listen(a.cfg.Addr)
 	if err != nil {
