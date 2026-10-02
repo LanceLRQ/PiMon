@@ -29,6 +29,7 @@ type Daemon struct {
 	// mu 保护上报用的字段（循环 goroutine 写，任意 goroutine 读）。
 	mu           sync.Mutex
 	startedAt    time.Time // 零值表示 Chromium 未在运行
+	pid          int       // 运行中的 Chromium 组长 pid；未运行为 0
 	restarts     int
 	backoffUntil time.Time // 零值表示不在退避中
 
@@ -71,6 +72,20 @@ func (d *Daemon) Run(ctx context.Context) error {
 		defer wg.Done()
 		d.cfg.Link.Run(linkCtx, linkSink{d})
 	}()
+	for _, svc := range d.cfg.Services {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			svc(linkCtx)
+		}()
+	}
+	if d.cfg.ReportInterval > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			d.reportLoop(linkCtx)
+		}()
+	}
 	defer func() {
 		close(d.quit) // 先放开可能阻塞在回调里的链路 goroutine
 		cancelLink()
@@ -144,6 +159,10 @@ func (d *Daemon) launch() {
 	d.tokenSum = tokenHash(tok)
 	d.mu.Lock()
 	d.startedAt = d.clk.Now()
+	d.pid = 0
+	if pp, ok := p.(interface{ Pid() int }); ok {
+		d.pid = pp.Pid()
+	}
 	d.backoffUntil = time.Time{}
 	if d.launchedBefore {
 		d.restarts++
@@ -158,7 +177,7 @@ func (d *Daemon) launch() {
 func (d *Daemon) waitRetry(delay time.Duration) {
 	d.retryCh = d.clk.After(delay)
 	d.mu.Lock()
-	d.startedAt = time.Time{}
+	d.startedAt, d.pid = time.Time{}, 0
 	d.backoffUntil = d.clk.Now().Add(delay)
 	d.mu.Unlock()
 	d.report()
@@ -194,7 +213,7 @@ func (d *Daemon) stop() {
 	}
 	d.proc, d.procDone = nil, nil
 	d.mu.Lock()
-	d.startedAt = time.Time{}
+	d.startedAt, d.pid = time.Time{}, 0
 	d.mu.Unlock()
 }
 
@@ -309,6 +328,28 @@ func (d *Daemon) onBuild(build string) bool {
 		return false
 	}
 	return true
+}
+
+// ChromiumPID 返回运行中的 Chromium 组长进程号（同时是进程组号）；未运行为 0。
+func (d *Daemon) ChromiumPID() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.pid
+}
+
+// ReportNow 立即上报一次当前状态；可从任意 goroutine 调用，不阻塞。
+func (d *Daemon) ReportNow() { d.report() }
+
+// reportLoop 按 ReportInterval 周期上报，直到 ctx 结束。
+func (d *Daemon) reportLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-d.clk.After(d.cfg.ReportInterval):
+			d.report()
+		}
+	}
 }
 
 // report 组装并上报当前状态；可从任意 goroutine 调用，Link.Report 不得阻塞。

@@ -1,7 +1,12 @@
 package kiosk
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
+	"strconv"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -73,5 +78,53 @@ func TestExecLauncher_进程组终止与回收(t *testing.T) {
 	}
 	if _, err := (ExecLauncher{}).Start("/nonexistent/chromium", nil); err == nil {
 		t.Fatal("可执行文件不存在应报错")
+	}
+}
+
+func TestLaunchAttr_独立进程组(t *testing.T) {
+	if a := launchAttr(); a == nil || !a.Setpgid {
+		t.Fatalf("应设置 Setpgid: %+v", a)
+	}
+}
+
+func TestExecLauncher_暴露进程号(t *testing.T) {
+	p, err := ExecLauncher{}.Start("/bin/sleep", []string{"30"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Kill()
+	pp, ok := p.(interface{ Pid() int })
+	if !ok || pp.Pid() <= 0 {
+		t.Fatalf("进程应暴露有效的 Pid: %v", p)
+	}
+}
+
+func TestExecLauncher_组长退出后清理残留子进程(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "child.pid")
+	// 组长 sh 起一个后台 sleep 后立刻退出，sleep 仍留在进程组里。
+	p, err := ExecLauncher{}.Start("/bin/sh", []string{"-c", `sleep 60 & echo $! > "$0"; exit 0`, pidFile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-p.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("组长未退出")
+	}
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for syscall.Kill(pid, 0) == nil {
+		if time.Now().After(deadline) {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+			t.Fatalf("残留子进程 %d 应已被清理", pid)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

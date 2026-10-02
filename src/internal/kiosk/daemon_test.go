@@ -75,7 +75,11 @@ func (p *fakeProc) Terminate() {
 	}
 }
 func (p *fakeProc) Kill() { p.killed.Store(true); p.exit() }
-func (p *fakeProc) exit() { p.once.Do(func() { close(p.done) }) }
+
+const fakePID = 4242
+
+func (p *fakeProc) Pid() int { return fakePID }
+func (p *fakeProc) exit()    { p.once.Do(func() { close(p.done) }) }
 
 type fakeLauncher struct {
 	started    chan *fakeProc

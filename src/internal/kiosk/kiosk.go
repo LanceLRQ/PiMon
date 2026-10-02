@@ -1,6 +1,7 @@
 package kiosk
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"os"
@@ -73,8 +74,13 @@ type Config struct {
 	Grace time.Duration
 	// SettingsWait 是首次启动 Chromium 前最多等多久首份设置（用于一次就带上缩放参数）；0 表示不等。
 	SettingsWait time.Duration
+	// Services 是随守护进程启停的后台服务（触摸监听、息屏检查等）：持锁后启动，
+	// ctx 在守护进程退出时取消，Run 等它们全部返回后才返回。
+	Services []func(ctx context.Context)
+	// ReportInterval 大于 0 时按此周期重复上报当前状态。
+	ReportInterval time.Duration
 	// FillReport 在每次上报前被调用，用于合并守护核心之外的字段
-	// （touchscreen、chromium_rss_bytes、idle_check）；可为 nil。
+	// （touchscreen、chromium_rss_bytes、idle_check）；可为 nil。会被多个 goroutine 并发调用，必须并发安全。
 	FillReport func(*model.KioskReport)
 }
 

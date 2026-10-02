@@ -44,27 +44,27 @@ func Command(ctx context.Context, args []string, stderr io.Writer, getenv func(s
 	if err != nil {
 		return err
 	}
-	d, err := New(Config{
+	cfg := Config{
 		HubURL:       *hub,
 		TokenPath:    *tokenFile,
 		ChromiumPath: *chromium,
 		Paths:        paths,
 		Launcher:     ExecLauncher{},
-		Link:         defaultLink(),
 		SessionProbe: SocketProbe(sock),
 		Log:          logging.New(stderr, level),
-	})
+	}
+	bind, err := attachHubLink(&cfg, DefaultPeripherals(getenv))
+	if err != nil {
+		return UsageError(err.Error())
+	}
+	d, err := New(cfg)
 	if err != nil {
 		return err
 	}
+	bind(d)
 	err = d.Run(ctx)
 	if errors.Is(err, ErrLocked) {
 		return fmt.Errorf("%w（锁文件 %s）", err, paths.LockPath)
 	}
 	return err
 }
-
-// defaultLink 返回与 hub 的连接。
-// 真实的 WebSocket 客户端由 E2c 实现后在此替换；在此之前使用不连接 hub 的空实现，
-// 守护进程照常看护 Chromium（缩放按 1，不做每日重启）。
-func defaultLink() HubLink { return NopLink{} }

@@ -43,19 +43,22 @@ type Launcher interface {
 	Start(path string, args []string) (Process, error)
 }
 
-// ExecLauncher 用 os/exec 启动进程：独立进程组，stdin/stdout/stderr 全部接 /dev/null。
+// ExecLauncher 用 os/exec 启动进程：独立进程组（Linux 上父进程退出时收到 SIGTERM），
+// stdin/stdout/stderr 全部接 /dev/null。
 type ExecLauncher struct{}
 
 // Start 启动 path 并在后台回收进程。
 func (ExecLauncher) Start(path string, args []string) (Process, error) {
 	cmd := exec.Command(path, args...) // 未设置的 Stdin/Stdout/Stderr 即 /dev/null
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = launchAttr()
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("启动 %s: %w", path, err)
 	}
 	p := &execProcess{pid: cmd.Process.Pid, done: make(chan struct{})}
 	go func() {
 		_ = cmd.Wait()
+		// 组长退出后进程组里可能还残留子进程（渲染、GPU 等），补一次强杀清干净。
+		_ = syscall.Kill(-p.pid, syscall.SIGKILL)
 		close(p.done)
 	}()
 	return p, nil
@@ -67,6 +70,9 @@ type execProcess struct {
 }
 
 func (p *execProcess) Done() <-chan struct{} { return p.done }
+
+// Pid 返回组长进程号，同时也是进程组号。
+func (p *execProcess) Pid() int { return p.pid }
 
 // Setpgid 之后进程组号等于 pid，向 -pid 发信号覆盖整个进程组。
 func (p *execProcess) Terminate() { _ = syscall.Kill(-p.pid, syscall.SIGTERM) }
