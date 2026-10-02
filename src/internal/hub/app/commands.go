@@ -99,8 +99,14 @@ func readNewPassword(in io.Reader, out io.Writer, isTerminal bool) (string, erro
 }
 
 // Restore 用备份包覆盖数据库与密钥。不打开数据库，服务必须已停止。
+// 先对数据目录取独占锁，服务仍在运行时拒绝执行。
 func Restore(cfg config.Config, archive string, out io.Writer) error {
-	_, _ = fmt.Fprintln(out, "注意：请先停止服务，恢复后重新启动（本命令不会检查服务是否仍在运行）")
+	lk, err := LockDataDir(cfg)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lk.Release() }()
+	_, _ = fmt.Fprintln(out, "注意：请先停止服务，恢复后重新启动")
 	if err := backup.Restore(archive, cfg.DBPath(), cfg.SecretKeyPath()); err != nil {
 		return err
 	}

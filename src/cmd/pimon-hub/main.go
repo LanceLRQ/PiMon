@@ -116,13 +116,30 @@ type usageError string
 
 func (e usageError) Error() string { return string(e) }
 
+// checkRootRun 是「root 运行拒绝」的检查点，测试中替换以免依赖真实 root。
+var checkRootRun = app.CheckRootRun
+
 func dispatch(ctx context.Context, cmd string, cfg config.Config, pos []string,
 	stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string) error {
+	// serve 由 systemd 以服务用户运行，不做此检查；其余会写数据目录的子命令必须拒绝 root。
+	if cmd != "serve" {
+		if err := checkRootRun(cfg); err != nil {
+			return err
+		}
+	}
 	if cmd == "restore" {
 		if len(pos) != 1 {
 			return usageError("用法: pimon-hub restore [参数] <备份文件>")
 		}
 		return app.Restore(cfg, pos[0], stdout)
+	}
+	if cmd == "serve" {
+		// 在打开数据库之前取数据目录锁，持有到进程结束，防止 restore 在服务运行时覆盖数据库。
+		lk, err := app.LockDataDir(cfg)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = lk.Release() }()
 	}
 	a, err := app.Open(ctx, cfg, app.WithGetenv(getenv), app.WithStderr(stderr), app.WithLogRing(logRing))
 	if err != nil {

@@ -111,6 +111,12 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		}
 		lastVersion = v
 	}
+	if dbExisted {
+		// 降级检测必须在升级前备份之前，否则旧二进制打开新库会先多生成一份备份再报错。
+		if err := a.db.CheckNotNewer(ctx); err != nil {
+			return fmt.Errorf("数据库迁移: %w", err)
+		}
+	}
 	if lastVersion != "" && lastVersion != o.version {
 		pre := backups(func() model.Settings { return settings.Defaults("UTC") })
 		if _, err := pre.Create(ctx, backup.ReasonPreUpgrade); err != nil {

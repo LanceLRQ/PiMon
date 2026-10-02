@@ -2,11 +2,14 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/LanceLRQ/PiMon/src/internal/hub/app"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
 	"github.com/LanceLRQ/PiMon/src/pkg/version"
 )
 
@@ -88,5 +91,74 @@ func TestPluginValidateErrorPrintedOnce(t *testing.T) {
 	code, out, errOut := runArgs("plugin", "validate", dir)
 	if code != 1 || strings.Count(out+errOut, "sourcee") != 1 || !strings.Contains(errOut, "第 5 行") {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errOut)
+	}
+}
+
+func stubRootRun(t *testing.T, err error) *[]string {
+	t.Helper()
+	var seen []string
+	old := checkRootRun
+	checkRootRun = func(cfg config.Config) error {
+		seen = append(seen, cfg.DataDir)
+		return err
+	}
+	t.Cleanup(func() { checkRootRun = old })
+	return &seen
+}
+
+func TestRootRefusedForDataCommands(t *testing.T) {
+	dir := t.TempDir()
+	seen := stubRootRun(t, errors.New("不能以 root 运行"))
+	for _, args := range [][]string{
+		{"setup-code", "--data-dir", dir},
+		{"reset-password", "--data-dir", dir},
+		{"restore", "--data-dir", dir, "/nonexistent.tar.gz"},
+	} {
+		code, _, errOut := runArgs(args...)
+		if code != 1 || !strings.Contains(errOut, "不能以 root 运行") {
+			t.Errorf("%v: code=%d err=%q", args, code, errOut)
+		}
+	}
+	if len(*seen) != 3 {
+		t.Fatalf("三个子命令都应走 root 检查: %v", *seen)
+	}
+	// 被拒绝时不得创建数据库。
+	if _, err := os.Stat(filepath.Join(dir, "pimon.db")); err == nil {
+		t.Fatal("拒绝后不应打开或创建数据库")
+	}
+}
+
+func TestServeSkipsRootCheckAndHoldsDataDirLock(t *testing.T) {
+	dir := t.TempDir()
+	seen := stubRootRun(t, errors.New("不应被调用"))
+	cfg := config.Config{DataDir: dir}
+	lk, err := app.LockDataDir(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lk.Release() }()
+	code, _, errOut := runArgs("serve", "--data-dir", dir, "--addr", "127.0.0.1:0")
+	if code != 1 || !strings.Contains(errOut, "占用") {
+		t.Fatalf("锁被占用时 serve 应失败: code=%d err=%q", code, errOut)
+	}
+	if len(*seen) != 0 {
+		t.Fatal("serve 不应做 root 检查")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "pimon.db")); err == nil {
+		t.Fatal("拿不到锁时不应打开数据库")
+	}
+}
+
+func TestRestoreRefusedWhileDataDirLocked(t *testing.T) {
+	dir := t.TempDir()
+	stubRootRun(t, nil)
+	lk, err := app.LockDataDir(config.Config{DataDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lk.Release() }()
+	code, _, errOut := runArgs("restore", "--data-dir", dir, "/nonexistent.tar.gz")
+	if code != 1 || !strings.Contains(errOut, "占用") {
+		t.Fatalf("code=%d err=%q", code, errOut)
 	}
 }
