@@ -216,3 +216,40 @@ func TestReport_无state字段进入JSON(t *testing.T) {
 		t.Fatalf("不应带 state: %s", data)
 	}
 }
+
+func TestRunOutcome_ConfigHash可选且向后兼容(t *testing.T) {
+	o := sampleOutcomeOK()
+	o.ConfigHash = "h1"
+	m := &Report{InstanceID: "i", Seq: 3, RunOutcome: o}
+	data, err := Encode(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"config_hash":"h1"`) {
+		t.Fatalf("应带 config_hash: %s", data)
+	}
+	got, err := Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, m) {
+		t.Fatalf("往返不一致: %#v", got)
+	}
+	rr := &RunResult{RequestID: "r", InstanceID: "i", RunOutcome: o}
+	if data, _ = Encode(rr); !strings.Contains(string(data), `"config_hash":"h1"`) {
+		t.Fatalf("run_result 应带 config_hash: %s", data)
+	}
+
+	// 空值不进入 JSON；旧版 agent 不带该字段的报告照常解码为空值
+	data, _ = Encode(&Report{InstanceID: "i", Seq: 1, RunOutcome: sampleOutcomeOK()})
+	if strings.Contains(string(data), "config_hash") {
+		t.Fatalf("空 config_hash 不应出现: %s", data)
+	}
+	old, err := Decode([]byte(`{"type":"report","instance_id":"i","seq":2,"error":"x","error_kind":"failed","duration_ms":1,"collected_at":"2026-10-02T08:30:00Z"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := old.(*Report); r.ConfigHash != "" || r.ErrorKind != ErrorKindFailed {
+		t.Fatalf("旧格式报告 = %#v", r)
+	}
+}

@@ -294,6 +294,9 @@ type RunOutcome struct {
 	ErrorKind   string         `json:"error_kind,omitempty"`
 	DurationMs  int64          `json:"duration_ms"`
 	CollectedAt time.Time      `json:"collected_at"`
+	// ConfigHash 是产生本结果时实例的下发摘要（AssignedInstance.ConfigHash），可选：
+	// hub 与最近一次下发的摘要不一致时丢弃（旧配置的结果）；为空视为当前配置，兼容不填写的 agent。
+	ConfigHash string `json:"config_hash,omitempty"`
 }
 
 // check 返回出错字段与原因，合法时字段为空。
