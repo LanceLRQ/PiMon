@@ -386,8 +386,9 @@ type RunNow struct {
 	InstanceID string `json:"instance_id"`
 }
 
-func (RunNow) MsgType() Type          { return TypeRunNow }
-func (m RunNow) GetRequestID() string { return m.RequestID }
+func (RunNow) MsgType() Type             { return TypeRunNow }
+func (m RunNow) GetRequestID() string    { return m.RequestID }
+func (m *RunNow) SetRequestID(id string) { m.RequestID = id }
 func (m RunNow) Validate() error {
 	if m.RequestID == "" {
 		return invalid(TypeRunNow, "request_id", "不能为空")
@@ -424,8 +425,9 @@ type LogsGet struct {
 	MinLevel  string `json:"min_level"`
 }
 
-func (LogsGet) MsgType() Type          { return TypeLogsGet }
-func (m LogsGet) GetRequestID() string { return m.RequestID }
+func (LogsGet) MsgType() Type             { return TypeLogsGet }
+func (m LogsGet) GetRequestID() string    { return m.RequestID }
+func (m *LogsGet) SetRequestID(id string) { m.RequestID = id }
 func (m LogsGet) Validate() error {
 	if m.RequestID == "" {
 		return invalid(TypeLogsGet, "request_id", "不能为空")
@@ -461,8 +463,9 @@ type UpgradeInfoGet struct {
 	RequestID string `json:"request_id"`
 }
 
-func (UpgradeInfoGet) MsgType() Type          { return TypeUpgradeInfoGet }
-func (m UpgradeInfoGet) GetRequestID() string { return m.RequestID }
+func (UpgradeInfoGet) MsgType() Type             { return TypeUpgradeInfoGet }
+func (m UpgradeInfoGet) GetRequestID() string    { return m.RequestID }
+func (m *UpgradeInfoGet) SetRequestID(id string) { m.RequestID = id }
 func (m UpgradeInfoGet) Validate() error {
 	if m.RequestID == "" {
 		return invalid(TypeUpgradeInfoGet, "request_id", "不能为空")

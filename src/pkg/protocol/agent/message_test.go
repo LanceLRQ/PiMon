@@ -189,6 +189,27 @@ func TestRequester_带请求号的消息(t *testing.T) {
 	}
 }
 
+func TestRequestIDSetter_只有请求方消息实现(t *testing.T) {
+	want := map[Type]bool{TypeRunNow: true, TypeLogsGet: true, TypeUpgradeInfoGet: true}
+	for _, m := range allSamples() { // 样本均为指针
+		s, ok := m.(RequestIDSetter)
+		if ok != want[m.MsgType()] {
+			t.Errorf("%s: RequestIDSetter = %v", m.MsgType(), ok)
+		}
+		if ok {
+			s.SetRequestID("abc")
+			if got := m.(Requester).GetRequestID(); got != "abc" {
+				t.Errorf("%s: 设置后请求号 = %q", m.MsgType(), got)
+			}
+		}
+	}
+	// 值类型不实现（setter 用指针接收者），会话层据此要求传指针才能代为生成请求号。
+	var v any = RunNow{}
+	if _, ok := v.(RequestIDSetter); ok {
+		t.Error("值类型 RunNow 不应实现 RequestIDSetter")
+	}
+}
+
 func TestReport_无state字段进入JSON(t *testing.T) {
 	data, _ := Encode(&Report{InstanceID: "i", Seq: 1, RunOutcome: sampleOutcomeOK()})
 	if strings.Contains(string(data), `"state"`) {

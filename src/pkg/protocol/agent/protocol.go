@@ -121,6 +121,12 @@ type Requester interface {
 	GetRequestID() string
 }
 
+// RequestIDSetter 由请求方消息（run_now、logs_get、upgrade_info_get）的指针实现，
+// 会话层在请求号为空时代为生成并写回；值类型不实现，需传指针。
+type RequestIDSetter interface {
+	SetRequestID(id string)
+}
+
 var registry = map[Type]func() Message{
 	TypeAuth:           func() Message { return new(Auth) },
 	TypeAuthOK:         func() Message { return new(AuthOK) },
