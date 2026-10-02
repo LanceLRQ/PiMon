@@ -67,6 +67,8 @@ type App struct {
 	agents      *agentsrv.Server
 	// dialout 是拨出管理器（hub 主动连公网 VPS 上的 agent），Serve 时启动。
 	dialout *agentsrv.DialOut
+	// dispatcher 是远程实例的下发器：既是实例服务的 Remote，也是 agent 通道的 Router。
+	dispatcher *agentsrv.Dispatcher
 	// cert 是网页 HTTPS 与 agent 通道共用的中枢证书，spki 是其公钥指纹。
 	cert     tls.Certificate
 	spki     certs.SPKI
@@ -193,7 +195,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		return fmt.Errorf("加载屏幕时段计划: %w", err)
 	}
 	a.devices = devices.New(devices.Config{DB: a.db, Box: a.box, Clock: o.clk})
-	// 实例按运行位置校验时查设备角色；远程下发器（Remote）由 agentsrv 在 B6a 接入，未接入时远程实例只是不在本机调度。
+	// 实例按运行位置校验时查设备角色；远程下发器（Remote）在 agent 通道服务建好后接入。
 	a.instances.UseDevices(deviceStates{a.devices})
 	known, err := a.devices.List(ctx)
 	if err != nil {
@@ -217,6 +219,14 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	}); err != nil {
 		return fmt.Errorf("创建 agent 通道服务: %w", err)
 	}
+	// 下发器同时接入实例服务（实例变化 → 合并下发）与 agent 通道（设备就绪 → 全量下发、回执）。
+	if a.dispatcher, err = agentsrv.NewDispatcher(agentsrv.DispatcherConfig{
+		Server: a.agents, Instances: a.instances, Devices: a.devices, Plugins: a.plugins, Clock: o.clk,
+	}); err != nil {
+		return fmt.Errorf("创建下发器: %w", err)
+	}
+	a.instances.UseRemote(a.dispatcher)
+	a.agents.UseRouter(a.dispatcher)
 	if a.dialout, err = agentsrv.NewDialOut(agentsrv.DialOutConfig{Server: a.agents, Proxies: proxyStore}); err != nil {
 		return fmt.Errorf("创建拨出管理器: %w", err)
 	}
@@ -342,11 +352,15 @@ func (a *App) AgentAddr() string {
 // AgentSPKI 返回中枢证书的 SPKI 指纹，agent 配对时用它钉扎。
 func (a *App) AgentSPKI() certs.SPKI { return a.spki }
 
-// stopAgents 按「拨出管理器、会话服务、在线状态」的顺序释放 agent 通道相关资源，须在关闭数据库之前调用。
-// 调用前监听必须已停止（Serve 返回），否则新连接会在关闭后到达；拨出管理器先停，关停期间不再新建拨出会话。
+// stopAgents 按「拨出管理器、下发器、会话服务、在线状态」的顺序释放 agent 通道相关资源，须在关闭数据库之前调用。
+// 调用前监听必须已停止（Serve 返回），否则新连接会在关闭后到达；拨出管理器先停，关停期间不再新建拨出会话；
+// 下发器停止后会话的回调一律忽略，不再读库。
 func (a *App) stopAgents() {
 	if a.dialout != nil {
 		a.dialout.Close()
+	}
+	if a.dispatcher != nil {
+		a.dispatcher.Close()
 	}
 	if a.agents != nil {
 		a.agents.Close()

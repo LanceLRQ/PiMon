@@ -99,8 +99,16 @@ func TestAgent通道配对后设备在线且关停无泄漏(t *testing.T) {
 		t.Fatal(err)
 	}
 	var deviceID string
+	assigns := make(chan *agent.Assign, 4)
 	sess, err := agentlink.Dial(context.Background(), agentlink.DialerConfig{
 		URL: "wss://" + addr, Pin: a.AgentSPKI(), Role: agent.RoleAgent, Log: agentlinktest.QuietLog(),
+		Handler: func(agentlink.Peer) agentlink.Handler {
+			return func(_ *agentlink.Session, m agent.Message) {
+				if as, ok := m.(*agent.Assign); ok {
+					assigns <- as
+				}
+			}
+		},
 		PairCode: code,
 		PairInfo: agent.Pair{Name: "nas1", Hostname: "nas.local", OS: "linux", Arch: "amd64"},
 		OnCredential: func(ok agent.PairOK) error {
@@ -128,6 +136,15 @@ func TestAgent通道配对后设备在线且关停无泄漏(t *testing.T) {
 	}
 	if d.Name != "nas1" || d.Hostname != "nas.local" {
 		t.Fatalf("设备行不符: %+v", d)
+	}
+	// 下发器已接入 agent 通道：上线后立即收到全量 assign（尚无实例）
+	select {
+	case as := <-assigns:
+		if as.Version != 1 || len(as.Instances) != 0 {
+			t.Fatalf("上线后的 assign = v%d，%d 个实例", as.Version, len(as.Instances))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("上线后应收到 assign")
 	}
 
 	cancel()
