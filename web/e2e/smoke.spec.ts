@@ -313,7 +313,7 @@ test.describe('屏幕会话', () => {
 
       // 旧会话被吊销：WebSocket 断开、重连的握手被拒，外壳重新查询会话后显示失效页
       await expect(page.getByRole('heading', { name: '屏幕令牌失效' })).toBeVisible({ timeout: 20_000 })
-      await expect(page.getByText(/重启 kiosk/)).toBeVisible()
+      await expect(page.getByText(/本机 kiosk 会在几秒内自动用新令牌重新登录/)).toBeVisible()
       // 没有被带去登录页
       await expect(page).toHaveURL(/\/screen$/)
     } finally {

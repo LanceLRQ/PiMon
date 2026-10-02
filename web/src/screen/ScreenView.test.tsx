@@ -458,3 +458,37 @@ describe('屏幕根：顶部让位', () => {
     expect(container.querySelector<HTMLElement>('[data-screen-grid]')!.style.height).toBe('600px')
   })
 })
+
+describe('屏幕根：关屏时吞掉触摸（Ruling 5）', () => {
+  const offPatch = () => patchOf('screen_state', { screen_state: { mode: 'off', theme_id: 'ambient', reason: 'schedule' } })
+
+  it.each([
+    ['有触摸', touchSettings()],
+    ['无触摸', settingsOf({ input_mode: 'none' })],
+  ])('%s：pointerdown 与 click 都不会传到页面内容，并被 preventDefault', async (_name, settings) => {
+    const store = storeWith({ screen_settings: settings })
+    const { container } = await renderScreen(store)
+    act(() => store.applyPatch(offPatch()))
+    const overlay = container.querySelector<HTMLElement>('[data-screen-off]')!
+    const reached: string[] = []
+    overlay.addEventListener('pointerdown', () => reached.push('pointerdown'))
+    overlay.addEventListener('click', () => reached.push('click'))
+
+    const downNotPrevented = fireEvent.pointerDown(overlay, { clientX: 10, clientY: 10, pointerId: 1, pointerType: 'touch' })
+    const clickNotPrevented = fireEvent.click(overlay, { clientX: 10, clientY: 10 })
+
+    expect(reached).toEqual([])
+    expect(downNotPrevented).toBe(false)
+    expect(clickNotPrevented).toBe(false)
+  })
+
+  it('亮屏时事件照常传到内容', async () => {
+    const store = storeWith({ screen_settings: touchSettings() })
+    const { container } = await renderScreen(store)
+    const el = widgetEl(container, 'w1')
+    const reached: string[] = []
+    el.addEventListener('click', () => reached.push('click'))
+    fireEvent.click(el)
+    expect(reached).toEqual(['click'])
+  })
+})

@@ -14,6 +14,8 @@ import { translateErrorValue } from '@/i18n/errors'
 import { formatDateTime, parseTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { usePlugins } from '@/pages/instances/use-plugins'
+import { formatHM, parseHM } from '@/pages/schedule/model'
+import { TimeField } from '@/pages/schedule/TimeField'
 import { computeGrid } from '@/screen/grid'
 import { selectInstances, selectSettings, serverNow, useLiveStore } from '@/store/live-store'
 import { DEFAULT_THEME_ID, isThemeId, type ThemeId } from '@/themes'
@@ -26,6 +28,7 @@ import { PageHeader } from '@/ui/page-header'
 import { FieldHelp, FormRow, Section } from '@/ui/section'
 import { Segmented } from '@/ui/segmented'
 import { Stepper } from '@/ui/stepper'
+import { Switch } from '@/ui/switch'
 import { useToast } from '@/ui/toast'
 import { screenChanges, screenReducer, type ScreenChange } from './draft'
 import { ScreenTable } from './ScreenTable'
@@ -46,7 +49,7 @@ interface ServerData {
 }
 
 function sameDisplay(a: ScreenDisplaySettings, b: ScreenDisplaySettings): boolean {
-  return a.carousel_mode === b.carousel_mode && a.idle_home_seconds === b.idle_home_seconds && a.default_dwell_seconds === b.default_dwell_seconds && a.input_mode === b.input_mode && a.ui_scale === b.ui_scale
+  return a.carousel_mode === b.carousel_mode && a.idle_home_seconds === b.idle_home_seconds && a.default_dwell_seconds === b.default_dwell_seconds && a.input_mode === b.input_mode && a.ui_scale === b.ui_scale && a.daily_restart.enabled === b.daily_restart.enabled && a.daily_restart.at === b.daily_restart.at
 }
 
 function changeText(t: (k: string, o?: Record<string, unknown>) => string, c: ScreenChange): string {
@@ -269,7 +272,9 @@ export function ScreenManager() {
   }
 
   const grid = draft.grid
-  const touch = effectiveTouch(display.input_mode, status?.coarse_pointer)
+  const kioskTouch = status?.kiosk?.touchscreen
+  const touch = effectiveTouch(display.input_mode, status?.coarse_pointer, kioskTouch)
+  const detectedTouch = kioskTouch ?? status?.coarse_pointer
   const metrics = computeGrid(viewport.w, viewport.h, grid)
   const rec = status?.recommended_grid
   const gridKey = `${grid.cols}x${grid.rows}`
@@ -506,9 +511,9 @@ export function ScreenManager() {
                 onChange={(m) => upd({ input_mode: m })}
               />
               <FieldHelp>
-                {status?.coarse_pointer === undefined
+                {detectedTouch == null
                   ? t('screens.input.detectedNone')
-                  : t('screens.input.detected', { kind: t(status.coarse_pointer ? 'screens.input.hasTouch' : 'screens.input.noTouch') })}{' '}
+                  : t('screens.input.detected', { kind: t(detectedTouch ? 'screens.input.hasTouch' : 'screens.input.noTouch') })}{' '}
                 {t('screens.input.help')}
               </FieldHelp>
             </FormRow>
@@ -524,6 +529,25 @@ export function ScreenManager() {
               />
               <FieldHelp>{t('screens.scale.help')}</FieldHelp>
               <FieldHelp className="text-signal-text">{t('screens.scale.restart')}</FieldHelp>
+            </FormRow>
+          </Section>
+          <Section no="02.6" title={t('screens.restart.title')} meta="daily_restart">
+            <FormRow label={t('screens.restart.label')} fieldKey="daily_restart.enabled">
+              <Switch
+                checked={display.daily_restart.enabled}
+                disabled={saving}
+                ariaLabel={t('screens.restart.label')}
+                onChange={(enabled) => upd({ daily_restart: { ...display.daily_restart, enabled } })}
+              />
+            </FormRow>
+            <FormRow label={t('screens.restart.at')} fieldKey="daily_restart.at">
+              <TimeField
+                disabled={saving}
+                value={parseHM(display.daily_restart.at) ?? 0}
+                ariaLabel={t('screens.restart.at')}
+                onCommit={(m) => upd({ daily_restart: { ...display.daily_restart, at: formatHM(m) } })}
+              />
+              <FieldHelp>{t('screens.restart.help')}</FieldHelp>
             </FormRow>
           </Section>
         </div>

@@ -116,6 +116,11 @@ describe('设置页脏状态与保存条', () => {
     expect((api.calls.find((c) => c.method === 'PUT')!.body as Settings).https_enabled).toBe(true)
   })
 
+  it('HTTPS 开关处提示本机 kiosk 屏幕需要 HTTP，建议用 nginx 反代', async () => {
+    await setup()
+    expect(await screen.findByText('本机 kiosk 屏幕需要 HTTP，开启 HTTPS 后屏幕会断开；需要 HTTPS 请用 nginx 反代。')).toBeInTheDocument()
+  })
+
   it('服务端字段错误回显到对应字段，保存条显示未通过数；修改字段后该错误消失', async () => {
     await setup({
       extra: (r) =>

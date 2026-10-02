@@ -79,7 +79,7 @@ describe('屏幕端守卫', () => {
     route({ session: () => json(200, { authenticated: false, needs_setup: false }) })
     await mount()
     expect(await screen.findByRole('heading', { name: '屏幕令牌失效' })).toBeInTheDocument()
-    expect(screen.getByText(/重启 kiosk/)).toBeInTheDocument()
+    expect(screen.getByText(/本机 kiosk 会在几秒内自动用新令牌重新登录/)).toBeInTheDocument()
     expect(screen.queryByTestId('screen-app')).toBeNull()
   })
 

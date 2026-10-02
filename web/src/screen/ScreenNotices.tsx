@@ -29,7 +29,7 @@ function Notice({ icon, title, body, children }: { icon: ReactNode; title: strin
   )
 }
 
-/** 屏幕令牌失效（没有会话、会话被吊销）：让人去树莓派上重启 kiosk */
+/** 屏幕令牌失效（没有会话、会话被吊销）：本机 kiosk 会自动重新登录，其他设备需用新令牌链接重新打开 */
 export function TokenInvalidPage() {
   const { t } = useTranslation()
   return <Notice icon={<KeyRound size={56} />} title={t('screenApp.tokenInvalid.title')} body={t('screenApp.tokenInvalid.body')} />

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { formatBytes, formatUptime } from '@/lib/format'
 import { formatDateTime, parseTime } from '@/lib/time'
 import { useUptimeSeconds } from '@/lib/use-uptime'
+import { useScreenStatus } from '@/pages/screens/use-screen-status'
 import type { SystemInfo } from '@/types/generated'
 import { Note } from '@/ui/note'
 import { PageHeader } from '@/ui/page-header'
@@ -10,6 +11,7 @@ import { Section } from '@/ui/section'
 import { BackupsPanel } from './BackupsPanel'
 import { KV } from './KV'
 import { LogPanel } from './LogPanel'
+import { IdlePanel } from './IdlePanel'
 import { PluginsPanel } from './PluginsPanel'
 import { ScreenPanel } from './ScreenPanel'
 import { useSystemInfo } from './use-system'
@@ -21,6 +23,7 @@ function Placeholder({ text }: { text: string }) {
 export function SystemPage() {
   const { t, i18n } = useTranslation()
   const { info, error, reload } = useSystemInfo()
+  const screenStatus = useScreenStatus()
   const uptimeSeconds = useUptimeSeconds(info?.uptime_seconds)
   const unknown = <span className="font-sans text-muted-foreground">{t('items.unknown')}</span>
 
@@ -71,13 +74,11 @@ export function SystemPage() {
             {info ? <Resources info={info} unknown={unknown} /> : <Placeholder text={t('common.loading')} />}
           </Section>
 
-          <ScreenPanel />
+          <ScreenPanel state={screenStatus} />
         </div>
 
         <div className="grid grid-cols-2 gap-4 mobile:grid-cols-1">
-          <Section no="06.4" title={t('system.idle.title')} meta={t('system.idle.meta')}>
-            <Placeholder text={t('system.idle.placeholder')} />
-          </Section>
+          <IdlePanel state={screenStatus} />
           <PluginsPanel />
         </div>
 

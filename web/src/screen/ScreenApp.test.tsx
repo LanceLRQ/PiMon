@@ -48,6 +48,9 @@ afterEach(() => {
 
 describe('屏幕端应用：离线恢复', () => {
   it('hub 连不上时用本地缓存的 snapshot 渲染网格，并显示断线角标', async () => {
+    // 角标跨天时会带日期，固定「现在」到快照当天，避免用例随真实日期失败
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-01T08:00:00Z'))
     const i18n = await createI18n('zh')
     vi.stubGlobal('fetch', vi.fn(async () => json(200, { authenticated: true, kind: 'screen', needs_setup: false })))
     render(
