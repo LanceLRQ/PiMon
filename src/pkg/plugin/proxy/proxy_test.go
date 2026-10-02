@@ -388,3 +388,36 @@ func TestDialContext_经Socks5Forward双向收发(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 	roundTrip(t, conn, "via-socks")
 }
+
+func TestDialContext_CONNECT应答为HTTP10或Connection关闭时隧道可用(t *testing.T) {
+	for _, line := range []string{
+		"HTTP/1.0 200 Connection established\r\n\r\n",
+		"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n",
+	} {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			defer func() { _ = c.Close() }()
+			_, _ = http.ReadRequest(bufio.NewReader(c))
+			_, _ = io.WriteString(c, line)
+			_, _ = io.Copy(c, c)
+		}()
+		p, err := proxy.Parse("http://" + ln.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		conn, err := p.DialContext()(context.Background(), "tcp", "127.0.0.1:9")
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		roundTrip(t, conn, "tunnel")
+		_ = conn.Close()
+		_ = ln.Close()
+	}
+}

@@ -120,7 +120,7 @@ func (p *Proxy) Transport() *http.Transport {
 
 // DialContext 返回原始 TCP 拨号函数。直连为普通拨号；socks5 先本地解析域名再拨 IP，
 // socks5h 把域名交给代理；http/https 代理先连代理（https 先做 TLS），再发 CONNECT 建隧道，
-// 目标域名交给代理解析。代理返回非 2xx 时错误带状态行但不含代理地址与认证信息。
+// 目标域名交给代理解析。代理返回非 2xx 时错误只带状态行；错误文本不含认证信息。
 // HTTP 请求请用 Transport()。
 func (p *Proxy) DialContext() func(ctx context.Context, network, addr string) (net.Conn, error) {
 	base := &net.Dialer{Timeout: dialTimeout}
@@ -166,7 +166,8 @@ func (p *Proxy) dialConnect(ctx context.Context, network, addr string) (net.Conn
 		_ = conn.SetDeadline(time.Now().Add(dialTimeout))
 	}
 	// ctx 取消时立刻打断握手读写。
-	stop := context.AfterFunc(ctx, func() { _ = conn.SetDeadline(time.Unix(1, 0)) })
+	raw := conn
+	stop := context.AfterFunc(ctx, func() { _ = raw.SetDeadline(time.Unix(1, 0)) })
 	defer stop()
 
 	if p.u.Scheme == "https" {
@@ -203,12 +204,16 @@ func (p *Proxy) dialConnect(ctx context.Context, network, addr string) (net.Conn
 		_ = conn.Close()
 		return nil, fmt.Errorf("读取代理应答失败: %w", stripURLError(err))
 	}
-	_ = resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		_ = resp.Body.Close()
 		_ = conn.Close()
 		return nil, fmt.Errorf("代理拒绝连接: %s", resp.Status)
 	}
-	stop()
+	// 2xx 不关 Body：HTTP/1.0 或 Connection: close 的应答 Body 是读到 EOF，Close 会吞掉隧道数据。
+	if !stop() {
+		_ = conn.Close()
+		return nil, ctx.Err()
+	}
 	_ = conn.SetDeadline(time.Time{})
 	if br.Buffered() > 0 {
 		return &bufferedConn{Conn: conn, r: br}, nil
