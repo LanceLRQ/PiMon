@@ -98,6 +98,8 @@ install 需要 root，只支持 Linux + systemd。运行 install 期间，请不
 4. 检查 31415 端口是否空闲。
 5. 生成首次设置码（已有管理员则跳过）。
 6. 写入 `/etc/systemd/system/pimon-hub.service`，启用并启动服务，等待 `/healthz` 就绪。
+
+上面 5、6 的顺序是全新安装的顺序。服务已经在运行时（升级或重装），install 先重启服务并等到就绪，再生成设置码，这样新版本的二进制不会在旧 hub 还在运行时去迁移数据库。
 7. 把桌面用户加入 `pimon` 组，使其能读取屏幕令牌（`/var/lib/pimon/screen.token`）。
 8. 检查 `net.ipv4.ping_group_range` 是否包含 `pimon` 组（Ping 探测需要）；不包含时写入 `/etc/sysctl.d/99-pimon.conf` 并生效。
 
@@ -158,7 +160,7 @@ curl -s http://127.0.0.1:31415/healthz
 sudo ./pimon-hub install
 ```
 
-它会自动替换 `/usr/local/bin/pimon-hub`、重启 hub 服务。数据库需要升级时，hub 启动前会先自动备份一份（原因为 `pre-upgrade`）。如果已配置 kiosk，屏幕守护进程发现 hub 版本变化后，会自动换用新版本，无需手工处理。升级到 kiosk 配置有变化的版本时，用 `sudo ./pimon-hub install --kiosk` 再运行一次。
+它会自动替换 `/usr/local/bin/pimon-hub`、重启 hub 服务。只要版本号与上次运行时不同，hub 启动前就会先自动备份一份（原因为 `pre-upgrade`）。如果已配置 kiosk，屏幕守护进程发现 hub 版本变化后，会自动换用新版本，无需手工处理。升级到 kiosk 配置有变化的版本时，用 `sudo ./pimon-hub install --kiosk` 再运行一次。
 
 ## 卸载
 
@@ -225,7 +227,7 @@ sudo ./pimon-hub install
 
 ### 自动备份
 
-hub 每天在设定时刻（默认 04:00，按「设置」里的时区）把整库备份到 `/var/lib/pimon/backups`，默认保留最近 7 份，时刻和份数可以在设置里修改。升级前还会额外做一份 `pre-upgrade` 备份。备份文件名形如 `pimon-backup-20261002-200000-daily.tar.gz`（时间为 UTC）。
+hub 每天在设定时刻（默认 04:00，按「设置」里的时区）把整库备份到 `/var/lib/pimon/backups`，默认保留最近 7 份，时刻和份数可以在设置里修改。版本号变化后的首次启动还会额外做一份 `pre-upgrade` 备份。备份文件名形如 `pimon-backup-20261002-200000-daily.tar.gz`（时间为 UTC）。
 
 在网页管理端的「系统」页 → 「备份」面板可以立即备份，也可以下载备份文件；备份时刻和保留份数在「设置」页的备份区修改。建议定期把备份下载或拷贝到树莓派之外的地方，尤其是使用 SD 卡时。
 
@@ -279,7 +281,7 @@ hub 设置里还有一个「直连 HTTPS」开关，使用自签名证书。**�
 - Chromium 崩溃后自动重启；连续崩溃时间隔从 1 秒起逐次加倍，最长 60 秒，稳定运行 5 分钟后恢复。
 - 屏幕令牌或界面缩放变化时自动重启 Chromium；开启「每日重启」后，到点重启 Chromium（在屏幕编辑器的「每日重启」里配置）。
 - 按「设置」里的时段计划开关屏，使用 `wlopm` 控制 HDMI 输出。
-- 关屏期间触摸屏幕即可唤醒（需要触摸屏）。
+- 关屏期间触摸屏幕即可唤醒（需要触摸屏，且桌面用户在 `input` 组，见 [触摸唤醒没有反应](#触摸唤醒没有反应)）。
 - hub 升级后自动换用新版本的二进制。
 - 桌面会话消失（labwc 退出）时，守护进程自己退出。
 
@@ -344,6 +346,23 @@ sudo ss -ltnp | grep 31415
 ### Chromium 处于降级或退避状态
 
 管理端系统页显示 Chromium 重启次数或退避中，说明 Chromium 在反复崩溃。看 `journalctl -t pimon-kiosk -e` 里的原因。常见原因是屏幕令牌文件读不到（桌面用户刚加入 `pimon` 组、还没有重新登录）、内存不足、`/usr/bin/chromium` 不存在。排除后无需手工操作，守护进程会按退避间隔自己重试，稳定运行 5 分钟后退避清零。
+
+### 触摸唤醒没有反应
+
+kiosk 通过读取 `/dev/input/event*` 旁听触摸事件，所以桌面用户必须在 `input` 组里。Raspberry Pi OS 创建的默认用户已经在该组。用下面的命令确认（`<桌面用户>` 换成实际的用户名）：
+
+```bash
+id <桌面用户> | grep -o 'input'
+ls -l /dev/input/event*
+```
+
+没有输出 `input` 时，加入该组并重新登录桌面：
+
+```bash
+sudo usermod -aG input <桌面用户>
+```
+
+另外，管理端系统页会显示 kiosk 是否检测到触摸屏；没有触摸屏的显示器不会有这个功能。
 
 ### 欠压
 
