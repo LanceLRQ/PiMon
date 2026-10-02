@@ -184,6 +184,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 			online, _ := a.screenState.Online()
 			return online, true
 		},
+		screenStatus: a.screenState.Status,
 	})
 	if err := a.instances.Load(ctx); err != nil {
 		return fmt.Errorf("恢复实例状态: %w", err)

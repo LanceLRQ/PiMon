@@ -19,6 +19,10 @@ outputs:
   - {key: hub.agents_online,  type: number, title: {zh: 在线 agent 数, en: Agents online}}
   - {key: hub.screens_online, type: state,  title: {zh: 屏幕在线, en: Screen online}}
   - {key: hub.uptime,         type: number, title: {zh: 运行时长, en: Uptime}}
+  - {key: hub.rss,            type: number, title: {zh: 中枢内存占用, en: Hub memory (RSS)}}
+  - {key: hub.cpu,            type: number, title: {zh: 中枢 CPU 占用, en: Hub CPU usage}}
+  - {key: kiosk.chromium_rss, type: number, title: {zh: 屏幕浏览器内存, en: Kiosk Chromium memory}}
+  - {key: host.disk_written,  type: number, title: {zh: 数据盘累计写入, en: Data disk bytes written}}
 widgets:
   - id: health
     name: {zh: 中枢状态, en: Hub health}
