@@ -162,3 +162,21 @@ func TestRestoreRefusedWhileDataDirLocked(t *testing.T) {
 		t.Fatalf("code=%d err=%q", code, errOut)
 	}
 }
+
+func TestKiosk_缺少图形会话环境时报错退出(t *testing.T) {
+	code, _, errOut := runArgs("kiosk")
+	if code != 1 || !strings.Contains(errOut, "WAYLAND_DISPLAY") {
+		t.Fatalf("code=%d err=%q", code, errOut)
+	}
+	code, _, errOut = runArgs("kiosk", "--nope")
+	if code != 2 {
+		t.Fatalf("未知参数应返回 2: code=%d err=%q", code, errOut)
+	}
+}
+
+func TestHelp_包含kiosk(t *testing.T) {
+	_, out, _ := runArgs("help")
+	if !strings.Contains(out, "kiosk") || !strings.Contains(out, "--token-file") {
+		t.Fatalf("out=%q", out)
+	}
+}

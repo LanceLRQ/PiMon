@@ -20,6 +20,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugindev"
+	"github.com/LanceLRQ/PiMon/src/internal/kiosk"
 	"github.com/LanceLRQ/PiMon/src/pkg/version"
 )
 
@@ -30,6 +31,7 @@ const usage = `用法: pimon-hub <命令> [参数]
   setup-code                生成新的首次设置码（尚未设置管理员时）
   reset-password            从标准输入读取新密码并重置管理员密码
   restore [参数] <备份文件>  从备份包恢复（必须先停止服务）
+  kiosk [参数]              屏幕守护进程：看护 Chromium kiosk（由 labwc autostart 以桌面用户启动）
   plugin <子命令>           插件开发者工具：validate 校验目录、run 本机运行一次（详见 plugin help）
   version                   显示版本号
   help                      显示本说明
@@ -38,6 +40,12 @@ const usage = `用法: pimon-hub <命令> [参数]
   --addr <地址>        监听地址，默认 :31415（环境变量 PIMON_ADDR）
   --data-dir <目录>    数据目录，默认 /var/lib/pimon（环境变量 PIMON_DATA_DIR）
   --log-level <级别>   debug|info|warn|error，默认 info（环境变量 PIMON_LOG_LEVEL）
+
+kiosk 的参数:
+  --hub <地址>         中枢网页地址，默认 http://127.0.0.1:31415
+  --token-file <文件>  屏幕令牌文件，默认 /var/lib/pimon/screen.token
+  --chromium <路径>    Chromium 可执行文件，默认 /usr/bin/chromium
+  --log-level <级别>   debug|info|warn|error，默认 info
 `
 
 func main() {
@@ -68,6 +76,19 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		return 0
 	case "help", "-h", "--help":
 		_, _ = fmt.Fprint(stdout, usage)
+		return 0
+	case "kiosk":
+		// 守护进程随图形会话常驻；SIGTERM/Ctrl-C 经 ctx 触发有序退出（先停 Chromium）。
+		sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := kiosk.Command(sigCtx, rest, stderr, getenv); err != nil {
+			_, _ = fmt.Fprintln(stderr, "错误:", err)
+			var ue kiosk.UsageError
+			if errors.As(err, &ue) {
+				return 2
+			}
+			return 1
+		}
 		return 0
 	case "plugin":
 		if len(rest) > 0 && (rest[0] == "help" || rest[0] == "-h" || rest[0] == "--help") {
