@@ -4,78 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path"
-	"slices"
-	"strings"
+
+	"github.com/LanceLRQ/PiMon/src/internal/lightdm"
 )
 
-// lightdm 配置按先后顺序读取，后读到的覆盖先读到的；主配置文件最后读。
-var lightdmConfDirs = []string{
-	"/usr/share/lightdm/lightdm.conf.d",
-	"/etc/xdg/lightdm/lightdm.conf.d",
-	"/etc/lightdm/lightdm.conf.d",
-}
-
-const lightdmMainConf = "/etc/lightdm/lightdm.conf"
-
-// detectAutologinUser 返回 lightdm 配置里 [Seat:*] 段的 autologin-user；没有配置返回空串。
-func detectAutologinUser(fsys FS) (string, error) {
-	var files []string
-	for _, dir := range lightdmConfDirs {
-		names, err := fsys.ReadDir(dir)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return "", fmt.Errorf("读取 %s: %w", dir, err)
-		}
-		slices.Sort(names)
-		for _, n := range names {
-			if strings.HasSuffix(n, ".conf") {
-				files = append(files, path.Join(dir, n))
-			}
-		}
-	}
-	files = append(files, lightdmMainConf)
-	user := ""
-	for _, f := range files {
-		b, err := fsys.ReadFile(f)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return "", fmt.Errorf("读取 %s: %w", f, err)
-		}
-		if v, ok := seatAutologinUser(string(b)); ok {
-			user = v
-		}
-	}
-	return user, nil
-}
-
-// seatAutologinUser 解析一份 lightdm 配置，返回 [Seat:*] 段内最后一个 autologin-user（跳过注释行）。
-func seatAutologinUser(content string) (string, bool) {
-	in, found, val := false, false, ""
-	for _, raw := range strings.Split(content, "\n") {
-		line := strings.TrimSpace(raw)
-		if line == "" || line[0] == '#' || line[0] == ';' {
-			continue
-		}
-		if line[0] == '[' {
-			in = line == "[Seat:*]"
-			continue
-		}
-		if !in {
-			continue
-		}
-		k, v, ok := strings.Cut(line, "=")
-		if ok && strings.TrimSpace(k) == "autologin-user" {
-			val, found = strings.TrimSpace(v), true
-		}
-	}
-	return val, found
-}
+func detectAutologinUser(fsys FS) (string, error) { return lightdm.AutologinUser(fsys) }
 
 func (r *run) addDesktopUser(ctx context.Context) error {
 	name := r.opts.DesktopUser
