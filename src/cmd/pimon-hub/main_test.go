@@ -2,13 +2,19 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/app"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
 	"github.com/LanceLRQ/PiMon/src/pkg/version"
 )
@@ -178,5 +184,58 @@ func TestHelp_包含kiosk(t *testing.T) {
 	_, out, _ := runArgs("help")
 	if !strings.Contains(out, "kiosk") || !strings.Contains(out, "--token-file") {
 		t.Fatalf("out=%q", out)
+	}
+}
+
+func TestSetupCodeIfNeeded(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "data")
+	stubRootRun(t, nil)
+	code1, out1, _ := runArgs("setup-code", "--if-needed", "--data-dir", dir)
+	code2, out2, _ := runArgs("setup-code", "--data-dir", dir, "--if-needed")
+	if code1 != 0 || code2 != 0 {
+		t.Fatalf("code=%d,%d", code1, code2)
+	}
+	first := strings.SplitN(out1, "\n", 2)[0]
+	if !strings.HasPrefix(first, "首次设置码: ") || strings.SplitN(out2, "\n", 2)[0] != first {
+		t.Fatalf("第二次应打印同一个码: %q / %q", out1, out2)
+	}
+	// 不带 --if-needed 仍然生成新码。
+	_, out3, _ := runArgs("setup-code", "--data-dir", dir)
+	if strings.SplitN(out3, "\n", 2)[0] == first {
+		t.Fatalf("不带 --if-needed 应换新码: %q", out3)
+	}
+}
+
+func TestSetupCodeIfNeededAdminExistsExitsThree(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "data")
+	stubRootRun(t, nil)
+	cfg := config.Config{Addr: "127.0.0.1:0", DataDir: dir, LogLevel: "info"}
+	a, err := app.Open(context.Background(), cfg, app.WithHasherParams(auth.Params{Memory: 64, Time: 1, Threads: 1, KeyLen: 32, SaltLen: 16}), app.WithStderr(io.Discard))
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _, err := a.SetupCode(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(a.Handler())
+	body, _ := json.Marshal(map[string]any{"setup_code": code, "password": "correct horse", "language": "zh", "timezone": "UTC", "access_url": ""})
+	req, _ := http.NewRequest("POST", srv.URL+"/api/setup", bytes.NewReader(body))
+	req.Header.Set("Origin", srv.URL)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		t.Fatalf("setup: %v %v", resp, err)
+	}
+	_ = resp.Body.Close()
+	srv.Close()
+	_ = a.Close()
+
+	rc, out, errOut := runArgs("setup-code", "--if-needed", "--data-dir", dir)
+	if rc != 3 || !strings.Contains(out, "已设置管理员") || strings.Contains(errOut, "错误") {
+		t.Fatalf("rc=%d out=%q err=%q", rc, out, errOut)
+	}
+	// 不带 --if-needed 时保持原行为：失败退出 1。
+	if rc, _, _ := runArgs("setup-code", "--data-dir", dir); rc != 1 {
+		t.Fatalf("不带 --if-needed 应退出 1，得到 %d", rc)
 	}
 }

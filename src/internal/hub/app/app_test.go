@@ -654,3 +654,31 @@ func TestCLI生成的设置码可显示(t *testing.T) {
 		t.Fatalf("Reveal = %q ok=%v err=%v", got, ok, err)
 	}
 }
+
+func TestSetupCodeIfNeeded(t *testing.T) {
+	a := openApp(t, testConfig(t))
+	ctx := context.Background()
+	c1, e1, err := a.SetupCodeIfNeeded(ctx)
+	if err != nil || c1 == "" {
+		t.Fatalf("无码时应生成: %q %v", c1, err)
+	}
+	c2, e2, err := a.SetupCodeIfNeeded(ctx)
+	if err != nil || c2 != c1 || !e2.Equal(e1) {
+		t.Fatalf("已有可显示码应原样返回: %q/%q %v", c1, c2, err)
+	}
+	// 不可显示的旧码（没有加密副本）要重新生成。
+	if _, err := a.db.ExecContext(ctx, `UPDATE setup_codes SET code_enc = '' WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	c3, _, err := a.SetupCodeIfNeeded(ctx)
+	if err != nil || c3 == "" || c3 == c1 {
+		t.Fatalf("旧码不可显示时应换新码: %q %v", c3, err)
+	}
+	h, _ := auth.Hasher{Params: testParams}.Hash(testPassword)
+	if err := a.admins.Create(ctx, h); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := a.SetupCodeIfNeeded(ctx); err != ErrAdminExists {
+		t.Fatalf("已有管理员应返回 ErrAdminExists: %v", err)
+	}
+}

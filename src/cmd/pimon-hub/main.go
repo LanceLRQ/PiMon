@@ -28,7 +28,7 @@ const usage = `用法: pimon-hub <命令> [参数]
 
 命令:
   serve                     启动中枢服务
-  setup-code                生成新的首次设置码（尚未设置管理员时）
+  setup-code [--if-needed]  生成新的首次设置码（尚未设置管理员时）；--if-needed 沿用仍有效的现有码，已有管理员时退出码为 3
   reset-password            从标准输入读取新密码并重置管理员密码
   restore [参数] <备份文件>  从备份包恢复（必须先停止服务）
   kiosk [参数]              屏幕守护进程：看护 Chromium kiosk（由 labwc autostart 以桌面用户启动）
@@ -113,6 +113,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		return 2
 	}
 
+	ifNeeded := false
+	if cmd == "setup-code" {
+		rest, ifNeeded = takeFlag(rest, "--if-needed")
+	}
 	cfg, pos, err := config.Parse(rest, getenv)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "错误:", err)
@@ -122,7 +126,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		lv.Set(cfg.SlogLevel())
 	}
 
-	if err := dispatch(context.Background(), cmd, cfg, pos, stdin, stdout, stderr, getenv); err != nil {
+	if err := dispatch(context.Background(), cmd, ifNeeded, cfg, pos, stdin, stdout, stderr, getenv); err != nil {
+		var ee exitError
+		if errors.As(err, &ee) {
+			return ee.code
+		}
 		_, _ = fmt.Fprintln(stderr, "错误:", err)
 		var ue usageError
 		if errors.As(err, &ue) {
@@ -133,6 +141,32 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 	return 0
 }
 
+// takeFlag 从参数里去掉布尔开关 name（遇到 -- 之后不再识别），返回剩余参数与是否出现过。
+func takeFlag(args []string, name string) ([]string, bool) {
+	out := make([]string, 0, len(args))
+	found := false
+	for i, a := range args {
+		if a == "--" {
+			out = append(out, args[i:]...)
+			break
+		}
+		if a == name {
+			found = true
+			continue
+		}
+		out = append(out, a)
+	}
+	return out, found
+}
+
+// exitSetupCodeAdminExists 是 setup-code --if-needed 在已有管理员时的退出码，供安装脚本区分「无需设置码」与失败。
+const exitSetupCodeAdminExists = 3
+
+// exitError 携带需要原样返回的退出码；说明文字已由命令自己输出，run 不再追加「错误:」。
+type exitError struct{ code int }
+
+func (e exitError) Error() string { return fmt.Sprintf("退出码 %d", e.code) }
+
 type usageError string
 
 func (e usageError) Error() string { return string(e) }
@@ -140,7 +174,7 @@ func (e usageError) Error() string { return string(e) }
 // checkRootRun 是「root 运行拒绝」的检查点，测试中替换以免依赖真实 root。
 var checkRootRun = app.CheckRootRun
 
-func dispatch(ctx context.Context, cmd string, cfg config.Config, pos []string,
+func dispatch(ctx context.Context, cmd string, ifNeeded bool, cfg config.Config, pos []string,
 	stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string) error {
 	// serve 由 systemd 以服务用户运行，不做此检查；其余会写数据目录的子命令必须拒绝 root。
 	if cmd != "serve" {
@@ -180,7 +214,15 @@ func dispatch(ctx context.Context, cmd string, cfg config.Config, pos []string,
 		}()
 		return a.Serve(sigCtx)
 	case "setup-code":
-		code, exp, err := a.SetupCode(ctx)
+		gen := a.SetupCode
+		if ifNeeded {
+			gen = a.SetupCodeIfNeeded
+		}
+		code, exp, err := gen(ctx)
+		if ifNeeded && errors.Is(err, app.ErrAdminExists) {
+			_, _ = fmt.Fprintln(stdout, "已设置管理员，不需要设置码")
+			return exitError{code: exitSetupCodeAdminExists}
+		}
 		if err != nil {
 			return err
 		}

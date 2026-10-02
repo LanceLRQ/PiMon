@@ -37,6 +37,26 @@ func (a *App) SetupCode(ctx context.Context) (string, time.Time, error) {
 	return a.setupCodes.Generate(ctx)
 }
 
+// SetupCodeIfNeeded 供部署脚本调用，保证已有可显示的有效设置码时原样返回而不作废它：
+// 已有管理员返回 ErrAdminExists；有可显示的有效码返回现有码；否则生成新码。
+func (a *App) SetupCodeIfNeeded(ctx context.Context) (string, time.Time, error) {
+	exists, err := a.admins.Exists(ctx)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	if exists {
+		return "", time.Time{}, ErrAdminExists
+	}
+	code, exp, ok, err := a.setupCodes.Reveal(ctx)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	if ok {
+		return code, exp, nil
+	}
+	return a.setupCodes.Generate(ctx)
+}
+
 // ResetPassword 从 in 读取新密码并替换管理员密码，同时删除全部管理员会话。
 // isTerminal 为真时 in 必须是 *os.File，读取时不回显并要求输入两次；
 // 否则读取一行。提示写入 out，密码不会写到 out。
