@@ -123,31 +123,42 @@ func validateEntry(name, path string) error {
 func swapIn(targets, temps map[string]string, dbPath, secretPath string) error {
 	olds := []string{dbPath, dbPath + "-wal", dbPath + "-shm", secretPath}
 	var moved []string
-	rollback := func() {
+	rollback := func() error {
+		var errs []error
 		for _, name := range []string{entryDB, entrySecret} {
 			// 新文件若已就位则撤掉，以免回退时覆盖失败。
 			if _, err := os.Stat(temps[name]); errors.Is(err, os.ErrNotExist) {
-				_ = os.Remove(targets[name])
+				if err := os.Remove(targets[name]); err != nil && !errors.Is(err, os.ErrNotExist) {
+					errs = append(errs, err)
+				}
 			}
 		}
 		for _, p := range moved {
-			_ = rename(p+".pre-restore", p)
+			if err := rename(p+".pre-restore", p); err != nil {
+				errs = append(errs, err)
+			}
 		}
+		return errors.Join(errs...)
+	}
+	// fail 回退并组合错误；回退失败时明确告知旧文件仍在 .pre-restore，避免静默丢数据。
+	fail := func(err error) error {
+		if rerr := rollback(); rerr != nil {
+			return fmt.Errorf("%w（回退也失败，旧文件仍在 *.pre-restore，请手工改回原名后再启动服务：%v）", err, rerr)
+		}
+		return err
 	}
 	for _, p := range olds {
 		if err := rename(p, p+".pre-restore"); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
-			rollback()
-			return fmt.Errorf("保留旧文件 %s: %w", filepath.Base(p), err)
+			return fail(fmt.Errorf("保留旧文件 %s: %w", filepath.Base(p), err))
 		}
 		moved = append(moved, p)
 	}
 	for _, name := range []string{entryDB, entrySecret} {
 		if err := rename(temps[name], targets[name]); err != nil {
-			rollback()
-			return fmt.Errorf("替换 %s: %w", name, err)
+			return fail(fmt.Errorf("替换 %s: %w", name, err))
 		}
 	}
 	for _, p := range olds {

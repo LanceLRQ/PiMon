@@ -149,3 +149,30 @@ func TestRestoreKeepOldFilesFailureRollsBack(t *testing.T) {
 		t.Fatal("重跑后密钥应为备份内容")
 	}
 }
+
+func TestRestoreRollbackFailureIsReported(t *testing.T) {
+	old := rename
+	rename = func(from, to string) error {
+		if strings.HasSuffix(from, ".restore") && strings.HasSuffix(to, "secret.key") {
+			return errors.New("注入就位失败")
+		}
+		if strings.HasSuffix(from, ".pre-restore") && strings.HasSuffix(to, "pimon.db") {
+			return errors.New("注入回退失败")
+		}
+		return os.Rename(from, to)
+	}
+	t.Cleanup(func() { rename = old })
+	e := newRestoreEnv(t)
+	err := Restore(makeArchive(t, map[string]string{"pimon.db": validDB(), "secret.key": validSecret()}), e.db, e.sk)
+	if err == nil {
+		t.Fatal("应失败")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "注入就位失败") || !strings.Contains(msg, "回退也失败") ||
+		!strings.Contains(msg, "注入回退失败") || !strings.Contains(msg, ".pre-restore") {
+		t.Fatalf("错误应同时包含原始错误与回退错误: %v", err)
+	}
+	if _, serr := os.Stat(e.db + ".pre-restore"); serr != nil {
+		t.Fatal("回退失败时旧库应仍在 .pre-restore")
+	}
+}
