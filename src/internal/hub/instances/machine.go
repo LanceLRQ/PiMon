@@ -58,7 +58,10 @@ type Remote interface {
 	// MachineChanged 通知该设备上的实例集合或配置有变化，需要重新下发。
 	// 调用方可能持有实例服务的内部锁，实现必须非阻塞（只做标记或投递），不得回调实例服务。
 	MachineChanged(machine string)
-	// RunNow 在设备上立即运行一次实例（「保存并测试」）。
+	// RunNow 在设备上立即运行一次实例（「保存并测试」），timeout 是插件超时（实现自行加上通道余量）。
+	// 成功返回报告；设备给出的失败结果包装 runtime.ErrTimeout / runtime.ErrFailed（会入库）；
+	// 设备没有给出结果时用 NotRecorded 包装（不入库）；另可返回 ErrDeviceOffline、
+	// *DeviceIncompatibleError、ErrRunBusy 或 ctx 的错误（都不入库）。
 	RunNow(ctx context.Context, machine, instanceID string, timeout time.Duration) (*report.Report, error)
 }
 

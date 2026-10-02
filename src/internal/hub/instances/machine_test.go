@@ -3,6 +3,7 @@ package instances
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -75,10 +76,13 @@ func (f fakeDevices) Device(id string) (DeviceFacts, bool) {
 	return d, ok
 }
 
-// fakeRemote 记录 MachineChanged 的调用。
+// fakeRemote 记录 MachineChanged 与 RunNow 的调用；RunNow 返回预设的 runRep/runErr。
 type fakeRemote struct {
 	mu      sync.Mutex
 	changed []string
+	runRep  *report.Report
+	runErr  error
+	runs    []string // machine/id/timeout
 }
 
 func (r *fakeRemote) MachineChanged(machine string) {
@@ -87,8 +91,23 @@ func (r *fakeRemote) MachineChanged(machine string) {
 	r.mu.Unlock()
 }
 
-func (r *fakeRemote) RunNow(context.Context, string, string, time.Duration) (*report.Report, error) {
-	return nil, errors.New("未实现")
+func (r *fakeRemote) RunNow(_ context.Context, machine, id string, timeout time.Duration) (*report.Report, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.runs = append(r.runs, machine+"/"+id+"/"+timeout.String())
+	return r.runRep, r.runErr
+}
+
+func (r *fakeRemote) setRun(rep *report.Report, err error) {
+	r.mu.Lock()
+	r.runRep, r.runErr = rep, err
+	r.mu.Unlock()
+}
+
+func (r *fakeRemote) runCalls() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.runs)
 }
 
 // take 返回并清空已记录的机器（去重、排序）。
@@ -260,9 +279,16 @@ func TestRemoteInstance按设备manifest校验且不进调度(t *testing.T) {
 		t.Fatalf("重新排程应通知设备: %v", got)
 	}
 
-	// 「保存并测试」不在本机运行
+	// 「保存并测试」不在本机运行，经 Remote.RunNow 转发
+	mf.remote.setRun(nil, fmt.Errorf("%w: boom", runtime.ErrFailed))
 	if _, err := mf.svc.Run(bg, d.ID); !errors.Is(err, runtime.ErrFailed) {
-		t.Fatalf("远程实例 Run 应返回 ErrFailed（RunNow 未接入）: %v", err)
+		t.Fatalf("远程实例 Run 应返回 RunNow 的失败: %v", err)
+	}
+	if calls := mf.remote.runCalls(); len(calls) != 1 || calls[0] != devServer+"/"+d.ID+"/5s" {
+		t.Fatalf("RunNow 调用 = %v", calls)
+	}
+	if mf.svc.isScheduled(d.ID) {
+		t.Fatal("测试运行后远程实例也不应进入调度器")
 	}
 }
 

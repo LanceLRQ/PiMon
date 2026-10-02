@@ -26,6 +26,9 @@ type RemoteSpec struct {
 	Timeout  time.Duration
 	// ConfigHash 是下发内容的摘要（remoteHash），agent 回报时据此判断结果是否对应当前配置；不落库、不写日志。
 	ConfigHash string
+	// ContentHash 是组装时实例行的 config_hash（不发给 agent）：报告经 ApplyRemoteResult 入库时据此
+	// 丢弃下发之后配置或运行位置已变的结果，与本机采集按运行时 hash 丢弃旧结果一致。
+	ContentHash string
 }
 
 // String 只输出 id 与插件，不含配置、密钥与代理。
@@ -87,7 +90,8 @@ func (s *Service) RemoteSpecs(ctx context.Context, machine string) ([]RemoteSpec
 		out = append(out, RemoteSpec{
 			ID: r.ID, PluginID: r.PluginID, Config: res.plain, Secrets: in.Secrets, ProxyURL: pr.URL(),
 			Interval: interval, Timeout: timeout,
-			ConfigHash: remoteHash(r.ConfigHash, res, interval, timeout, pr.URL()),
+			ConfigHash:  remoteHash(r.ConfigHash, res, interval, timeout, pr.URL()),
+			ContentHash: r.ConfigHash,
 		})
 	}
 	return out, nil

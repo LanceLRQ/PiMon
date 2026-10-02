@@ -201,14 +201,15 @@ func (s *Service) scheduleHash(id string) string {
 // 失败返回的错误可用 errors.Is 判断 runtime.ErrTimeout / runtime.ErrFailed，文字已脱敏；
 // 实例无法运行（插件消失、配置不完整、代理不可用或已删除）归为 runtime.ErrFailed；
 // 调用方取消时错误原样返回，不计入状态。
+// 远程实例经 Remote.RunNow 在设备上运行（见 runRemote），另可返回 ErrDeviceOffline、ErrDeviceIncompatible。
 func (s *Service) Run(ctx context.Context, id string) (model.InstanceRunResult, error) {
 	r, err := s.getRow(ctx, id)
 	if err != nil {
 		return model.InstanceRunResult{}, err
 	}
 	if r.Machine != machineHub {
-		// 远程实例不在本机运行，经通道转发的测试运行尚未接入。
-		return model.InstanceRunResult{}, fmt.Errorf("%w: 远程实例的测试运行尚未接入 / remote test run not available yet", runtime.ErrFailed)
+		// 远程实例不在本机运行，经通道在设备上运行（不拿本机运行锁）。
+		return s.runRemote(ctx, r)
 	}
 	res, iss := s.resolve(r)
 	if iss != nil {

@@ -123,6 +123,9 @@ func TestRemoteSpecs组装可运行实例(t *testing.T) {
 	if sa.ConfigHash == rowHash {
 		t.Fatal("下发 hash 应与库里的内容摘要不同（含明文配置、间隔、超时、代理）")
 	}
+	if sa.ContentHash != rowHash {
+		t.Fatal("ContentHash 应为组装时实例行的 config_hash")
+	}
 	sb, _ := specByID(specs, b.ID)
 	if sb.Interval != 60*time.Second || sb.ProxyURL != "" || len(sb.Secrets) != 0 {
 		t.Fatalf("实例 b = %+v", sb)
