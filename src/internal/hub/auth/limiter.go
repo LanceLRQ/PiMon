@@ -14,7 +14,11 @@ const (
 	KeyScreen = "screen:"
 )
 
+// maxLimiterEntries 是内存中限流条目的硬上限，满员时淘汰最旧条目。
+const maxLimiterEntries = 4096
+
 type limitEntry struct {
+	created     time.Time
 	fails       int
 	lockedUntil time.Time
 }
@@ -65,7 +69,8 @@ func (l *Limiter) Fail(key string) int {
 	}
 	e, ok := l.entries[key]
 	if !ok {
-		e = &limitEntry{}
+		l.sweepLocked()
+		e = &limitEntry{created: l.clk.Now()}
 		l.entries[key] = e
 	}
 	e.fails++
@@ -74,6 +79,27 @@ func (l *Limiter) Fail(key string) int {
 		return 0
 	}
 	return l.max - e.fails
+}
+
+// sweepLocked 清除锁定已到期的条目；清理后仍满员则淘汰最旧的一条。新增条目前调用。
+func (l *Limiter) sweepLocked() {
+	now := l.clk.Now()
+	for k, e := range l.entries {
+		if !e.lockedUntil.IsZero() && !e.lockedUntil.After(now) {
+			delete(l.entries, k)
+		}
+	}
+	for len(l.entries) >= maxLimiterEntries {
+		var oldestKey string
+		var oldest time.Time
+		first := true
+		for k, e := range l.entries {
+			if first || e.created.Before(oldest) {
+				oldestKey, oldest, first = k, e.created, false
+			}
+		}
+		delete(l.entries, oldestKey)
+	}
 }
 
 // Success 清零 key 的失败计数。

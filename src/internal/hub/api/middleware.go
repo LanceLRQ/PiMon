@@ -73,8 +73,16 @@ func (s *server) issueSession(w http.ResponseWriter, r *http.Request, kind auth.
 	return nil
 }
 
+// limitKey 生成限流键：IPv4 用原地址；IPv6 去 zone 后取 /64 前缀，
+// 避免同一网段内靠更换后 64 位地址绕过限流。
 func limitKey(prefix string, r *http.Request) string {
-	return prefix + httpx.Info(r).ClientIP.String()
+	ip := httpx.Info(r).ClientIP
+	if ip.Is6() {
+		if p, err := ip.WithZone("").Prefix(64); err == nil {
+			return prefix + p.String()
+		}
+	}
+	return prefix + ip.String()
 }
 
 // writeLocked 回 auth.locked，锁定到期时刻按限流器的时钟计算。
