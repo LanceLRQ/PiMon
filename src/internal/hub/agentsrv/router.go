@@ -11,8 +11,9 @@ type Router interface {
 	// OnReady 在设备 hello 被接受（hello_ok 已发出、已标记在线）后调用，
 	// 以及收到 plugins_changed 并重新入库 manifest 后调用；实现应向该设备全量下发实例。
 	OnReady(deviceID string)
-	// OnReport 收到周期性采集结果。
-	OnReport(deviceID string, m *agent.Report)
+	// OnReport 收到周期性采集结果。s 是发来报告的会话：被顶替的旧会话在关闭前发来的报告也会进来，
+	// 实现应与设备当前会话比对并按会话去重。
+	OnReport(s *agentlink.Session, deviceID string, m *agent.Report)
 	// OnAssignResult 收到 assign 的逐实例回执。
 	OnAssignResult(deviceID string, m *agent.AssignResult)
 	// OnUpgradeInfoGet 收到 agent 的升级信息请求，实现经 s 回 upgrade_info。
@@ -26,7 +27,7 @@ type NopRouter struct{}
 func (NopRouter) OnReady(string) {}
 
 // OnReport 实现 Router。
-func (NopRouter) OnReport(string, *agent.Report) {}
+func (NopRouter) OnReport(*agentlink.Session, string, *agent.Report) {}
 
 // OnAssignResult 实现 Router。
 func (NopRouter) OnAssignResult(string, *agent.AssignResult) {}

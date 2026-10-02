@@ -31,6 +31,9 @@ package httpx
 //	instance.machine_invalid 运行位置不合法，details.reason：device_not_found /
 //	                         runs_on_mismatch / plugin_unavailable                        422
 //	device.not_found         设备不存在                            404
+//	device.offline           设备不在线，无法执行（测试运行、拉日志）  409
+//	device.incompatible      设备 agent 版本不兼容，details.reason（version_too_old /
+//	                         version_too_new）、required_min、hub_version                 409
 //	layout.conflict          布局版本冲突，details.latest_version 为服务端最新版本    409
 //	layout.invalid           布局不合法，details.problems 列出碰撞、越界、尺寸与结构问题  400
 //	schedule.invalid         时段计划不合法，details.problems 列出格式、主题、重叠与缺口（带区间）  400
@@ -69,6 +72,8 @@ const (
 	CodeInstanceInUse         = "instance.in_use"
 	CodeMachineInvalid        = "instance.machine_invalid"
 	CodeDeviceNotFound        = "device.not_found"
+	CodeDeviceOffline         = "device.offline"
+	CodeDeviceIncompatible    = "device.incompatible"
 	CodeLayoutConflict        = "layout.conflict"
 	CodeLayoutInvalid         = "layout.invalid"
 	CodeScheduleInvalid       = "schedule.invalid"

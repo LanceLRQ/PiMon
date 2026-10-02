@@ -222,6 +222,12 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	// 下发器同时接入实例服务（实例变化 → 合并下发）与 agent 通道（设备就绪 → 全量下发、回执）。
 	if a.dispatcher, err = agentsrv.NewDispatcher(agentsrv.DispatcherConfig{
 		Server: a.agents, Instances: a.instances, Devices: a.devices, Plugins: a.plugins, Clock: o.clk,
+		HubVersion: o.version,
+		// 网页端口取 Serve 实际监听的地址；Serve 先于 agent 通道接受连接写入它。
+		WebPort: func() int {
+			v, _ := a.listenAddr.Load().(string)
+			return agentsrv.WebPortFrom(v)
+		},
 	}); err != nil {
 		return fmt.Errorf("创建下发器: %w", err)
 	}
@@ -298,6 +304,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		Backups:      a.backups,
 		Proxies:      proxyStore,
 		Devices:      a.devices,
+		DeviceLogs:   a.dispatcher,
 		DialOut:      a.dialout,
 		Web:          webui.New(webui.Embedded(), o.version),
 		WS:           a.ws.Handler(),

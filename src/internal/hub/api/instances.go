@@ -8,7 +8,6 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/httpx"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
-	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
 )
 
 func (s *server) registerInstances(mux *http.ServeMux) {
@@ -45,12 +44,11 @@ func writeInstanceError(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteValidationFailed(w, fe)
 	case errors.Is(err, instances.ErrRunBusy):
 		httpx.WriteError(w, http.StatusConflict, httpx.CodeRunBusy, nil)
-	case errors.Is(err, runtime.ErrTimeout):
-		httpx.WriteError(w, http.StatusGatewayTimeout, httpx.CodeRunTimeout, map[string]any{"message": err.Error()})
-	case errors.Is(err, runtime.ErrFailed):
-		httpx.WriteError(w, http.StatusBadGateway, httpx.CodeRunFailed, map[string]any{"message": err.Error()})
 	default:
-		internalError(w, r, err)
+		// 设备离线、不兼容与采集超时、失败（本机与远程共用），其余为内部错误。
+		if !writeDeviceError(w, err) {
+			internalError(w, r, err)
+		}
 	}
 }
 

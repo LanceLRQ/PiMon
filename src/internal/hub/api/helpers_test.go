@@ -77,6 +77,7 @@ type env struct {
 	ring      *logging.Ring
 	pairer    *fakePairer
 	devices   *devices.Store
+	devLogs   *fakeDeviceLogs
 }
 
 // deviceFacts 把设备仓库适配为实例服务的 DeviceStates（与 app 中的适配器相同）。
@@ -152,9 +153,10 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 			DB: db, Clock: clk, SecretPath: keyPath,
 			Dir: filepath.Join(dir, "backups"), Settings: st.Get,
 		}),
-		Proxies: proxies.New(proxies.Config{DB: db, Box: box, Clock: clk, Referrers: refs}),
-		DialOut: &fakePairer{},
-		Devices: devices.New(devices.Config{DB: db, Box: box, Clock: clk}),
+		Proxies:    proxies.New(proxies.Config{DB: db, Box: box, Clock: clk, Referrers: refs}),
+		DialOut:    &fakePairer{},
+		DeviceLogs: &fakeDeviceLogs{},
+		Devices:    devices.New(devices.Config{DB: db, Box: box, Clock: clk}),
 	}
 	inst.UseProxies(deps.Proxies)
 	inst.UseDevices(deviceFacts{deps.Devices})
@@ -170,7 +172,7 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 	srv := httptest.NewServer(New(deps))
 	t.Cleanup(srv.Close)
 	e := &env{t: t, clk: clk, deps: deps, db: db, refs: refs, plugins: reg, pluginDir: pluginDir, hasher: hasher, srv: srv, tokenFn: tokenPath, ring: ring,
-		pairer: deps.DialOut.(*fakePairer), devices: deps.Devices}
+		pairer: deps.DialOut.(*fakePairer), devices: deps.Devices, devLogs: deps.DeviceLogs.(*fakeDeviceLogs)}
 	e.client = e.newClient()
 	return e
 }

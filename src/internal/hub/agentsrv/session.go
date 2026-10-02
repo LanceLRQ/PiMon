@@ -354,7 +354,7 @@ func (s *Server) route(c *conn, msg agent.Message) {
 			s.currentRouter().OnReady(id)
 		}
 	case *agent.Report:
-		s.currentRouter().OnReport(id, m)
+		s.currentRouter().OnReport(c.sess, id, m)
 	case *agent.AssignResult:
 		s.currentRouter().OnAssignResult(id, m)
 	case *agent.UpgradeInfoGet:

@@ -56,6 +56,8 @@ type Deps struct {
 	Web http.Handler
 	// DialOut 是拨出配对服务，挂在 POST /api/devices/dial-out；为 nil 时不注册该路由（测试用）。
 	DialOut DialOutPairer
+	// DeviceLogs 经 agent 通道拉取设备日志，挂在 GET /api/devices/{id}/logs；为 nil 时不注册该路由。
+	DeviceLogs DeviceLogger
 	// WS 是 UI WebSocket 的握手处理器，挂在 GET /ws；为 nil 时不提供（测试用）。
 	// 它自己校验 Origin 与会话，不经 s.admin：管理员会话与屏幕会话都可以连。
 	WS http.Handler

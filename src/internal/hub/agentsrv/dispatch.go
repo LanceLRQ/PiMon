@@ -3,7 +3,6 @@ package agentsrv
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -15,7 +14,6 @@ import (
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
-	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
 	"github.com/LanceLRQ/PiMon/src/pkg/protocol/agent"
 )
 
@@ -36,6 +34,7 @@ type RemoteInstances interface {
 	RemoteSpecs(ctx context.Context, machine string) ([]instances.RemoteSpec, error)
 	SetAssignIssue(machine, id, msg string)
 	Create(ctx context.Context, in model.InstanceInput) (model.InstanceDetail, error)
+	ApplyRemoteResult(id, contentHash string, rep *report.Report, err error)
 }
 
 // DeviceRecords 是下发器需要的设备仓库能力（由 devices.Store 实现）。
@@ -53,6 +52,7 @@ type MachinePlugins interface {
 // sender 是下发器对会话的最小依赖（*agentlink.Session 实现），单元测试用替身。
 type sender interface {
 	Send(agent.Message) error
+	Request(ctx context.Context, msg agent.Requester, timeout time.Duration) (agent.Message, error)
 	Done() <-chan struct{}
 }
 
@@ -67,25 +67,37 @@ type DispatcherConfig struct {
 	Clock clock.Clock
 	// Log 默认 slog.Default()。
 	Log *slog.Logger
+	// HubVersion 是中枢软件版本，写入 upgrade_info 与设备不兼容错误。
+	HubVersion string
+	// WebPort 返回网页实际监听端口（取不到时返回 0），写入 upgrade_info；为空视为取不到。
+	WebPort func() int
 }
 
-// sentAssign 是某设备最近一次送达的 assign：版本与逐实例下发摘要。
+// sentInst 是某实例在最近一次送达的 assign 里的摘要：hash 是发给 agent 的下发摘要，
+// content 是组装时实例行的 config_hash（报告入库时据此丢弃旧配置的结果）。
+type sentInst struct {
+	hash, content string
+}
+
+// sentAssign 是某设备最近一次送达的 assign：版本与逐实例摘要。
 type sentAssign struct {
 	version int64
-	hashes  map[string]string
+	hashes  map[string]sentInst
 }
 
-// Dispatcher 是远程实例的下发器：实现 instances.Remote（实例变化 → 合并 1 秒后下发）与 Router
-// （设备就绪 → 立即全量下发；assign_result → 实例问题）。所有下发由唯一的工作协程串行发出，
-// 保证同一设备的版本号与发送顺序一致；回调只登记工作、不阻塞，也不在持锁时 Send。
-// 报告、测试运行、日志与升级信息在 B6b 接入，目前忽略。
+// Dispatcher 是远程实例的下发器与中继：实现 instances.Remote（实例变化 → 合并 1 秒后下发；
+// 测试运行经通道转发）与 Router（设备就绪 → 立即全量下发；assign_result → 实例问题；
+// report → 入库；upgrade_info_get → 回复），另提供日志拉取。所有下发由唯一的工作协程串行发出，
+// 保证同一设备的版本号与发送顺序一致；回调只登记工作、不阻塞，也不在持锁时 Send 或等待请求。
 type Dispatcher struct {
-	inst     RemoteInstances
-	devs     DeviceRecords
-	plugs    MachinePlugins
-	clk      clock.Clock
-	log      *slog.Logger
-	sessions func(id string) (sender, bool)
+	inst       RemoteInstances
+	devs       DeviceRecords
+	plugs      MachinePlugins
+	clk        clock.Clock
+	log        *slog.Logger
+	sessions   func(id string) (sender, bool)
+	hubVersion string
+	webPort    func() int
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -103,6 +115,12 @@ type Dispatcher struct {
 	due map[string]bool
 	// busy 表示工作协程正在处理一批设备。
 	busy bool
+	// dueWaiters 是等待 due 中某设备被处理完的测试运行（flush）；工作协程取走一批时移入 running。
+	dueWaiters map[string][]chan struct{}
+	// running 是工作协程当前这一批里尚未处理完的设备及其等待者（键存在即在处理中）。
+	running map[string][]chan struct{}
+	// seqs 是按会话、按实例记录的最近报告序号（去重），会话结束时清理。
+	seqs map[sender]map[string]int64
 	// versions 是每台设备最近分配的版本号（内存中单调递增，hub 重启后从 1 开始）。
 	versions map[string]int64
 	// sent 是每台设备最近一次送达的 assign（lastSent）。
@@ -137,8 +155,11 @@ func newDispatcher(cfg DispatcherConfig, sessions func(string) (sender, bool)) (
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &Dispatcher{
 		inst: cfg.Instances, devs: cfg.Devices, plugs: cfg.Plugins, clk: cfg.Clock, log: cfg.Log, sessions: sessions,
+		hubVersion: cfg.HubVersion, webPort: cfg.WebPort,
 		ctx: ctx, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1),
 		pending: map[string]bool{}, due: map[string]bool{},
+		dueWaiters: map[string][]chan struct{}{}, running: map[string][]chan struct{}{},
+		seqs:     map[sender]map[string]int64{},
 		versions: map[string]int64{}, sent: map[string]sentAssign{},
 	}
 	d.devs.OnChange(d.onDeviceChange)
@@ -180,11 +201,6 @@ func (d *Dispatcher) MachineChanged(machine string) {
 	}
 }
 
-// RunNow 实现 instances.Remote：经通道的测试运行在 B6b 接入，目前返回 runtime.ErrFailed。
-func (d *Dispatcher) RunNow(context.Context, string, string, time.Duration) (*report.Report, error) {
-	return nil, fmt.Errorf("%w: 远程实例的测试运行尚未接入 / remote test run not available yet", runtime.ErrFailed)
-}
-
 // OnReady 实现 Router：设备就绪（hello 被接受或插件变化）后立即全量下发，不等合并窗口。
 func (d *Dispatcher) OnReady(deviceID string) {
 	d.mu.Lock()
@@ -196,12 +212,6 @@ func (d *Dispatcher) OnReady(deviceID string) {
 	d.mu.Unlock()
 	d.kick()
 }
-
-// OnReport 实现 Router：报告入库在 B6b 接入，目前忽略。
-func (d *Dispatcher) OnReport(string, *agent.Report) {}
-
-// OnUpgradeInfoGet 实现 Router：升级信息在 B6b 接入，目前忽略。
-func (d *Dispatcher) OnUpgradeInfoGet(*agentlink.Session, string, *agent.UpgradeInfoGet) {}
 
 // OnAssignResult 实现 Router：只认该设备最近一次送达的版本；逐实例写入或清除回执问题，
 // 不在该版本里的实例 ID 忽略。
@@ -238,7 +248,7 @@ func (d *Dispatcher) SentHash(deviceID, instanceID string) (string, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	h, ok := d.sent[deviceID].hashes[instanceID]
-	return h, ok
+	return h.hash, ok
 }
 
 // onDeviceChange 是设备仓库的变更回调（可能在 agentsrv.flow 内同步触发，只投递不阻塞）：
@@ -253,7 +263,13 @@ func (d *Dispatcher) onDeviceChange(id string, removed bool) {
 	delete(d.due, id)
 	delete(d.versions, id)
 	delete(d.sent, id)
+	// 设备已删除，不会再下发：唤醒等待它的测试运行（随后取会话时得到离线）。
+	ws := d.dueWaiters[id]
+	delete(d.dueWaiters, id)
 	d.mu.Unlock()
+	for _, ch := range ws {
+		close(ch)
+	}
 }
 
 // kick 非阻塞地唤醒工作协程。
@@ -299,6 +315,10 @@ func (d *Dispatcher) drain() {
 		// 即将按库全量下发，之前登记的合并变更已被覆盖。
 		delete(d.pending, m)
 	}
+	for m := range batch {
+		d.running[m] = d.dueWaiters[m]
+		delete(d.dueWaiters, m)
+	}
 	d.busy = len(batch) > 0
 	d.mu.Unlock()
 	for dev, ready := range batch {
@@ -309,10 +329,28 @@ func (d *Dispatcher) drain() {
 			d.autoHostMetrics(dev)
 		}
 		d.dispatch(dev)
+		d.release(dev)
 	}
 	d.mu.Lock()
 	d.busy = false
+	for dev, ws := range d.running {
+		for _, ch := range ws {
+			close(ch)
+		}
+		delete(d.running, dev)
+	}
 	d.mu.Unlock()
+}
+
+// release 标记该设备在本批已处理完，唤醒等待它的测试运行。
+func (d *Dispatcher) release(dev string) {
+	d.mu.Lock()
+	ws := d.running[dev]
+	delete(d.running, dev)
+	d.mu.Unlock()
+	for _, ch := range ws {
+		close(ch)
+	}
 }
 
 // autoHostMetrics 在设备上报了可用的 host-metrics 且设备行带「自动创建」标记时，以设备名创建一个实例；
@@ -360,13 +398,13 @@ func (d *Dispatcher) dispatch(dev string) {
 		return
 	}
 	list := make([]agent.AssignedInstance, len(specs))
-	hashes := make(map[string]string, len(specs))
+	hashes := make(map[string]sentInst, len(specs))
 	for i, sp := range specs {
 		list[i] = agent.AssignedInstance{
 			ID: sp.ID, PluginID: sp.PluginID, Config: sp.Config, Secrets: sp.Secrets, ProxyURL: sp.ProxyURL,
 			IntervalMs: sp.Interval.Milliseconds(), TimeoutMs: sp.Timeout.Milliseconds(), ConfigHash: sp.ConfigHash,
 		}
-		hashes[sp.ID] = sp.ConfigHash
+		hashes[sp.ID] = sentInst{hash: sp.ConfigHash, content: sp.ContentHash}
 	}
 
 	d.mu.Lock()

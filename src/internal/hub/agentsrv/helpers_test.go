@@ -38,7 +38,7 @@ func (r *recRouter) OnReady(id string) {
 	r.ready = append(r.ready, id)
 }
 
-func (r *recRouter) OnReport(id string, m *agent.Report) {
+func (r *recRouter) OnReport(_ *agentlink.Session, id string, m *agent.Report) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.reports = append(r.reports, id+"/"+m.InstanceID)

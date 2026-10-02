@@ -18,17 +18,46 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
+	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
 	"github.com/LanceLRQ/PiMon/src/pkg/protocol/agent"
 )
 
 // ---- 替身 ----
 
 // fakeSender 记录发出的消息；err 非空时 Send 返回它（不记录）。
+// Request 也记入 msgs（便于检查与 assign 的先后），应答由 reply 决定（为空时返回 ErrRequestTimeout）。
 type fakeSender struct {
-	mu   sync.Mutex
-	msgs []agent.Message
-	err  error
-	done chan struct{}
+	mu    sync.Mutex
+	msgs  []agent.Message
+	err   error
+	done  chan struct{}
+	reply func(req agent.Requester, timeout time.Duration) (agent.Message, error)
+}
+
+func (s *fakeSender) Request(_ context.Context, req agent.Requester, timeout time.Duration) (agent.Message, error) {
+	s.mu.Lock()
+	if req.GetRequestID() == "" {
+		req.(agent.RequestIDSetter).SetRequestID("req-1")
+	}
+	s.msgs = append(s.msgs, req.(agent.Message))
+	reply := s.reply
+	s.mu.Unlock()
+	if reply == nil {
+		return nil, agentlink.ErrRequestTimeout
+	}
+	return reply(req, timeout)
+}
+
+func (s *fakeSender) setReply(fn func(agent.Requester, time.Duration) (agent.Message, error)) {
+	s.mu.Lock()
+	s.reply = fn
+	s.mu.Unlock()
+}
+
+func (s *fakeSender) all() []agent.Message {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.msgs)
 }
 
 func newFakeSender() *fakeSender { return &fakeSender{done: make(chan struct{})} }
@@ -72,6 +101,28 @@ type fakeInst struct {
 	issueLog  []string
 	created   []model.InstanceInput
 	createErr error
+	applied   []applied
+	// block 非空时 RemoteSpecs 等它关闭（模拟下发组装卡住）。
+	block chan struct{}
+}
+
+// applied 是一次 ApplyRemoteResult 调用。
+type applied struct {
+	id, hash string
+	rep      *report.Report
+	err      error
+}
+
+func (f *fakeInst) ApplyRemoteResult(id, hash string, rep *report.Report, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.applied = append(f.applied, applied{id: id, hash: hash, rep: rep, err: err})
+}
+
+func (f *fakeInst) appliedList() []applied {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.applied)
 }
 
 func newFakeInst() *fakeInst {
@@ -79,6 +130,12 @@ func newFakeInst() *fakeInst {
 }
 
 func (f *fakeInst) RemoteSpecs(_ context.Context, machine string) ([]instances.RemoteSpec, error) {
+	f.mu.Lock()
+	block := f.block
+	f.mu.Unlock()
+	if block != nil {
+		<-block
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls[machine]++
@@ -213,6 +270,7 @@ func newDFX(t *testing.T) *dfx {
 	}
 	d, err := newDispatcher(DispatcherConfig{
 		Instances: f.inst, Devices: f.devs, Plugins: f.plugs, Clock: f.clk, Log: agentlinktest.QuietLog(),
+		HubVersion: "0.2.0", WebPort: func() int { return 31415 },
 	}, f.session)
 	must(t, err)
 	f.d = d
@@ -272,6 +330,7 @@ func spec(id, plugin string) instances.RemoteSpec {
 	return instances.RemoteSpec{
 		ID: id, PluginID: plugin, Config: map[string]any{"host": id}, Secrets: map[string]string{"token": "s-" + id},
 		ProxyURL: "http://u:pw@127.0.0.1:8080", Interval: 45 * time.Second, Timeout: 7 * time.Second, ConfigHash: "h-" + id,
+		ContentHash: "c-" + id,
 	}
 }
 
@@ -589,7 +648,7 @@ func TestDispatcher_关闭后回调不阻塞(t *testing.T) {
 	f.d.MachineChanged("dev1")
 	f.d.OnReady("dev1")
 	f.d.OnAssignResult("dev1", &agent.AssignResult{Version: 1})
-	f.d.OnReport("dev1", &agent.Report{InstanceID: "i1", Seq: 1})
+	f.d.onReport(newFakeSender(), "dev1", &agent.Report{InstanceID: "i1", Seq: 1})
 	f.d.Close()
 	if f.inst.callCount("dev1") != 0 {
 		t.Fatal("关闭后不应再下发")
