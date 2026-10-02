@@ -35,9 +35,17 @@ const (
 
 	// limitKeyPrefix 是限流 key 前缀，后面拼来源 IP。
 	limitKeyPrefix = "agent:"
-	// readHeaderTimeout 也约束 TLS 握手（http.Server 取读超时中最小者），用真实时间。
-	readHeaderTimeout = 10 * time.Second
-	maxHeaderBytes    = 16 << 10
+	maxHeaderBytes = 16 << 10
+)
+
+// 包内变量便于测试调小；生产不修改。
+var (
+	// httpTimeout 是 http.Server 的读头、读、写与空闲超时（真实时间），也约束 TLS 握手。
+	// 404/503 等普通请求与 keep-alive 空闲连接据此回收；升级后 net/http 清零截止时间，会话不受影响。
+	httpTimeout = 10 * time.Second
+	// maxPendingPerIP 是同一来源（IPv4 地址或 IPv6 /64）同时处于认证前阶段的连接上限，
+	// 防止单一来源反复占满全局名额（握手超时与非法首帧不计失败次数）。
+	maxPendingPerIP = 4
 )
 
 // ErrListenerServing 表示 Serve 已被调用过（每个 Listener 只能 Serve 一次）。
@@ -52,8 +60,13 @@ type AuthError struct {
 func (e *AuthError) Error() string { return "认证被拒绝：" + e.Reason }
 
 // Authenticator 完成认证与配对的业务校验（凭据哈希比对、配对码有效期与签发凭据），本层不碰存储。
-// 拒绝时返回 *AuthError；返回其他错误（如存储故障）时监听方不回 auth_fail、不计失败，直接关闭连接。
-// ctx 在握手超时或监听方关停时取消。
+//
+// 实现须遵守两条约定：
+//   - 由输入决定的拒绝（凭据不符、配对码错误或过期，以及格式非法的凭据或配对码）一律返回 *AuthError，
+//     监听方据此回 auth_fail 并计入来源的失败次数；返回其他错误（只应是存储故障等内部错误）时
+//     监听方不回 auth_fail、不计失败，直接关闭连接。
+//   - 必须遵守 ctx 取消：ctx 在握手超时或监听方关停时取消，实现不返回就会一直占用认证前名额，
+//     关停时 Serve 也无法返回。
 type Authenticator interface {
 	// Authenticate 校验长期凭据，返回设备 ID（以此为准，不信任对端自报）。
 	Authenticate(ctx context.Context, msg agent.Auth) (deviceID string, err error)
@@ -88,7 +101,9 @@ type ListenerConfig struct {
 	// Handler 为每个会话构造入站消息处理器，在会话开始读之前调用；为空或返回空时入站业务消息被丢弃。
 	Handler func(Peer) Handler
 	// OnSession 在会话建立后调用（会话已在读写），上层在这里登记会话并顶替旧会话
-	// （对旧会话 Close(agent.ReasonReplaced)）。它在连接自己的协程中同步调用，可以阻塞片刻。
+	// （对旧会话 Close(agent.ReasonReplaced)）。调用时对端可能已经断开，上层须监听 s.Done()
+	// 解除登记。它在连接自己的协程中同步调用，可阻塞片刻（如等旧会话 Close），但不得长时间阻塞，
+	// 否则 Serve 关停时无法返回。
 	OnSession func(*Session)
 }
 
@@ -100,15 +115,19 @@ type Listener struct {
 	log     *slog.Logger
 	limiter FailLimiter
 	tlsConf *tls.Config
-	pending chan struct{} // 认证前并发信号量
 	served  atomic.Bool
+	perIP   int // 构造时取 maxPendingPerIP
+	httpTO  time.Duration
 
 	// baseCtx 在 Serve 中设置，握手随它取消；serveHTTP 只会在 Serve 启动 http.Server 之后运行。
 	baseCtx context.Context
 
-	mu       sync.Mutex
-	closing  bool
-	sessions map[*Session]struct{}
+	mu      sync.Mutex
+	closing bool
+	// pendingTotal 与 pendingByIP 是认证前连接计数（全局与按来源），升级前占用、握手结束释放。
+	pendingTotal int
+	pendingByIP  map[string]int
+	sessions     map[*Session]struct{}
 	// conns 统计所有在途请求（含握手与会话），Serve 返回前等它们结束。只在 mu 下且 !closing 时 Add。
 	conns sync.WaitGroup
 }
@@ -144,8 +163,10 @@ func NewListener(cfg ListenerConfig) (*Listener, error) {
 			Certificates: []tls.Certificate{cfg.Cert},
 			NextProtos:   []string{"http/1.1"},
 		},
-		pending:  make(chan struct{}, MaxPendingHandshakes),
-		sessions: make(map[*Session]struct{}),
+		perIP:       maxPendingPerIP,
+		httpTO:      httpTimeout,
+		pendingByIP: make(map[string]int),
+		sessions:    make(map[*Session]struct{}),
 	}, nil
 }
 
@@ -161,7 +182,10 @@ func (l *Listener) Serve(ctx context.Context, ln net.Listener) error {
 	l.baseCtx = baseCtx
 	srv := &http.Server{
 		Handler:           http.HandlerFunc(l.serveHTTP),
-		ReadHeaderTimeout: readHeaderTimeout,
+		ReadHeaderTimeout: l.httpTO,
+		ReadTimeout:       l.httpTO,
+		WriteTimeout:      l.httpTO,
+		IdleTimeout:       l.httpTO,
 		MaxHeaderBytes:    maxHeaderBytes,
 		// TLS 握手失败等噪声降到 Debug，避免被扫描时刷屏。
 		ErrorLog: slog.NewLogLogger(l.log.Handler(), slog.LevelDebug),
@@ -206,8 +230,10 @@ func (l *Listener) Serve(ctx context.Context, ln net.Listener) error {
 }
 
 // serveHTTP 只接受 GET /agent 的 WebSocket 升级，其余一律 404；认证前并发满或正在关停时回 503。
+// 404 与 503 都带 Connection: close，不保留 keep-alive 连接。
 func (l *Listener) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != AgentPath || r.Method != http.MethodGet || !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		w.Header().Set("Connection", "close")
 		http.NotFound(w, r)
 		return
 	}
@@ -221,14 +247,13 @@ func (l *Listener) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	l.mu.Unlock()
 	defer l.conns.Done()
 
-	select {
-	case l.pending <- struct{}{}:
-	default:
+	key := sourceKey(r.RemoteAddr)
+	if !l.admit(key) {
 		l.log.Warn("agent 通道认证前连接数已满，拒绝新连接", "remote_addr", r.RemoteAddr)
 		reject(w)
 		return
 	}
-	s := l.accept(w, r)
+	s := l.accept(w, r, key)
 	if s == nil {
 		return
 	}
@@ -244,13 +269,37 @@ func reject(w http.ResponseWriter) {
 	http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
 }
 
-// accept 完成升级与握手并建立会话，失败返回 nil。认证前信号量在握手结束（无论成败）时释放。
-func (l *Listener) accept(w http.ResponseWriter, r *http.Request) *Session {
+// admit 为来源 key 占用一个认证前名额：先看单来源上限，再看全局上限；任一已满返回假。
+func (l *Listener) admit(key string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.pendingByIP[key] >= l.perIP || l.pendingTotal >= MaxPendingHandshakes {
+		return false
+	}
+	l.pendingByIP[key]++
+	l.pendingTotal++
+	return true
+}
+
+// leave 释放 admit 占用的名额，计数归零的来源从表中删除。
+func (l *Listener) leave(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.pendingTotal--
+	if n := l.pendingByIP[key] - 1; n > 0 {
+		l.pendingByIP[key] = n
+	} else {
+		delete(l.pendingByIP, key)
+	}
+}
+
+// accept 完成升级与握手并建立会话，失败返回 nil。认证前名额在握手结束（无论成败）时释放。
+func (l *Listener) accept(w http.ResponseWriter, r *http.Request, key string) *Session {
 	released := false
 	release := func() {
 		if !released {
 			released = true
-			<-l.pending
+			l.leave(key)
 		}
 	}
 	defer release()
@@ -261,7 +310,7 @@ func (l *Listener) accept(w http.ResponseWriter, r *http.Request) *Session {
 		return nil
 	}
 	fc := newWSFrameConn(c)
-	peer, ok := l.handshake(fc, r.RemoteAddr)
+	peer, ok := l.handshake(fc, r.RemoteAddr, key)
 	release()
 	if !ok {
 		_ = fc.Close()
@@ -292,7 +341,7 @@ func (l *Listener) accept(w http.ResponseWriter, r *http.Request) *Session {
 
 // handshake 在 fc 上完成认证或配对：首帧必须是 auth 或 pair，整个过程受 HandshakeTimeout（走 Clock）约束。
 // 成功时已回 auth_ok/pair_ok；失败时视情况已回 auth_fail，调用方负责关闭连接。
-func (l *Listener) handshake(fc frameConn, remoteAddr string) (Peer, bool) {
+func (l *Listener) handshake(fc frameConn, remoteAddr, key string) (Peer, bool) {
 	ctx, cancel := context.WithCancel(l.baseCtx)
 	defer cancel()
 	timer := l.clk.After(HandshakeTimeout)
@@ -310,7 +359,7 @@ func (l *Listener) handshake(fc frameConn, remoteAddr string) (Peer, bool) {
 		}
 	}()
 
-	peer, ok := l.doHandshake(ctx, fc, remoteAddr)
+	peer, ok := l.doHandshake(ctx, fc, remoteAddr, key)
 	close(stop)
 	<-watchDone
 	if timedOut.Load() {
@@ -320,7 +369,7 @@ func (l *Listener) handshake(fc frameConn, remoteAddr string) (Peer, bool) {
 	return peer, ok
 }
 
-func (l *Listener) doHandshake(ctx context.Context, fc frameConn, remoteAddr string) (Peer, bool) {
+func (l *Listener) doHandshake(ctx context.Context, fc frameConn, remoteAddr, key string) (Peer, bool) {
 	log := l.log.With("remote_addr", remoteAddr)
 	fc.SetReadLimit(agent.MaxPreAuthFrame)
 	b, err := fc.Read(ctx)
@@ -345,7 +394,7 @@ func (l *Listener) doHandshake(ctx context.Context, fc frameConn, remoteAddr str
 		return Peer{}, false
 	}
 
-	key := limitKeyPrefix + sourceIP(remoteAddr)
+	key = limitKeyPrefix + key
 	if l.limiter.Locked(key) > 0 {
 		log.Warn("agent 通道来源 IP 认证失败次数过多，已锁定")
 		l.writeFrame(ctx, fc, &agent.AuthFail{Reason: agent.ReasonRateLimited})
@@ -426,11 +475,21 @@ func peerRole(self string) string {
 	return agent.RoleHub
 }
 
-// sourceIP 取 r.RemoteAddr 的 IP（不采信 X-Forwarded-*），IPv4 映射地址还原为 IPv4；解析失败时原样返回。
-func sourceIP(remoteAddr string) string {
+// sourceKey 把 r.RemoteAddr（不采信 X-Forwarded-*）归一化为来源 key，供失败限流与单来源并发上限共用：
+// IPv4（含 IPv4 映射地址）用原地址；IPv6 去掉 zone 后取 /64 前缀（同一 /64 通常属于同一用户）。
+// 解析失败时原样返回。
+func sourceKey(remoteAddr string) string {
 	ap, err := netip.ParseAddrPort(remoteAddr)
 	if err != nil {
 		return remoteAddr
 	}
-	return ap.Addr().Unmap().String()
+	ip := ap.Addr().Unmap()
+	if ip.Is4() {
+		return ip.String()
+	}
+	p, err := ip.WithZone("").Prefix(64)
+	if err != nil {
+		return ip.String()
+	}
+	return p.String()
 }
