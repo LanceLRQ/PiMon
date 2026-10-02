@@ -512,6 +512,25 @@ func TestParseDialURL_缺端口补默认端口(t *testing.T) {
 	}
 }
 
+func TestNormalizeDialURL_规范为wss主机端口(t *testing.T) {
+	cases := map[string]string{
+		"wss://vps.example.com":            "wss://vps.example.com:" + DefaultPort,
+		"wss://vps.example.com:4000/agent": "wss://vps.example.com:4000",
+		"wss://[::1]/":                     "wss://[::1]:" + DefaultPort,
+	}
+	for raw, want := range cases {
+		got, err := NormalizeDialURL(raw)
+		if err != nil || got != want {
+			t.Fatalf("%s: 得 %q（%v），期望 %q", raw, got, err, want)
+		}
+	}
+	for _, raw := range []string{"", "https://vps.example.com", "wss://u:p@vps.example.com", "wss://vps.example.com/x", "wss://:4000"} {
+		if _, err := NormalizeDialURL(raw); !errors.Is(err, ErrDialConfig) {
+			t.Fatalf("%q 应返回 ErrDialConfig，得到 %v", raw, err)
+		}
+	}
+}
+
 // listenSamePortV6 在 [::1] 上占用与 addr 相同的端口，环境不支持时跳过。
 func listenSamePortV6(t *testing.T, addr string) net.Listener {
 	t.Helper()

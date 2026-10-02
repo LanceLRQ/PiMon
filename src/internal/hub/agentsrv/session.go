@@ -1,8 +1,10 @@
 package agentsrv
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/netip"
 	"strings"
@@ -26,11 +28,40 @@ const (
 	helloTimedOut                   // 超时，之后的消息一律忽略
 )
 
+var (
+	// ErrHelloTimeout 表示会话在 HelloTimeout 内没有发来首条消息，已被断开。
+	ErrHelloTimeout = errors.New("等待 agent hello 超时")
+	// ErrHelloRejected 表示首条消息不是 hello、设备已不存在或处理 hello 时写库失败，会话已被断开。
+	ErrHelloRejected = errors.New("agent hello 未被接受")
+	// ErrSessionClosed 表示会话在 hello 有结果之前就已结束。
+	ErrSessionClosed = errors.New("会话在 hello 完成前已结束")
+)
+
+// IncompatibleError 表示 agent 的 hello 协议版本与 hub 不兼容（已发 incompatible 并断开）。
+type IncompatibleError struct {
+	// Reason 取 agent.ReasonVersionTooOld 或 agent.ReasonVersionTooNew。
+	Reason string
+	// RequiredMin 是要求对端至少具备的协议版本。
+	RequiredMin int
+	// HubVersion 是 hub 软件版本。
+	HubVersion string
+}
+
+func (e *IncompatibleError) Error() string {
+	return fmt.Sprintf("agent 协议版本不兼容：%s（要求至少 %d）", e.Reason, e.RequiredMin)
+}
+
 // conn 是一条会话在本服务中的状态。
 type conn struct {
 	sess *agentlink.Session
 	// handled 在离开 helloWaiting 时关闭，用于停止 hello 超时计时。
 	handled chan struct{}
+
+	// ready 在 hello 有结果（被接受、不兼容、被拒绝或超时）时关闭，outcome 在关闭前写入、之后只读；
+	// 由 readyOnce 保证只设置一次。
+	ready     chan struct{}
+	readyOnce sync.Once
+	outcome   error
 
 	// mu 保护 state。
 	mu    sync.Mutex
@@ -51,7 +82,7 @@ func (s *Server) connFor(sess *agentlink.Session) *conn {
 	defer s.mu.Unlock()
 	c := s.conns[sess]
 	if c == nil {
-		c = &conn{sess: sess, handled: make(chan struct{})}
+		c = &conn{sess: sess, handled: make(chan struct{}), ready: make(chan struct{})}
 		if !isDone(sess) {
 			s.conns[sess] = c
 		}
@@ -78,6 +109,14 @@ func (c *conn) leaveWaiting(to helloState) bool {
 	c.state = to
 	close(c.handled)
 	return true
+}
+
+// settle 记录 hello 的结果（nil 表示被接受）并唤醒 AttachReady；只有第一次调用生效，不阻塞。
+func (c *conn) settle(outcome error) {
+	c.readyOnce.Do(func() {
+		c.outcome = outcome
+		close(c.ready)
+	})
 }
 
 // HandlerFor 为会话构造入站消息处理器，供 agentlink.ListenerConfig.Handler、DialerConfig.Handler
@@ -119,6 +158,28 @@ func (s *Server) Attach(sess *agentlink.Session) {
 	}()
 }
 
+// AttachReady 先 Attach 会话，再等待它的 hello 有结果：被接受（已注册、已标记在线）返回 nil；
+// 不兼容返回 *IncompatibleError；hello 超时返回 ErrHelloTimeout；首条消息不是 hello 或设备已不存在等
+// 返回包装 ErrHelloRejected 的错误；会话先行结束返回 ErrSessionClosed；ctx 结束返回 ctx.Err()（会话不受影响）。
+// 供拨出配对使用：hello 可能早于 Attach 到达，结果记在会话状态上，不会丢失。
+func (s *Server) AttachReady(ctx context.Context, sess *agentlink.Session) error {
+	c := s.connFor(sess)
+	s.Attach(sess)
+	select {
+	case <-c.ready:
+		return c.outcome
+	case <-sess.Done():
+		select {
+		case <-c.ready:
+			return c.outcome
+		default:
+			return ErrSessionClosed
+		}
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 // helloTimeout 在 HelloTimeout 内没有收到首条消息时直接断开（不发 bye）。
 func (s *Server) helloTimeout(c *conn, timer <-chan time.Time) {
 	select {
@@ -134,6 +195,7 @@ func (s *Server) helloTimeout(c *conn, timer <-chan time.Time) {
 		return
 	}
 	s.log.Info("agent 未在限定时间内发送 hello，断开连接", "device_id", c.sess.Peer().DeviceID, "timeout", HelloTimeout)
+	c.settle(ErrHelloTimeout)
 	c.sess.Close("")
 }
 
@@ -172,6 +234,7 @@ func (s *Server) handleFirst(c *conn, msg agent.Message) {
 	hello, ok := msg.(*agent.Hello)
 	if !ok {
 		s.log.Info("agent 会话首条消息不是 hello，断开连接", "device_id", c.sess.Peer().DeviceID, "type", string(msg.MsgType()))
+		c.settle(fmt.Errorf("%w：首条消息不是 hello", ErrHelloRejected))
 		c.sess.Close("")
 		return
 	}
@@ -189,7 +252,7 @@ func (s *Server) handleHello(c *conn, m *agent.Hello) {
 	det, err := s.devs.Detail(s.ctx, id)
 	if err != nil {
 		s.flow.Unlock()
-		s.rejectHello(sess, log, err)
+		s.rejectHello(c, log, err)
 		return
 	}
 	info := devices.HelloInfo{
@@ -217,6 +280,7 @@ func (s *Server) handleHello(c *conn, m *agent.Hello) {
 		}
 		log.Warn("agent 协议版本不兼容，断开连接", "reason", reason,
 			"agent_protocol", m.ProtocolVersion, "agent_min", m.MinCompatibleVersion, "required_min", required)
+		c.settle(&IncompatibleError{Reason: reason, RequiredMin: required, HubVersion: s.hubVersion})
 		sess.Close(reason)
 		return
 	}
@@ -231,7 +295,7 @@ func (s *Server) handleHello(c *conn, m *agent.Hello) {
 	}
 	if err != nil {
 		s.flow.Unlock()
-		s.rejectHello(sess, log, err)
+		s.rejectHello(c, log, err)
 		return
 	}
 	s.syncManifests(id, m.Plugins, log)
@@ -254,13 +318,16 @@ func (s *Server) handleHello(c *conn, m *agent.Hello) {
 	s.pres.Connected(id)
 	s.startSkew(c)
 	s.flow.Unlock()
+	c.settle(nil)
 
 	log.Info("agent hello 已接受", "agent_version", m.AgentVersion, "protocol", m.ProtocolVersion, "plugins", len(m.Plugins))
 	s.currentRouter().OnReady(id)
 }
 
 // rejectHello 在设备行不存在（已吊销或占位已清理）或写库失败时断开会话。
-func (s *Server) rejectHello(sess *agentlink.Session, log *slog.Logger, err error) {
+func (s *Server) rejectHello(c *conn, log *slog.Logger, err error) {
+	sess := c.sess
+	c.settle(fmt.Errorf("%w：%w", ErrHelloRejected, err))
 	if errors.Is(err, devices.ErrNotFound) {
 		log.Info("设备已不存在，断开会话")
 		sess.Close(agent.ReasonRevoked)

@@ -183,6 +183,16 @@ func parseDialURL(raw string) (dialURL, error) {
 	return dialURL{hostport: net.JoinHostPort(host, port), host: host, port: port, path: AgentPath}, nil
 }
 
+// NormalizeDialURL 按 DialerConfig.URL 的规则校验 raw，返回规范形式 wss://host:port（省略路径，拨号时补 /agent）。
+// 不合法时返回包装 ErrDialConfig 的错误。
+func NormalizeDialURL(raw string) (string, error) {
+	u, err := parseDialURL(raw)
+	if err != nil {
+		return "", err
+	}
+	return "wss://" + u.hostport, nil
+}
+
 func withDialDefaults(cfg DialerConfig) DialerConfig {
 	if cfg.Clock == nil {
 		cfg.Clock = clock.Real{}
