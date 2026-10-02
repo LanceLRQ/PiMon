@@ -24,7 +24,7 @@ func (s *Service) currentIssue(r row) *issue {
 func (s *Service) toInstance(r row) model.Instance {
 	iss := s.currentIssue(r)
 	var interval time.Duration
-	if p, ok := s.reg.Get(r.PluginID); ok {
+	if p, ok := s.pluginFor(r.Machine, r.PluginID); ok {
 		interval = effectiveInterval(r, p.Manifest)
 	} else {
 		interval = effectiveInterval(r, nil)
@@ -56,7 +56,7 @@ func (s *Service) toInstance(r row) model.Instance {
 		in.ReportStatus = rep.Status
 	}
 	inst := model.Instance{
-		ID: r.ID, PluginID: r.PluginID, Name: r.Name, RunsOn: machineHub,
+		ID: r.ID, PluginID: r.PluginID, Name: r.Name, RunsOn: r.Machine,
 		IntervalSeconds: r.IntervalSeconds, EffectiveIntervalSeconds: int(interval.Seconds()),
 		Paused:       r.Paused,
 		DisplayState: string(report.ComputeDisplayState(in, s.clk.Now())),

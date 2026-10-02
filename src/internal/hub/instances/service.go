@@ -31,10 +31,12 @@ var (
 	ErrRunBusy = errors.New("实例正在运行")
 )
 
-// ProxyResolver 按代理 id 取解析好的代理（由 proxies.Store 实现）。
-// 代理不存在时应返回 proxies.ErrNotFound。
+// ProxyResolver 按代理 id 取解析好的代理与其可用位置（由 proxies.Store 实现）。
+// 代理不存在时两个方法都应返回 proxies.ErrNotFound。
 type ProxyResolver interface {
 	Resolve(ctx context.Context, id string) (*proxy.Proxy, error)
+	// Location 返回代理的可用位置（model.ProxyLocation*）。
+	Location(ctx context.Context, id string) (string, error)
 }
 
 // ScreenReferrers 回答"哪些 screen 引用了某实例"（由 screens.Service 实现）。
@@ -49,6 +51,8 @@ type Config struct {
 	Box     *secret.Box
 	Clock   clock.Clock
 	Plugins *plugins.Registry
+	// Machines 按机器取插件，缺省用 Plugins（测试可注入替身）。
+	Machines MachinePlugins
 	// History 缺省为 NopHistory。
 	History HistoryRecorder
 	// Logger 缺省用 slog.Default()。
@@ -74,6 +78,7 @@ type Service struct {
 	box        *secret.Box
 	clk        clock.Clock
 	reg        *plugins.Registry
+	machines   MachinePlugins
 	hist       HistoryRecorder
 	log        *slog.Logger
 	jitter     func(time.Duration) time.Duration
@@ -82,6 +87,8 @@ type Service struct {
 
 	proxies   ProxyResolver
 	screens   ScreenReferrers
+	remote    Remote
+	devices   DeviceStates
 	cbMu      sync.RWMutex
 	onChange  func(id string)
 	writeErrs atomic.Int64
@@ -108,10 +115,13 @@ type Service struct {
 // New 创建实例服务。需要再调用 UseProxies 接入代理仓库，Load 恢复状态，Start 启动调度。
 func New(c Config) *Service {
 	s := &Service{
-		db: c.DB, box: c.Box, clk: c.Clock, reg: c.Plugins, hist: c.History, log: c.Logger,
+		db: c.DB, box: c.Box, clk: c.Clock, reg: c.Plugins, machines: c.Machines, hist: c.History, log: c.Logger,
 		jitter: c.Jitter, maxConc: c.MaxConcurrent, flushEvery: c.FlushInterval,
 		states: map[string]*instState{}, tasks: map[string]taskInfo{}, syncIssues: map[string]*issue{}, dropWarned: map[string]string{},
 		badWarned: map[string]bool{}, runLocks: map[string]chan struct{}{},
+	}
+	if s.machines == nil {
+		s.machines = c.Plugins
 	}
 	if s.clk == nil {
 		s.clk = clock.Real{}

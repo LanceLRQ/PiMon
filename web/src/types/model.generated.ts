@@ -285,6 +285,10 @@ export interface InstanceInput {
    * IntervalSeconds 是刷新间隔覆盖，0 表示沿用 manifest 的默认间隔。
    */
   interval_seconds: number /* int */;
+  /**
+   * RunsOn 是运行位置：hub 或设备 ID。创建时缺省为 hub；更新时缺省表示保留原运行位置。
+   */
+  runs_on?: string;
 }
 /**
  * Instance 是实例列表项，也是详情与运行结果的公共部分。
@@ -294,7 +298,7 @@ export interface Instance {
   plugin_id: string;
   name: string;
   /**
-   * RunsOn 本期固定为 hub。
+   * RunsOn 是运行位置：hub 或设备 ID。
    */
   runs_on: string;
   /**
@@ -981,15 +985,15 @@ export interface PluginLookupResponse {
 // source: proxy.go
 
 /**
- * ProxyLocationHub 表示仅中枢所在网络可用。
+ * ProxyLocationHub 表示仅中枢本机上的实例可用。
  */
 export const ProxyLocationHub = "hub";
 /**
- * ProxyLocationLAN 表示仅局域网内的 agent 可用。
+ * ProxyLocationLAN 表示中枢与非 VPS 设备上的实例可用。
  */
 export const ProxyLocationLAN = "lan";
 /**
- * ProxyLocationAny 表示任意位置可用。
+ * ProxyLocationAny 表示任意位置可用（VPS 设备上的实例只能选它）。
  */
 export const ProxyLocationAny = "any";
 /**

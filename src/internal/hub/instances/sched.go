@@ -61,10 +61,18 @@ func (s *Service) resyncOne(ctx context.Context, id string) {
 }
 
 // syncRow 让调度器里该实例的任务与其当前配置一致：
-// 暂停、配置不完整、插件消失、代理不可用的不调度；其余 Upsert（ConfigHash 不变则不动）。
+// 远程实例（运行在设备上）一律不进本机调度器与 Streamer 管理器，只通知其设备重新下发；
+// 本机实例中暂停、配置不完整、插件消失、代理不可用的不调度；其余 Upsert（ConfigHash 不变则不动）。
 // 引用的代理已被删除的照常排程，但每次运行直接记为失败，不退回直连（Ruling 49）。
 func (s *Service) syncRow(ctx context.Context, r row) {
 	s.trackHash(r.ID, r.ConfigHash)
+	if r.Machine != machineHub {
+		// 先摘掉可能残留的本机任务（实例刚从 hub 改到设备上）。
+		s.dropTask(r.ID)
+		s.setSyncIssue(r.ID, nil)
+		s.machineChanged(r.Machine)
+		return
+	}
 	s.mu.Lock()
 	sched, streams := s.sched, s.streams
 	s.mu.Unlock()
@@ -197,6 +205,10 @@ func (s *Service) Run(ctx context.Context, id string) (model.InstanceRunResult, 
 	r, err := s.getRow(ctx, id)
 	if err != nil {
 		return model.InstanceRunResult{}, err
+	}
+	if r.Machine != machineHub {
+		// 远程实例不在本机运行，经通道转发的测试运行尚未接入。
+		return model.InstanceRunResult{}, fmt.Errorf("%w: 远程实例的测试运行尚未接入 / remote test run not available yet", runtime.ErrFailed)
 	}
 	res, iss := s.resolve(r)
 	if iss != nil {

@@ -348,6 +348,16 @@ func (s *Store) changed() {
 	}
 }
 
+// Location 返回代理的可用位置（hub | lan | any），只读一列，不查引用它的实例；不存在返回 ErrNotFound。
+func (s *Store) Location(ctx context.Context, id string) (string, error) {
+	var loc string
+	err := s.db.QueryRowContext(ctx, `SELECT location FROM proxies WHERE id = ?`, id).Scan(&loc)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return loc, err
+}
+
 // Resolve 按 id 取解析好的代理；id 为空或 "direct" 表示直连。
 // 返回值含认证，可 .URL()（完整 URL，给 Input）或 .Env()（给 exec）。
 func (s *Store) Resolve(ctx context.Context, id string) (*proxy.Proxy, error) {

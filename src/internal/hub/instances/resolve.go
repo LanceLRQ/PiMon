@@ -54,7 +54,7 @@ type resolved struct {
 // loadFull 取实例的插件并还原完整配置（普通配置 + 解密后的密钥），
 // 丢弃插件升级后已不再声明的键（记日志，不落库），不做校验。
 func (s *Service) loadFull(r row) (plugins.Plugin, map[string]any, *issue) {
-	p, ok := s.reg.Get(r.PluginID)
+	p, ok := s.pluginFor(r.Machine, r.PluginID)
 	if !ok {
 		return plugins.Plugin{}, nil, &issue{kind: issueBroken, msg: fmt.Sprintf("插件 %s 不可用", r.PluginID)}
 	}
@@ -124,7 +124,7 @@ func pruneUndeclared(fields []schema.Field, cfg map[string]any, prefix string, d
 	return out
 }
 
-// sourceFor 取插件的 Source：内置直接用，exec 按目录现造。
+// sourceFor 取插件的 Source：内置直接用，exec 按目录现造。只用于本机实例，远程实例的插件没有 Source。
 func sourceFor(p plugins.Plugin) runtime.Source {
 	if p.Origin == plugins.OriginExec {
 		return runtime.NewExecSource(p.Manifest, p.RunPath)
