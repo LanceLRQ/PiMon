@@ -42,10 +42,47 @@ func (r *run) resolveKioskUser(_ context.Context) error {
 	if err != nil {
 		return fmt.Errorf("查询桌面用户 %s 的家目录: %w", name, err)
 	}
+	home = path.Clean(home)
 	if fi, err := r.FS.Stat(home); err != nil || !fi.IsDir {
 		return fmt.Errorf("桌面用户 %s 的家目录 %s 不存在", name, home)
 	}
 	r.kioskUser, r.kioskHome, r.kioskOwner = name, home, Owner(u)
+	return r.preflightHomePaths()
+}
+
+// kioskHomePaths 是 --kiosk 会读写的家目录内路径（相对家目录），自上而下排列。
+func kioskHomePaths() []string {
+	theme := ".icons/" + cursorThemeName
+	paths := []string{".config", ".config/labwc", ".config/labwc/autostart", ".config/labwc/environment",
+		".icons", theme, theme + "/index.theme", theme + "/cursors"}
+	for _, n := range cursorNames {
+		paths = append(paths, theme+"/cursors/"+n)
+	}
+	return paths
+}
+
+// preflightHomePaths 在任何改动之前确认这些路径上没有符号链接：
+// root 写家目录时跟随链接会把文件落到别处（并被 chown 给桌面用户）。
+func (r *run) preflightHomePaths() error {
+	for _, rel := range kioskHomePaths() {
+		if err := r.noSymlink(path.Join(r.kioskHome, rel)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// noSymlink 拒绝符号链接；路径不存在视为通过。
+func (r *run) noSymlink(p string) error {
+	fi, err := r.FS.Lstat(p)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return nil
+	case err != nil:
+		return fmt.Errorf("检查 %s: %w", p, err)
+	case fi.IsSymlink:
+		return fmt.Errorf("%s 是符号链接，拒绝以 root 身份写入桌面用户目录；请先把它换成普通文件或目录", p)
+	}
 	return nil
 }
 
@@ -171,6 +208,9 @@ func (r *run) installCursorTheme() error {
 	}
 	written := 0
 	for name, data := range files {
+		if err := r.noSymlink(name); err != nil {
+			return err
+		}
 		old, err := r.FS.ReadFile(name)
 		if err == nil && string(old) == string(data) {
 			continue
@@ -223,6 +263,9 @@ func (r *run) mkdirAll(dir string) error {
 	cur := r.kioskHome
 	for _, seg := range strings.Split(rel, "/") {
 		cur = path.Join(cur, seg)
+		if err := r.noSymlink(cur); err != nil {
+			return err
+		}
 		fi, err := r.FS.Stat(cur)
 		switch {
 		case err == nil && fi.IsDir:
@@ -250,13 +293,18 @@ func relUnder(base, p string) (string, error) {
 // editText 读取文本文件，交给 edit 生成新内容；有变化才写。已存在的文件改前先备份、写回时保留原属主与权限；
 // create 为真时文件不存在则新建（0644、桌面用户属主，缺失的父目录一并创建），否则视为不存在直接返回。
 func (r *run) editText(file string, create bool, edit func(old string) string) (changed, existed bool, err error) {
+	if create {
+		if err := r.mkdirAll(path.Dir(file)); err != nil {
+			return false, false, err
+		}
+		if err := r.noSymlink(file); err != nil {
+			return false, false, err
+		}
+	}
 	fi, err := r.FS.Stat(file)
 	if errors.Is(err, os.ErrNotExist) {
 		if !create {
 			return false, false, nil
-		}
-		if err := r.mkdirAll(path.Dir(file)); err != nil {
-			return false, false, err
 		}
 		if err := r.FS.WriteFile(file, []byte(edit("")), 0o644, &r.kioskOwner); err != nil {
 			return false, false, fmt.Errorf("写入 %s: %w", file, err)
@@ -298,7 +346,11 @@ func (r *run) backup(file string, fi FileInfo, content []byte) (string, error) {
 		if !strings.HasPrefix(n, base+".pimon-bak-") {
 			continue
 		}
-		if b, err := r.FS.ReadFile(path.Join(dir, n)); err == nil && string(b) == string(content) {
+		cand := path.Join(dir, n)
+		if li, err := r.FS.Lstat(cand); err != nil || li.IsSymlink {
+			continue
+		}
+		if b, err := r.FS.ReadFile(cand); err == nil && string(b) == string(content) {
 			return "", nil
 		}
 	}

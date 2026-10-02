@@ -234,3 +234,36 @@ func TestKioskNotRequestedLeavesHomeAlone(t *testing.T) {
 		}
 	}
 }
+
+func (e *testEnv) assertSymlinkRefused(t *testing.T, link string) {
+	t.Helper()
+	err := e.install(t)
+	if err == nil || !strings.Contains(err.Error(), "符号链接") || !strings.Contains(err.Error(), link) {
+		t.Fatalf("应因符号链接 %s 报错, err = %v", link, err)
+	}
+	for _, w := range e.fs.writes {
+		if strings.HasPrefix(w.name, "/home/") {
+			t.Errorf("遇符号链接后不应写 %s", w.name)
+		}
+	}
+}
+
+func TestKioskRefusesSymlinkDirs(t *testing.T) {
+	for _, link := range []string{"/home/lancelrq/.config", "/home/lancelrq/.config/labwc", "/home/lancelrq/.icons", themeDir, themeDir + "/cursors"} {
+		t.Run(link, func(t *testing.T) {
+			e := kioskEnv(t)
+			e.fs.files[link] = &fakeFile{dir: true, mode: 0o755, symlink: true}
+			e.assertSymlinkRefused(t, link)
+		})
+	}
+}
+
+func TestKioskRefusesSymlinkFiles(t *testing.T) {
+	for _, link := range []string{userAutostart, userEnv, themeDir + "/index.theme", themeDir + "/cursors/left_ptr"} {
+		t.Run(link, func(t *testing.T) {
+			e := kioskEnv(t)
+			e.fs.files[link] = &fakeFile{data: "x", mode: 0o644, symlink: true}
+			e.assertSymlinkRefused(t, link)
+		})
+	}
+}

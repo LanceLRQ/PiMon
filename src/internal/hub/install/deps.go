@@ -40,11 +40,12 @@ type Owner struct{ UID, GID int }
 
 // FileInfo 是 Stat 的结果；Mode 只含权限位。
 type FileInfo struct {
-	IsDir   bool
-	Mode    fs.FileMode
-	ModTime time.Time
-	UID     int
-	GID     int
+	IsDir     bool
+	IsSymlink bool
+	Mode      fs.FileMode
+	ModTime   time.Time
+	UID       int
+	GID       int
 }
 
 // FS 是 install 用到的文件系统操作。WriteFile 必须原子（同目录临时文件再 rename），
@@ -53,6 +54,8 @@ type FS interface {
 	ReadFile(name string) ([]byte, error)
 	ReadDir(name string) ([]string, error)
 	Stat(name string) (FileInfo, error)
+	// Lstat 与 Stat 相同，但不跟随符号链接（IsSymlink 为真时其余字段描述链接本身）。
+	Lstat(name string) (FileInfo, error)
 	WriteFile(name string, data []byte, perm fs.FileMode, own *Owner) error
 	Mkdir(name string, perm fs.FileMode, own Owner) error
 	SetOwnerMode(name string, perm fs.FileMode, own Owner) error

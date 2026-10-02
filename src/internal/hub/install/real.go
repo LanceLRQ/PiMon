@@ -60,12 +60,15 @@ func (osFS) ReadDir(name string) ([]string, error) {
 	return names, nil
 }
 
-func (osFS) Stat(name string) (FileInfo, error) {
-	fi, err := os.Stat(name)
+func (osFS) Stat(name string) (FileInfo, error) { return statInfo(os.Stat(name)) }
+
+func (osFS) Lstat(name string) (FileInfo, error) { return statInfo(os.Lstat(name)) }
+
+func statInfo(fi os.FileInfo, err error) (FileInfo, error) {
 	if err != nil {
 		return FileInfo{}, err
 	}
-	out := FileInfo{IsDir: fi.IsDir(), Mode: fi.Mode().Perm(), ModTime: fi.ModTime(), UID: -1, GID: -1}
+	out := FileInfo{IsDir: fi.IsDir(), IsSymlink: fi.Mode()&os.ModeSymlink != 0, Mode: fi.Mode().Perm(), ModTime: fi.ModTime(), UID: -1, GID: -1}
 	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
 		out.UID, out.GID = int(st.Uid), int(st.Gid)
 	}

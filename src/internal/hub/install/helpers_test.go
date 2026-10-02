@@ -32,6 +32,7 @@ type fakeFile struct {
 	uid, gid int
 	dir      bool
 	mtime    time.Time
+	symlink  bool
 }
 
 type writeRec struct {
@@ -79,6 +80,14 @@ func (f *fakeFS) Stat(name string) (FileInfo, error) {
 		return FileInfo{}, fmt.Errorf("stat %s: %w", name, fs.ErrNotExist)
 	}
 	return FileInfo{IsDir: e.dir, Mode: e.mode, ModTime: e.mtime, UID: e.uid, GID: e.gid}, nil
+}
+
+func (f *fakeFS) Lstat(name string) (FileInfo, error) {
+	fi, err := f.Stat(name)
+	if err == nil {
+		fi.IsSymlink = f.files[name].symlink
+	}
+	return fi, err
 }
 
 func (f *fakeFS) WriteFile(name string, data []byte, perm fs.FileMode, own *Owner) error {
