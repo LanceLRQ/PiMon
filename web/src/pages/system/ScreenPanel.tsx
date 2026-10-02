@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import { effectiveTouch } from '@/pages/screens/touch'
 import type { ScreenStatusState } from '@/pages/screens/use-screen-status'
 import { formatUptime } from '@/lib/format'
-import { formatDateTime, parseTime, useNow } from '@/lib/time'
+import { formatClockInZone, formatDateTime, parseTime, useNow } from '@/lib/time'
 import { selectLayout, selectSettings, useLiveStore } from '@/store/live-store'
 import { Section } from '@/ui/section'
 import { StatusShape } from '@/ui/status-shape'
@@ -60,7 +60,7 @@ export function ScreenPanel({ state }: { state: ScreenStatusState }) {
     { k: t('system.screen.current'), v: status?.online && status.current_screen ? status.current_screen : unknown },
     { k: t('system.screen.kiosk'), v: kiosk && kiosk.version ? t('system.screen.kioskValue', { state: kioskState, version: kiosk.version }) : kioskState },
     { k: t('system.screen.chromium'), v: chromiumParts.length > 0 ? chromiumParts.join(' · ') : unknown },
-    { k: t('system.screen.nextRestart'), v: !kiosk ? unknown : nextRestartMs !== null ? formatDateTime(nextRestartMs, i18n.language) : t('system.screen.nextRestartOff') },
+    { k: t('system.screen.nextRestart'), v: !kiosk ? unknown : nextRestartMs !== null ? formatClockInZone(nextRestartMs, now, settings?.timezone ?? 'UTC', i18n.language) : t('system.screen.nextRestartOff') },
     ...(lastSeenMs !== null ? [{ k: t('system.screen.lastSeen'), v: formatDateTime(lastSeenMs, i18n.language) }] : []),
   ]
 

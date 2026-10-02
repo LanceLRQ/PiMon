@@ -43,7 +43,7 @@ export function RemotePage() {
   const nextMs = parseTime(state?.next_change)
   const untilMs = parseTime(state?.until)
   const unknown = t('overview.screen.unknown')
-  const touch = settings ? effectiveTouch(settings.screen.input_mode, status?.coarse_pointer) : null
+  const touch = settings ? effectiveTouch(settings.screen.input_mode, status?.coarse_pointer, status?.kiosk?.touchscreen) : null
 
   const reason = (() => {
     if (!state) return null

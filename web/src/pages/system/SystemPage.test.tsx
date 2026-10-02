@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiError, defaultPlugins, json, mockApi, renderWithApp, type Req } from '@/pages/instances/test-utils'
-import { formatDateTime } from '@/lib/time'
+import { formatClockInZone, formatDateTime } from '@/lib/time'
 import { liveStore } from '@/store/live-store'
 import type { BackupInfo, KioskIdleCheck, KioskStatus, LogEntry, LogList, PluginList, ScreenStatus, SystemInfo } from '@/types/generated'
 import { SystemPage } from './SystemPage'
@@ -198,7 +198,19 @@ describe('屏幕区：kiosk 守护进程', () => {
     expect(rowValue(p, 'kiosk 守护进程')).toHaveTextContent('v0.1.0-test')
     expect(rowValue(p, 'Chromium')).toHaveTextContent('已运行 18 小时 0 分')
     expect(rowValue(p, 'Chromium')).toHaveTextContent('重启 2 次')
-    expect(rowValue(p, '下次计划重启')).toHaveTextContent(formatDateTime(Date.parse(next), 'zh'))
+    expect(rowValue(p, '下次计划重启')).toHaveTextContent(formatClockInZone(Date.parse(next), Date.now(), 'UTC', 'zh'))
+  })
+
+  it('下次计划重启按设置时区显示（与每日重启时刻同口径），不随浏览器时区', async () => {
+    liveStore.applySnapshot({
+      type: 'snapshot', build: 'b', role: 'admin', topics: [], server_time: new Date().toISOString(), instances: [],
+      settings: { timezone: 'Pacific/Kiritimati', backup: { daily_at: '04:00', keep: 7 }, screen: { carousel_mode: 'auto', idle_home_seconds: 60, default_dwell_seconds: 15, input_mode: 'auto', ui_scale: 1, daily_restart: { enabled: true, at: '10:00' } } },
+    } as unknown as Parameters<typeof liveStore.applySnapshot>[0])
+    // 20:00Z 在 UTC+14 是次日 10:00
+    await setup(statusApi(baseStatus({ kiosk: kioskStatus({ chromium_started_at: hoursAgo(1), next_restart: '2099-10-03T20:00:00Z' }) })))
+    const p = panel()
+    await within(p).findByText('1024×600')
+    expect(rowValue(p, '下次计划重启')).toHaveTextContent('10/4 10:00')
   })
 
   it('未开启每日重启显示「未开启」', async () => {
