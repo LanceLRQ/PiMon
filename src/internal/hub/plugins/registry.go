@@ -92,6 +92,11 @@ type Registry struct {
 	snap      Snapshot
 	byID      map[string]Plugin
 	listeners []func()
+
+	// machMu 保护 agent 设备的可用插件缓存（machCache）与各机器的失效代数（machGen）。
+	machMu    sync.Mutex
+	machCache map[string]*machineCache
+	machGen   map[string]uint64
 }
 
 // New 创建注册表。Builtins 通常传 runtime.Builtins()；Debounce 缺省 1 秒，EUID 缺省 os.Geteuid。
