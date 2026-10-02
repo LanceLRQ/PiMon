@@ -27,6 +27,165 @@ export interface BackupInfo {
 }
 
 //////////
+// source: device.go
+
+/**
+ * 设备角色取值。
+ */
+export const DeviceRoleServer = "server";
+/**
+ * 设备角色取值。
+ */
+export const DeviceRoleNAS = "nas";
+/**
+ * 设备角色取值。
+ */
+export const DeviceRoleDev = "dev";
+/**
+ * 设备角色取值。
+ */
+export const DeviceRoleVPS = "vps";
+/**
+ * DeviceDialIn 表示 agent 主动连中枢。
+ */
+export const DeviceDialIn = "dial_in";
+/**
+ * DeviceDialOut 表示中枢主动连 agent（公网 VPS）。
+ */
+export const DeviceDialOut = "dial_out";
+/**
+ * 设备在线状态取值。
+ */
+export const PresenceOnline = "online";
+/**
+ * 设备在线状态取值。
+ */
+export const PresenceDisconnected = "disconnected";
+/**
+ * 设备在线状态取值。
+ */
+export const PresenceOffline = "offline";
+/**
+ * 设备在线状态取值。
+ */
+export const PresencePending = "pending";
+/**
+ * PresenceDormant 是允许离线的设备离线时对外显示的状态。
+ */
+export const PresenceDormant = "dormant";
+/**
+ * DeviceIncompatible 描述设备 agent 与中枢协议不兼容的原因。
+ */
+export interface DeviceIncompatible {
+  reason: string;
+  /**
+   * RequiredMin 是要求对端至少具备的协议版本。
+   */
+  required_min: number /* int */;
+}
+/**
+ * Device 是设备列表项与详情。凭据、凭据哈希与密文都不在此结构中。
+ * Presence、ConnError、ClockSkewMs 是运行时值，由中枢在内存中填写，不入库。
+ */
+export interface Device {
+  id: string;
+  name: string;
+  role: string;
+  direction: string;
+  /**
+   * Address 拨出设备为 wss://host:port；拨入设备为最近一次连接的来源 IP（只读）。
+   */
+  address: string;
+  hostname: string;
+  proxy_id: string;
+  allow_offline: boolean;
+  maintenance: boolean;
+  agent_version: string;
+  os: string;
+  arch: string;
+  /**
+   * ProtocolVersion 为 0 表示从未握手。
+   */
+  protocol_version: number /* int */;
+  incompatible: DeviceIncompatible | null;
+  presence: string;
+  conn_error?: string;
+  clock_skew_ms: number | null;
+  last_seen_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+/**
+ * DeviceInput 是更新设备的请求体。Address 与 ProxyID 只对拨出设备生效，缺省表示不改。
+ */
+export interface DeviceInput {
+  name: string;
+  role: string;
+  allow_offline: boolean;
+  maintenance: boolean;
+  address?: string;
+  proxy_id?: string;
+}
+/**
+ * PairingRequest 是生成拨入配对码的请求体。AllowOffline 缺省时按角色决定（dev 默认开）。
+ */
+export interface PairingRequest {
+  name: string;
+  role: string;
+  allow_offline?: boolean;
+  auto_host_metrics?: boolean;
+}
+/**
+ * PairingResult 是拨入配对码的响应。
+ */
+export interface PairingResult {
+  code: string;
+  expires_at: string;
+  urls: string[];
+  fingerprint: string;
+  /**
+   * Command 是一行安装命令，Steps 是分步命令。
+   */
+  command: string;
+  steps: string[];
+}
+/**
+ * DialOutRequest 是拨出配对（中枢主动连 agent）的请求体。
+ */
+export interface DialOutRequest {
+  address: string;
+  fingerprint: string;
+  code: string;
+  proxy_id: string;
+  name: string;
+  role: string;
+  allow_offline?: boolean;
+  auto_host_metrics?: boolean;
+}
+/**
+ * InstanceRef 是设备影响分析中引用的实例。
+ */
+export interface InstanceRef {
+  id: string;
+  name: string;
+}
+/**
+ * RuleRef 是设备影响分析中引用的告警规则（M4 前恒为空）。
+ */
+export interface RuleRef {
+  id: string;
+  name: string;
+}
+/**
+ * DeviceImpact 是吊销或重新配对某设备前展示的影响范围。
+ */
+export interface DeviceImpact {
+  instances: InstanceRef[];
+  screens: ScreenRef[];
+  rules: RuleRef[];
+}
+
+//////////
 // source: errors.go
 
 /**
