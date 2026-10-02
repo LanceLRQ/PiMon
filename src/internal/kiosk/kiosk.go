@@ -113,8 +113,14 @@ func New(cfg Config) (*Daemon, error) {
 	if cfg.Args == nil {
 		cfg.Args = os.Args
 	}
-	if cfg.Env == nil {
+	envDefaulted := cfg.Env == nil
+	if envDefaulted {
 		cfg.Env = os.Environ()
+	}
+	execedFor, env := splitExecForBuild(cfg.Env)
+	cfg.Env = env
+	if envDefaulted && execedFor != "" {
+		_ = os.Unsetenv(ExecForBuildEnv)
 	}
 	if cfg.Version == "" {
 		cfg.Version = version.Version
@@ -133,5 +139,6 @@ func New(cfg Config) (*Daemon, error) {
 		buildCh:    make(chan string),
 		quit:       make(chan struct{}),
 		scale:      1,
+		execedFor:  execedFor,
 	}, nil
 }

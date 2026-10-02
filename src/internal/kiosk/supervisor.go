@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/url"
+	"slices"
 	"sync"
 	"time"
 
@@ -51,6 +52,8 @@ type Daemon struct {
 	tz             string
 	sessionFails   int
 	upgradeFailed  string
+	// execedFor 是上一个进程为升级到哪个 build 而 exec 到本进程（来自环境变量，启动时读取一次）。
+	execedFor string
 }
 
 // Run 取锁、清理 Singleton、启动 Chromium 并看护，直到 ctx 结束、图形会话失效或 hub 升级触发 exec。
@@ -312,12 +315,19 @@ func (d *Daemon) onBuild(build string) bool {
 	if build == "" || build == d.cfg.Version || build == d.upgradeFailed {
 		return false
 	}
+	if build == d.execedFor {
+		// 已经为这个 build exec 过，新映像的版本却仍不是它（例如磁盘上的二进制还没换成新版）：不再 exec，免得紧循环。
+		d.upgradeFailed = build
+		d.execedFor = ""
+		d.log.Error("已按 hub 的构建版本 exec 过但自身版本仍不一致，不再重复 exec，继续运行当前版本", "hub", build, "self", d.cfg.Version)
+		return false
+	}
 	d.log.Info("hub 已升级，换用新二进制", "hub", build, "self", d.cfg.Version)
 	hadProc := d.proc != nil
 	d.stop()
 	path, err := resolveExecutable(d.cfg.Executable)
 	if err == nil {
-		err = d.cfg.Exec(path, d.cfg.Args, d.cfg.Env)
+		err = d.cfg.Exec(path, d.cfg.Args, append(slices.Clone(d.cfg.Env), ExecForBuildEnv+"="+build))
 	}
 	if err != nil {
 		d.upgradeFailed = build

@@ -603,7 +603,7 @@ func TestRun_Build不同时停Chromium并exec自身(t *testing.T) {
 	h.sink.OnBuild("v2")
 	select {
 	case c := <-h.exec:
-		if c.path != filepath.Join(h.dir, "nonexistent-bin") || !slices.Equal(c.argv, []string{"pimon-hub", "kiosk"}) || !slices.Equal(c.env, []string{"A=1"}) {
+		if c.path != filepath.Join(h.dir, "nonexistent-bin") || !slices.Equal(c.argv, []string{"pimon-hub", "kiosk"}) || !slices.Equal(c.env, []string{"A=1", ExecForBuildEnv + "=v2"}) {
 			t.Fatalf("exec %+v", c)
 		}
 	case <-time.After(waitLimit):
@@ -645,6 +645,37 @@ func TestRun_exec失败后继续看护且同一Build不重试(t *testing.T) {
 	h.sink.OnBuild("v3")
 	select {
 	case <-h.exec:
+	case <-time.After(waitLimit):
+		t.Fatal("新的 Build 应再次尝试")
+	}
+}
+
+func TestRun_exec后版本仍不匹配则不再exec_避免紧循环(t *testing.T) {
+	h := newHarness(t, func(c *Config) {
+		// 模拟上一轮为 v2 exec 之后的新进程：自身仍是 v1，环境里带着目标 build。
+		c.Env = []string{"A=1", ExecForBuildEnv + "=v2"}
+	})
+	h.start()
+	p := h.launcher.next(t)
+
+	h.sink.OnBuild("v2")
+	h.sink.OnSettings(scaleSettings(1.25)) // 顺序哨兵：OnBuild 已处理
+	p2 := h.launcher.next(t)
+	if !p.terminated.Load() || !hasArg(p2.args, "--force-device-scale-factor=1.25") {
+		t.Fatalf("v2 不应触发 exec，只应继续看护: terminated=%v args=%v", p.terminated.Load(), p2.args)
+	}
+	select {
+	case <-h.exec:
+		t.Fatal("已为 v2 exec 过、版本仍不匹配时不应再 exec")
+	default:
+	}
+
+	h.sink.OnBuild("v3") // 新的目标 build 仍可升级，且环境里的旧标记被替换而不是叠加
+	select {
+	case c := <-h.exec:
+		if !slices.Equal(c.env, []string{"A=1", ExecForBuildEnv + "=v3"}) {
+			t.Fatalf("exec env=%v", c.env)
+		}
 	case <-time.After(waitLimit):
 		t.Fatal("新的 Build 应再次尝试")
 	}
