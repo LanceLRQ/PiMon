@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"sync"
 	"testing"
 
+	"github.com/LanceLRQ/PiMon/src/internal/agentlink"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/agentsrv"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 	"github.com/LanceLRQ/PiMon/src/pkg/protocol/agent"
@@ -118,10 +120,14 @@ func TestDialOut配对失败返回502与原因(t *testing.T) {
 	}
 }
 
-func TestDialOut内部错误(t *testing.T) {
+func TestDialOut关停与内部错误(t *testing.T) {
 	e := newEnv(t)
 	c := e.setup()
 	e.pairer.set(model.Device{}, agentsrv.ErrDialOutClosed)
 	resp, data := e.do(c, "POST", "/api/devices/dial-out", map[string]any{})
+	e.expectError(resp, data, http.StatusServiceUnavailable, "server.shutting_down")
+
+	e.pairer.set(model.Device{}, fmt.Errorf("拨出配对: %w", agentlink.ErrDialConfig))
+	resp, data = e.do(c, "POST", "/api/devices/dial-out", map[string]any{})
 	e.expectError(resp, data, http.StatusInternalServerError, "internal")
 }

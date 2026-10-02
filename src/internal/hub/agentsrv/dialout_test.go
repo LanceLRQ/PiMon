@@ -348,7 +348,7 @@ func TestDialOut等待hello超时(t *testing.T) {
 	})
 	t.Run("总时限到期", func(t *testing.T) {
 		e := newOutEnv(t)
-		e.d.pairTimeout = 300 * time.Millisecond
+		e.d.pairTimeout = 2 * time.Second
 		a := startFakeAgent(t, "C")
 		a.setHello(nil)
 		_, err := e.d.Pair(context.Background(), dialReq(a, "C"))
@@ -555,5 +555,55 @@ func TestDialOut关闭后拒绝配对且循环全部停止(t *testing.T) {
 	}
 	if _, err := e.d.Pair(context.Background(), dialReq(a, "C")); !errors.Is(err, ErrDialOutClosed) {
 		t.Fatalf("Close 后配对应返回 ErrDialOutClosed，得到 %v", err)
+	}
+}
+
+func TestDialOut调用方取消不影响凭据入库(t *testing.T) {
+	e := newOutEnv(t)
+	a := startFakeAgent(t, "C")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// pair_ok 已到达、写库之前取消调用方 ctx（如浏览器断开）：流程照常跑完。
+	e.d.beforeSave = cancel
+	dev, err := e.d.Pair(ctx, dialReq(a, "C"))
+	must(t, err)
+	if ctx.Err() == nil {
+		t.Fatal("测试钩子应已取消调用方 ctx")
+	}
+	if _, err := e.devs.Credential(context.Background(), dev.ID); err != nil {
+		t.Fatalf("凭据应已入库: %v", err)
+	}
+	if !e.online(dev.ID) {
+		t.Fatal("调用方取消后配对仍应完成并上线")
+	}
+}
+
+func TestDialOut写库前关停仍保存凭据(t *testing.T) {
+	e := newOutEnv(t)
+	a := startFakeAgent(t, "C")
+	// pair_ok 已到达、写库之前中枢开始关停（配对流程的 ctx 被取消）：凭据仍要入库，设备保留。
+	e.d.beforeSave = func() {
+		go e.d.Close()
+		<-e.d.ctx.Done()
+	}
+	_, err := e.d.Pair(context.Background(), dialReq(a, "C"))
+	pe := pairingErr(t, err, ReasonUnknown)
+	if pe.DeviceID == "" {
+		t.Fatalf("凭据已保存，应带 device_id: %+v", pe)
+	}
+	if _, err := e.devs.Credential(context.Background(), pe.DeviceID); err != nil {
+		t.Fatalf("关停时凭据也应入库: %v", err)
+	}
+}
+
+func TestErrAttrs截断对端给的原因(t *testing.T) {
+	long := strings.Repeat("x", 200)
+	attrs := errAttrs(fmt.Errorf("w: %w", &agentlink.AuthFailError{Reason: long}))
+	if len(attrs) != 2 || attrs[0] != "auth_fail_reason" || len(attrs[1].(string)) > maxLogValue+len("…") {
+		t.Fatalf("attrs = %v", attrs)
+	}
+	plain := errors.New("连接失败")
+	if attrs := errAttrs(plain); attrs[0] != "err" || attrs[1] != plain {
+		t.Fatalf("attrs = %v", attrs)
 	}
 }

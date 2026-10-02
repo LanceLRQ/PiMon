@@ -23,6 +23,7 @@ func (s *server) registerDevices(mux *http.ServeMux) {
 }
 
 // dialOut 同步执行拨出配对（最长 agentsrv.PairTimeout），成功回 201 与设备。
+// 客户端断开不中止配对（由 Pair 自己忽略 ctx 的取消），凭据照常入库。
 func (s *server) dialOut(w http.ResponseWriter, r *http.Request) {
 	var in model.DialOutRequest
 	if err := httpx.DecodeJSON(w, r, &in); err != nil {
@@ -47,6 +48,8 @@ func (s *server) dialOut(w http.ResponseWriter, r *http.Request) {
 			details["hub_version"] = pe.HubVersion
 		}
 		httpx.WriteError(w, http.StatusBadGateway, httpx.CodePairingFailed, details)
+	case errors.Is(err, agentsrv.ErrDialOutClosed):
+		httpx.WriteError(w, http.StatusServiceUnavailable, httpx.CodeShuttingDown, nil)
 	default:
 		internalError(w, r, err)
 	}

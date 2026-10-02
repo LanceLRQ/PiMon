@@ -24,6 +24,10 @@ import (
 // PairTimeout 是一次拨出配对（拨号、配对、等待 hello 结果）的总时限，用真实时间。
 const PairTimeout = 20 * time.Second
 
+// saveTimeout 是拨出凭据入库的时限：独立于配对流程的取消，对端已消耗配对码并存好凭据哈希，
+// 此时不写入就会在对端留下孤儿凭据。
+const saveTimeout = 5 * time.Second
+
 // pairing.failed 的 details.reason 取值（另有 agent.ReasonBadCode、ReasonCodeExpired、ReasonRateLimited 原样使用）。
 const (
 	ReasonUnreachable  = "unreachable"
@@ -152,9 +156,9 @@ type DialOut struct {
 	log         *slog.Logger
 	pairTimeout time.Duration
 
+	// ctx 在 Close 时取消：中止读库、进行中的配对，并通知后台协程退出。
 	ctx    context.Context
 	cancel context.CancelFunc
-	done   chan struct{}
 	wg     sync.WaitGroup
 
 	ops sync.Mutex
@@ -168,6 +172,9 @@ type DialOut struct {
 	tails   map[string]chan struct{}
 	pairing map[string]bool // 配对会话仍在进行，循环暂不接手
 	connErr map[string]string
+
+	// beforeSave 仅供测试：在凭据入库之前调用。
+	beforeSave func()
 }
 
 // NewDialOut 创建拨出管理器并订阅设备仓库的变更；调用 Start 后才开始拨号，用 Close 停止。
@@ -184,7 +191,7 @@ func NewDialOut(cfg DialOutConfig) (*DialOut, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &DialOut{
 		srv: cfg.Server, prox: cfg.Proxies, clk: cfg.Clock, log: cfg.Log, pairTimeout: PairTimeout,
-		ctx: ctx, cancel: cancel, done: make(chan struct{}),
+		ctx: ctx, cancel: cancel,
 		loops:   make(map[string]*dialLoop),
 		tails:   make(map[string]chan struct{}),
 		pairing: make(map[string]bool),
@@ -248,7 +255,6 @@ func (d *DialOut) Close() {
 		return
 	}
 	d.closed = true
-	close(d.done)
 	loops := make([]*dialLoop, 0, len(d.loops))
 	for _, l := range d.loops {
 		loops = append(loops, l)
@@ -573,8 +579,11 @@ func validateDialOut(req model.DialOutRequest) (dialOutInput, error) {
 // （凭据加密、SPKI、未确认），再把会话交给 Server 等待 hello 结果，总时限 PairTimeout。
 //
 // 成功返回已上线的设备；请求不合法返回 model.FieldErrors；配对失败返回 *PairingError
-// （凭据已保存时设备保留，DeviceID 非空：不兼容的 agent 升级后可自动接入）；已关闭返回 ErrDialOutClosed。
+// （凭据已保存时设备保留，DeviceID 非空：不兼容的 agent 升级后可自动接入）；已关闭返回 ErrDialOutClosed；
+// 拨号配置不合法（校验已拦下，不应出现）返回包装 agentlink.ErrDialConfig 的错误，按内部错误处理。
 // 配对会话结束后由重连循环用凭据接手。
+//
+// 流程不继承 ctx 的取消（客户端断开时照常跑完，凭据照常入库），只受 PairTimeout 与 Close 约束。
 func (d *DialOut) Pair(ctx context.Context, req model.DialOutRequest) (model.Device, error) {
 	in, err := validateDialOut(req)
 	if err != nil {
@@ -592,7 +601,7 @@ func (d *DialOut) Pair(ctx context.Context, req model.DialOutRequest) (model.Dev
 	}
 	defer d.wg.Done()
 
-	ctx, cancel := context.WithTimeout(ctx, d.pairTimeout)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.pairTimeout)
 	defer cancel()
 	stop := context.AfterFunc(d.ctx, cancel)
 	defer stop()
@@ -607,7 +616,10 @@ func (d *DialOut) Pair(ctx context.Context, req model.DialOutRequest) (model.Dev
 		PairInfo: agent.Pair{Name: "pimon-hub", Hostname: d.srv.hostname(), OS: runtime.GOOS, Arch: runtime.GOARCH},
 		Proxy:    p, Clock: d.clk, Log: log, Handler: d.srv.HandlerFor,
 		OnCredential: func(ok agent.PairOK) error {
-			if err := d.saveDialOut(ctx, in, ok); err != nil {
+			if d.beforeSave != nil {
+				d.beforeSave()
+			}
+			if err := d.saveDialOut(in, ok); err != nil {
 				return err
 			}
 			key.credential = ok.Credential
@@ -615,6 +627,10 @@ func (d *DialOut) Pair(ctx context.Context, req model.DialOutRequest) (model.Dev
 		},
 	})
 	if err != nil {
+		if errors.Is(err, agentlink.ErrDialConfig) {
+			log.Error("拨出配对的拨号配置不合法", "err", err)
+			return model.Device{}, fmt.Errorf("拨出配对: %w", err)
+		}
 		if key.credential != "" {
 			// 凭据已保存（Dial 在交出凭据后不应再失败，这里兜底）：设备保留，交给重连循环。
 			id := agent.DeviceID(key.credential)
@@ -635,14 +651,31 @@ func (d *DialOut) Pair(ctx context.Context, req model.DialOutRequest) (model.Dev
 		return model.Device{}, d.pairFailure(log, err, id)
 	}
 	d.adopt(id, &dialLoop{key: key, sess: sess})
-	dev, err := d.srv.devs.Get(d.ctx, id)
-	if err != nil {
-		return model.Device{}, err
-	}
+	dev := d.pairedDevice(log, id, in)
 	dev.Presence, _ = d.srv.pres.State(id)
 	dev.ConnError = d.ConnError(id)
 	log.Info("拨出配对成功")
 	return dev, nil
+}
+
+// pairedDevice 读取刚配对成功的设备用于响应。设备已上线，读库失败不应让用户以为配对失败：
+// 用独立的 ctx 读取，失败时记 Warn 并用已知字段拼出设备。
+func (d *DialOut) pairedDevice(log *slog.Logger, id string, in dialOutInput) model.Device {
+	ctx, cancel := context.WithTimeout(context.Background(), saveTimeout)
+	defer cancel()
+	dev, err := d.srv.devs.Get(ctx, id)
+	if err == nil {
+		return dev
+	}
+	log.Warn("拨出配对已成功，但读取设备失败，响应使用已知字段", "err", err)
+	allow := in.role == model.DeviceRoleDev
+	if in.allowOffline != nil {
+		allow = *in.allowOffline
+	}
+	return model.Device{
+		ID: id, Name: in.name, Role: in.role, Direction: model.DeviceDialOut, Address: in.address,
+		ProxyID: in.proxyID, AllowOffline: allow,
+	}
 }
 
 // enter 在未关闭时登记一个进行中的操作（调用方负责 wg.Done），已关闭返回假。
@@ -657,7 +690,10 @@ func (d *DialOut) enter() bool {
 }
 
 // saveDialOut 在配对成功（OnCredential）时保存拨出设备。先标记配对进行中，避免设备变更回调让重连循环抢先接手。
-func (d *DialOut) saveDialOut(ctx context.Context, in dialOutInput, ok agent.PairOK) error {
+// 写库用独立于配对流程的 ctx（saveTimeout）：调用方取消、总时限到期或中枢关停都不应让凭据丢失。
+func (d *DialOut) saveDialOut(in dialOutInput, ok agent.PairOK) error {
+	ctx, cancel := context.WithTimeout(context.Background(), saveTimeout)
+	defer cancel()
 	d.mu.Lock()
 	d.pairing[ok.DeviceID] = true
 	d.mu.Unlock()
@@ -707,7 +743,7 @@ func (d *DialOut) adopt(id string, l *dialLoop) {
 		d.reconcile(id)
 		select {
 		case <-l.sess.Done():
-		case <-d.done:
+		case <-d.ctx.Done():
 			return
 		}
 		d.reconcile(id)
@@ -722,9 +758,18 @@ func (d *DialOut) pairFailure(log *slog.Logger, err error, deviceID string) erro
 		pe.RequiredMin, pe.HubVersion = inc.RequiredMin, inc.HubVersion
 	}
 	if pe.Reason == ReasonUnknown {
-		log.Error("拨出配对失败", "err", err)
+		log.Error("拨出配对失败", errAttrs(err)...)
 	} else {
-		log.Info("拨出配对失败", "reason", pe.Reason, "err", err)
+		log.Info("拨出配对失败", append([]any{"reason", pe.Reason}, errAttrs(err)...)...)
 	}
 	return pe
+}
+
+// errAttrs 返回错误的日志属性：auth_fail 的原因由对端原样给出，截断后单独记录，不记错误全文。
+func errAttrs(err error) []any {
+	var af *agentlink.AuthFailError
+	if errors.As(err, &af) {
+		return []any{"auth_fail_reason", clipLog(af.Reason)}
+	}
+	return []any{"err", err}
 }
