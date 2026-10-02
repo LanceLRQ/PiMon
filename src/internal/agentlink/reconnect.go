@@ -61,12 +61,16 @@ func (d Decision) String() string {
 
 // Policy 决定失败后如何处置：拨号失败时 err 非空、reason 为 nil；会话断开时 err 为 nil、reason 为关闭原因。
 // 重连循环自身的 ctx 结束（Stop 或调用方取消）不交给 Policy。
+// Policy 在重连循环的协程里同步调用，不得在其中调用 Reconnector.Stop（会死锁），需要停止时另起协程或取消 ctx。
 type Policy func(err error, reason *CloseReason) Decision
 
 // DefaultPolicy 是默认处置：
 //   - 停止：配置错误 ErrDialConfig；auth_fail{bad_credential|revoked}；对端 bye{revoked}。
 //     凭据失效后继续重试只会让监听方按来源 IP 锁定，必须由用户重新配对。
-//   - 最大退避：钉扎失败；auth_fail{rate_limited}；对端 bye{version_too_old|version_too_new}。
+//   - 最大退避：钉扎失败；auth_fail{rate_limited}；bye{version_too_old|version_too_new}，对端发来或本端关闭均可。
+//     hub 发 incompatible 后直接断开、不发 bye，约定上层收到 incompatible 时调用 s.Close(m.Reason)，
+//     使关闭原因为 CloseLocal + 版本原因，从而按最大退避而不是密集重连。
+//   - revoked 只认对端 bye（本端 Close 带 revoked 不代表自己被吊销）。
 //   - 其余（连接失败、握手超时或协议错误、其他 auth_fail 原因、会话断开、bye{replaced|shutdown}）按退避序列。
 func DefaultPolicy(err error, reason *CloseReason) Decision {
 	if err != nil {
@@ -87,11 +91,16 @@ func DefaultPolicy(err error, reason *CloseReason) Decision {
 		}
 		return Backoff
 	}
-	if reason != nil && reason.Kind == ClosePeerBye {
-		switch reason.Bye {
-		case agent.ReasonRevoked:
+	if reason == nil {
+		return Backoff
+	}
+	switch reason.Bye {
+	case agent.ReasonRevoked:
+		if reason.Kind == ClosePeerBye {
 			return Stop
-		case agent.ReasonVersionTooOld, agent.ReasonVersionTooNew:
+		}
+	case agent.ReasonVersionTooOld, agent.ReasonVersionTooNew:
+		if reason.Kind == ClosePeerBye || reason.Kind == CloseLocal {
 			return MaxBackoff
 		}
 	}
@@ -122,13 +131,17 @@ func (e *StopError) Unwrap() error { return e.Err }
 
 // ReconnectorConfig 是重连循环的配置。
 type ReconnectorConfig struct {
-	// Dialer 是每次拨号使用的配置，原样传给 Dial。
+	// Dialer 是每次拨号使用的配置，原样传给 Dial。只支持凭据模式：带 PairCode 时 Run 立即返回
+	// *StopError{ErrDialConfig}。一次性配对码重连必然 bad_code，配对须由上层用一次性 Dial 完成，
+	// 拿到凭据（OnCredential）后再用凭据构造 Reconnector。
 	Dialer DialerConfig
 	// Dial 为空时用 agentlink.Dial；测试可注入桩函数。
 	Dial func(ctx context.Context, cfg DialerConfig) (*Session, error)
 	// Policy 为空时用 DefaultPolicy。
 	Policy Policy
 	// OnSession 在每次连上后同步调用，应快速返回；会话断开后重连循环继续。可为空。
+	// 上层收到 incompatible 时应调用 s.Close(m.Reason)，让 DefaultPolicy 按最大退避处置。
+	// 不得在 OnSession 内调用 Reconnector.Stop（会死锁），需要停止时另起协程或取消 ctx。
 	OnSession func(*Session)
 	// Clock 为空时用 Dialer.Clock，再为空用 clock.Real{}。
 	Clock clock.Clock
@@ -187,6 +200,7 @@ func NewReconnector(cfg ReconnectorConfig) *Reconnector {
 
 // Stop 停止重连循环：取消进行中的拨号或退避等待，关闭当前会话，并等 Run 返回。
 // 可重复调用；在 Run 之前调用时 Run 立即返回 nil。
+// 不得在 OnSession 或 Policy 内调用（Run 的协程在等它们返回，会死锁），需要停止时另起协程或取消 ctx。
 func (r *Reconnector) Stop() {
 	r.stopCancel()
 	r.mu.Lock()
@@ -211,6 +225,9 @@ func (r *Reconnector) Run(ctx context.Context) error {
 	if r.stopCtx.Err() != nil {
 		return nil
 	}
+	if r.cfg.Dialer.PairCode != "" {
+		return &StopError{Err: fmt.Errorf("%w：重连循环只支持凭据模式，配对须先用 Dial 完成", ErrDialConfig)}
+	}
 
 	loopCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -229,12 +246,24 @@ func (r *Reconnector) Run(ctx context.Context) error {
 func (r *Reconnector) loop(ctx context.Context) error {
 	clk, log := r.cfg.Clock, r.cfg.Log
 	step := 0
+	last := Decision(-1) // 首次决策总是按 Info 记录
+	logDecision := func(msg string, d Decision, attrs ...any) {
+		lvl := slog.LevelDebug
+		if d != last || d == Stop {
+			lvl = slog.LevelInfo
+		}
+		last = d
+		log.Log(context.Background(), lvl, msg, append(attrs, "decision", d.String())...)
+	}
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
 		var decision Decision
 		s, err := r.cfg.Dial(ctx, r.cfg.Dialer)
+		if err == nil && s == nil {
+			err = fmt.Errorf("%w：拨号返回空会话", ErrHandshakeProtocol)
+		}
 		switch {
 		case ctx.Err() != nil:
 			// 停止与拨通同时发生时，拨通的会话不交给上层，直接关闭。
@@ -244,7 +273,7 @@ func (r *Reconnector) loop(ctx context.Context) error {
 			return nil
 		case err != nil:
 			decision = r.cfg.Policy(err, nil)
-			log.Info("agent 通道重连：拨号失败", "err", err, "decision", decision.String())
+			logDecision("agent 通道重连：拨号失败", decision, "err", err)
 			if decision == Stop {
 				return &StopError{Err: err}
 			}
@@ -266,7 +295,7 @@ func (r *Reconnector) loop(ctx context.Context) error {
 				step = 0
 			}
 			decision = r.cfg.Policy(nil, &reason)
-			log.Info("agent 通道重连：会话断开", "kind", string(reason.Kind), "bye", reason.Bye, "decision", decision.String())
+			logDecision("agent 通道重连：会话断开", decision, "kind", string(reason.Kind), "bye", reason.Bye)
 			if decision == Stop {
 				return &StopError{Close: &reason}
 			}

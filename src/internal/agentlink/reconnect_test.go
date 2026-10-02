@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -241,8 +242,65 @@ func TestReconnector_MaxBackoff取30秒乘抖动(t *testing.T) {
 			h := newReconnHarness(t, func(c *ReconnectorConfig) { c.Rand = fixedRand(0) })
 			mk(h)
 			h.expectDelayRange(24*time.Second, 24*time.Second)
+			// Ruling 29：进入最大退避后，随后的普通失败仍按最大间隔。
+			h.fail(errNet)
+			h.expectDelayRange(24*time.Second, 24*time.Second)
 			h.fail(errNet)
 		})
+	}
+}
+
+func TestReconnector_MaxBackoff后稳定会话复位到1秒(t *testing.T) {
+	h := newReconnHarness(t, func(c *ReconnectorConfig) { c.Rand = fixedRand(0.5) })
+	h.fail(&AuthFailError{Reason: agent.ReasonRateLimited})
+	h.expectDelayRange(30*time.Second, 30*time.Second)
+	_, p := h.succeed()
+	h.clk.Advance(StableAfter)
+	p.c.Close()
+	h.expectDelay(time.Second).resp <- dialResp{err: errNet}
+	h.expectDelayRange(2*time.Second, 2*time.Second)
+	h.fail(errNet)
+}
+
+func TestReconnector_本端以版本原因关闭按最大退避(t *testing.T) {
+	h := newReconnHarness(t, func(c *ReconnectorConfig) { c.Rand = fixedRand(0) })
+	s, _ := h.succeed()
+	s.Close(agent.ReasonVersionTooNew) // 上层收到 incompatible 后的约定做法
+	h.expectDelayRange(24*time.Second, 24*time.Second)
+	h.fail(errNet)
+}
+
+func TestReconnector_配对模式立即停止且不拨号(t *testing.T) {
+	var calls atomic.Int32
+	r := NewReconnector(ReconnectorConfig{
+		Dialer: DialerConfig{PairCode: "ABCD"},
+		Dial: func(context.Context, DialerConfig) (*Session, error) {
+			calls.Add(1)
+			return nil, errNet
+		},
+		Clock: clock.NewFake(t0), Log: quietLog(),
+	})
+	err := r.Run(context.Background())
+	var se *StopError
+	if !errors.As(err, &se) || !errors.Is(err, ErrDialConfig) {
+		t.Fatalf("Run 返回 %v，期望 *StopError{ErrDialConfig}", err)
+	}
+	if n := calls.Load(); n != 0 {
+		t.Fatalf("配对模式不应拨号，实际 %d 次", n)
+	}
+}
+
+func TestReconnector_拨号返回空会话按错误处理(t *testing.T) {
+	var got error
+	h := newReconnHarness(t, func(c *ReconnectorConfig) {
+		c.Policy = func(err error, _ *CloseReason) Decision { got = err; return Stop }
+	})
+	h.expectDial().resp <- dialResp{}
+	if err := h.waitRun(); !errors.Is(err, ErrHandshakeProtocol) {
+		t.Fatalf("Run 返回 %v", err)
+	}
+	if !errors.Is(got, ErrHandshakeProtocol) {
+		t.Fatalf("Policy 收到 %v", got)
 	}
 }
 
@@ -446,6 +504,9 @@ func TestDefaultPolicy(t *testing.T) {
 		{"协议错误", nil, &CloseReason{Kind: CloseProtocolError}, Backoff},
 		{"队列满", nil, &CloseReason{Kind: CloseQueueFull}, Backoff},
 		{"本端关闭带 revoked 不算对端吊销", nil, &CloseReason{Kind: CloseLocal, Bye: agent.ReasonRevoked}, Backoff},
+		{"本端关闭 version_too_old", nil, &CloseReason{Kind: CloseLocal, Bye: agent.ReasonVersionTooOld}, MaxBackoff},
+		{"本端关闭 version_too_new", nil, &CloseReason{Kind: CloseLocal, Bye: agent.ReasonVersionTooNew}, MaxBackoff},
+		{"心跳超时带版本原因不算", nil, &CloseReason{Kind: CloseHeartbeat, Bye: agent.ReasonVersionTooOld}, Backoff},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := DefaultPolicy(tc.err, tc.reason); got != tc.want {
