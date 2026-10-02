@@ -136,12 +136,19 @@ func (u *fakeUsers) InGroup(name, group string) (bool, error) {
 	return slices.Contains(u.groups[name], group), nil
 }
 
+// fakePorts 按端口返回监听者：ls 对应网页端口，agent 对应 agent 通道端口。
 type fakePorts struct {
-	ls  []Listener
-	err error
+	ls    []Listener
+	agent []Listener
+	err   error
 }
 
-func (p *fakePorts) Listeners(int) ([]Listener, error) { return p.ls, p.err }
+func (p *fakePorts) Listeners(port int) ([]Listener, error) {
+	if port == agentPort {
+		return p.agent, p.err
+	}
+	return p.ls, p.err
+}
 
 // fakeRunner 记录命令序列，并对会改变系统状态的命令更新其他假对象。
 type fakeRunner struct {

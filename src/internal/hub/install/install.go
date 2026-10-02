@@ -23,6 +23,7 @@ const (
 	serviceUser = "pimon"
 	serviceName = "pimon-hub.service"
 	hubPort     = 31415
+	agentPort   = 31418
 	binPath     = "/usr/local/bin/pimon-hub"
 	unitPath    = "/etc/systemd/system/" + serviceName
 	dataDir     = "/var/lib/pimon"
@@ -250,12 +251,22 @@ func (r *run) checkPort(ctx context.Context) error {
 	default:
 		return err
 	}
-	ls, err := r.Ports.Listeners(hubPort)
+	for _, port := range []int{hubPort, agentPort} {
+		if err := r.checkOnePort(port); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkOnePort 检查单个端口：空闲或被本服务自己占用都放行，其余视为冲突。
+func (r *run) checkOnePort(port int) error {
+	ls, err := r.Ports.Listeners(port)
 	if err != nil {
-		return fmt.Errorf("检查端口 %d: %w", hubPort, err)
+		return fmt.Errorf("检查端口 %d: %w", port, err)
 	}
 	if len(ls) == 0 {
-		r.rep.done(fmt.Sprintf("端口 %d 空闲", hubPort), "")
+		r.rep.done(fmt.Sprintf("端口 %d 空闲", port), "")
 		return nil
 	}
 	self := r.activeBefore
@@ -270,10 +281,10 @@ func (r *run) checkPort(ctx context.Context) error {
 		}
 	}
 	if self {
-		r.rep.existed(fmt.Sprintf("端口 %d", hubPort), serviceName+" 已在运行")
+		r.rep.existed(fmt.Sprintf("端口 %d", port), serviceName+" 已在运行")
 		return nil
 	}
-	return fmt.Errorf("端口 %d 已被占用：%s", hubPort, describeListeners(ls))
+	return fmt.Errorf("端口 %d 已被占用：%s", port, describeListeners(ls))
 }
 
 func describeListeners(ls []Listener) string {

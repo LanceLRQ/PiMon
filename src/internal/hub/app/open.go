@@ -3,6 +3,7 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,6 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/LanceLRQ/PiMon/src/internal/certs"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/agentsrv"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/api"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
@@ -28,6 +31,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/system"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/tlscert"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/webui"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/ws"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
@@ -60,13 +64,19 @@ type App struct {
 	screenState *screenstate.Service
 	devices     *devices.Store
 	presence    *devices.Presence
-	history     *history.Service
-	ws          *ws.Hub
-	notifier    *sdnotify.Notifier
-	handler     http.Handler
+	agents      *agentsrv.Server
+	// cert 是网页 HTTPS 与 agent 通道共用的中枢证书，spki 是其公钥指纹。
+	cert     tls.Certificate
+	spki     certs.SPKI
+	history  *history.Service
+	ws       *ws.Hub
+	notifier *sdnotify.Notifier
+	handler  http.Handler
 	// listenAddr 是 Serve 实际监听的地址（host:port），设置码页据此拼手机访问地址。
 	listenAddr atomic.Value
-	closed     bool
+	// agentAddr 是 agent 通道实际监听的地址，未启用时为空。
+	agentAddr atomic.Value
+	closed    bool
 }
 
 // Open 按固定顺序启动：建数据目录 → 密钥 → 打开数据库 → 版本变化时升级前备份 →
@@ -90,9 +100,7 @@ func Open(ctx context.Context, cfg config.Config, opt ...Option) (*App, error) {
 	}
 	a := &App{cfg: cfg, opts: o, db: db, box: box}
 	if err := a.assemble(ctx, dbExisted); err != nil {
-		if a.presence != nil {
-			a.presence.Close()
-		}
+		a.stopAgents()
 		_ = db.Close()
 		return nil, err
 	}
@@ -193,6 +201,18 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	}
 	// 已知设备在 hub 启动后的宽限期内为 pending，之后仍未连上才算 offline。
 	a.presence = devices.NewPresence(o.clk, o.clk.Now(), knownIDs)
+	// 证书总是加载：agent 通道无论网页是否启用 HTTPS 都要用它，指纹也供配对命令展示。
+	if a.cert, err = tlscert.LoadOrCreate(a.cfg.CertPath(), a.cfg.KeyPath(), o.clk.Now(), o.tlsEnv); err != nil {
+		return fmt.Errorf("准备中枢证书: %w", err)
+	}
+	if a.spki, err = certs.SPKIOf(a.cert); err != nil {
+		return fmt.Errorf("计算证书指纹: %w", err)
+	}
+	if a.agents, err = agentsrv.New(agentsrv.Config{
+		Devices: a.devices, Presence: a.presence, Plugins: a.plugins, Clock: o.clk, HubVersion: o.version,
+	}); err != nil {
+		return fmt.Errorf("创建 agent 通道服务: %w", err)
+	}
 	// hub-self 的统计来源在 instances 与 history 就绪后才能绑定，先于 Load 以便首次采集就有数据。
 	hubself.Bind(hubStats{
 		inst: a.instances, hist: a.history, started: o.clk.Now(), dataDir: a.cfg.DataDir,
@@ -296,15 +316,33 @@ func (a *App) Handler() http.Handler { return a.handler }
 // hub-self 把它与实例当前状态落盘失败数（instances.Service.WriteErrors）相加作为「写库错误」。
 func (a *App) HistoryWriteErrors() int64 { return a.history.WriteErrors() }
 
-// Close 先停在线状态计时协程，再关闭数据库；可重复调用。
+// AgentAddr 返回 agent 通道实际监听的地址（host:port）；未启用或尚未监听时为空。
+func (a *App) AgentAddr() string {
+	v, _ := a.agentAddr.Load().(string)
+	return v
+}
+
+// AgentSPKI 返回中枢证书的 SPKI 指纹，agent 配对时用它钉扎。
+func (a *App) AgentSPKI() certs.SPKI { return a.spki }
+
+// stopAgents 按「先会话服务、后在线状态」的顺序释放 agent 通道相关资源，须在关闭数据库之前调用。
+// 调用前监听必须已停止（Serve 返回），否则新连接会在关闭后到达。
+func (a *App) stopAgents() {
+	if a.agents != nil {
+		a.agents.Close()
+	}
+	if a.presence != nil {
+		a.presence.Close()
+	}
+}
+
+// Close 依次停止 agent 通道服务与在线状态计时协程，再关闭数据库；可重复调用。
 func (a *App) Close() error {
 	if a.closed {
 		return nil
 	}
 	a.closed = true
-	if a.presence != nil {
-		a.presence.Close()
-	}
+	a.stopAgents()
 	return a.db.Close()
 }
 

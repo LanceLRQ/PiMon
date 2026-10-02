@@ -159,6 +159,22 @@ func TestPortHeldByOtherProcessStopsInstall(t *testing.T) {
 	}
 }
 
+func TestAgentPortHeldByOtherProcessStopsInstall(t *testing.T) {
+	e := newTestEnv(t)
+	e.ports.agent = []Listener{{PID: 888, Exe: "/usr/bin/nc"}}
+	err := e.install(t)
+	if err == nil || !strings.Contains(err.Error(), "检查端口") {
+		t.Fatalf("err = %v", err)
+	}
+	out := e.out.String()
+	if !strings.Contains(out, "端口 31418 已被占用：pid 888（/usr/bin/nc）") {
+		t.Fatalf("输出缺少 agent 端口占用提示:\n%s", out)
+	}
+	if !strings.Contains(out, "端口 31415 空闲") {
+		t.Fatalf("网页端口应先检查并通过:\n%s", out)
+	}
+}
+
 func TestPortHeldByOwnBinaryButServiceInactiveIsError(t *testing.T) {
 	e := newTestEnv(t)
 	e.ports.ls = []Listener{{PID: 5, Exe: binPath}}

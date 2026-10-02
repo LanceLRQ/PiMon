@@ -334,3 +334,14 @@ func TestPresenceClose与Disconnected并发(t *testing.T) {
 		}
 	}
 }
+
+func TestClose之后Connected与Disconnected安全(t *testing.T) {
+	clk := clock.NewFake(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	p := NewPresence(clk, clk.Now(), nil)
+	p.Close()
+	p.Connected("a")
+	assertState(t, p, "a", model.PresenceOnline)
+	p.Disconnected("a", clk.Now())
+	assertState(t, p, "a", model.PresenceDisconnected)
+	p.Close()
+}

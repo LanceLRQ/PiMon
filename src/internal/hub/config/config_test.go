@@ -134,3 +134,27 @@ func TestParseRelativeDataDirMadeAbsolute(t *testing.T) {
 		t.Fatalf("DataDir = %q，期望 %q", cfg.DataDir, want)
 	}
 }
+
+func TestParseAgentAddr优先级(t *testing.T) {
+	cfg, _, err := Parse(nil, env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AgentAddr != ":31418" {
+		t.Fatalf("默认 agent 地址应为 :31418: %q", cfg.AgentAddr)
+	}
+	cfg, _, err = Parse(nil, env(map[string]string{"PIMON_AGENT_ADDR": "127.0.0.1:9100"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AgentAddr != "127.0.0.1:9100" {
+		t.Fatalf("环境变量未生效: %q", cfg.AgentAddr)
+	}
+	cfg, _, err = Parse([]string{"--agent-addr", ":1"}, env(map[string]string{"PIMON_AGENT_ADDR": ":2"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AgentAddr != ":1" {
+		t.Fatalf("命令行参数应优先于环境变量: %q", cfg.AgentAddr)
+	}
+}

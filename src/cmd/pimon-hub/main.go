@@ -44,6 +44,7 @@ const usage = `用法: pimon-hub <命令> [参数]
 
 参数（用于 serve、setup-code、reset-password、restore，须写在位置参数之前）:
   --addr <地址>        监听地址，默认 :31415（环境变量 PIMON_ADDR）
+  --agent-addr <地址>  agent 通道监听地址，默认 :31418（环境变量 PIMON_AGENT_ADDR）
   --data-dir <目录>    数据目录，默认 /var/lib/pimon（环境变量 PIMON_DATA_DIR）
   --log-level <级别>   debug|info|warn|error，默认 info（环境变量 PIMON_LOG_LEVEL）
 
