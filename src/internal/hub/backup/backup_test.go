@@ -420,3 +420,95 @@ func TestRestoreRejectsBadArchives(t *testing.T) {
 		})
 	}
 }
+
+// skewClock 在假时钟之上叠加墙钟偏移，模拟无 RTC 的树莓派开机后被 NTP 校时。
+type skewClock struct {
+	*clock.Fake
+	mu     sync.Mutex
+	offset time.Duration
+}
+
+func (c *skewClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Fake.Now().Add(c.offset)
+}
+
+func (c *skewClock) skew(d time.Duration) {
+	c.mu.Lock()
+	c.offset = d
+	c.mu.Unlock()
+}
+
+func TestRunDailyRechecksWallClockAfterWake(t *testing.T) {
+	f := newFixture(t, start0)
+	sk := &skewClock{Fake: f.clk}
+	f.svc = New(Config{
+		DB: f.db, Clock: sk, SecretPath: f.secretPath, Dir: f.backupDir,
+		Settings: func() model.Settings { return f.settings },
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { f.svc.RunDaily(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+
+	waitFor(t, "进入等待", func() bool { return f.clk.Waiters() == 1 })
+	sk.skew(-time.Hour) // 校时把墙钟往回拨了 1 小时
+	f.clk.Advance(4 * time.Hour)
+	// 计时器到期时墙钟只有 03:00，不应备份，而应补等 1 小时。
+	waitFor(t, "补等差额", func() bool { return f.clk.Waiters() == 1 })
+	if list, _ := f.svc.List(); len(list) != 0 {
+		t.Fatalf("墙钟未到点不应备份: %v", list)
+	}
+	f.clk.Advance(time.Hour)
+	waitFor(t, "备份完成并进入下一轮", func() bool {
+		list, _ := f.svc.List()
+		return len(list) == 1 && f.clk.Waiters() == 1
+	})
+}
+
+func TestRunDailySkipsWhenDailyBackupExistsToday(t *testing.T) {
+	f := newFixture(t, start0)
+	if _, err := f.svc.Create(context.Background(), ReasonDaily); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { f.svc.RunDaily(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+
+	waitFor(t, "进入等待", func() bool { return f.clk.Waiters() == 1 })
+	f.clk.Advance(4 * time.Hour) // 到 04:00，同日已有 daily
+	waitFor(t, "跳过并进入下一轮", func() bool { return f.clk.Waiters() == 1 })
+	if list, _ := f.svc.List(); len(list) != 1 {
+		t.Fatalf("同日已有每日备份应跳过: %v", list)
+	}
+	// 次日照常备份。
+	f.clk.Advance(24 * time.Hour)
+	waitFor(t, "次日备份", func() bool {
+		list, _ := f.svc.List()
+		return len(list) == 2 && f.clk.Waiters() == 1
+	})
+}
+
+func TestRunDailySameDayUsesSettingsTimezone(t *testing.T) {
+	// 备份文件名按 UTC，判定「同一天」必须按设置时区：UTC 前一日 20:00 即上海次日 04:00。
+	start := time.Date(2026, 1, 1, 19, 0, 0, 0, time.UTC) // 上海 01-02 03:00
+	f := newFixture(t, start)
+	f.settings.Timezone = "Asia/Shanghai"
+	f.settings.Backup.DailyAt = "04:00"
+	if _, err := f.svc.Create(context.Background(), ReasonDaily); err != nil { // 上海 01-02 03:00
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { f.svc.RunDaily(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+
+	waitFor(t, "进入等待", func() bool { return f.clk.Waiters() == 1 })
+	f.clk.Advance(time.Hour) // 上海 01-02 04:00，UTC 仍是 01-01
+	waitFor(t, "跳过", func() bool { return f.clk.Waiters() == 1 })
+	if list, _ := f.svc.List(); len(list) != 1 {
+		t.Fatalf("按上海时区同日应跳过: %v", list)
+	}
+}

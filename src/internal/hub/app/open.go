@@ -142,7 +142,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	a.sessions = auth.NewSessions(a.db, o.clk)
 	a.screen = auth.NewScreenTokens(a.db, o.clk, a.cfg.ScreenTokenPath())
 	a.backups = backups(st.Get)
-	a.notifier = sdnotify.New(o.getenv)
+	a.notifier = sdnotify.New(o.getenv, os.Getpid)
 	a.plugins = plugins.New(plugins.Config{
 		Dir: a.cfg.PluginDir(), DB: a.db, Clock: o.clk, Builtins: runtime.Builtins(),
 	})
