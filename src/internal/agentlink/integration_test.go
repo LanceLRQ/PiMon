@@ -393,3 +393,26 @@ func TestIntegration_新连接顶替旧连接旧会话收到byeReplaced(t *testi
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestIntegration_发incompatible后Close版本原因对端按最大退避(t *testing.T) {
+	srv, auth, hub := startHub(t, nil)
+	cred := "incompat-credential"
+	auth.AddCredential(cred)
+	s, err := dial(t, agentDialer(srv, cred))
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	hs := recv(t, "hub 侧会话", hub.sessions)
+	if err := hs.Send(&agent.Incompatible{Reason: agent.ReasonVersionTooOld, RequiredMin: 2, HubVersion: "0.2.0"}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	hs.Close(agent.ReasonVersionTooOld)
+
+	r := waitDone(t, "agent 会话断开", s)
+	if r.Kind != agentlink.ClosePeerBye || r.Bye != agent.ReasonVersionTooOld {
+		t.Fatalf("CloseReason = %+v，期望对端 bye version_too_old", r)
+	}
+	if d := agentlink.DefaultPolicy(nil, &r); d != agentlink.MaxBackoff {
+		t.Fatalf("DefaultPolicy = %v，期望 MaxBackoff", d)
+	}
+}

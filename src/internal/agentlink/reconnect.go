@@ -68,8 +68,9 @@ type Policy func(err error, reason *CloseReason) Decision
 //   - 停止：配置错误 ErrDialConfig；auth_fail{bad_credential|revoked}；对端 bye{revoked}。
 //     凭据失效后继续重试只会让监听方按来源 IP 锁定，必须由用户重新配对。
 //   - 最大退避：钉扎失败；auth_fail{rate_limited}；bye{version_too_old|version_too_new}，对端发来或本端关闭均可。
-//     hub 发 incompatible 后直接断开、不发 bye，约定上层收到 incompatible 时调用 s.Close(m.Reason)，
-//     使关闭原因为 CloseLocal + 版本原因，从而按最大退避而不是密集重连。
+//     hub 侧发完 incompatible 后用 s.Close(版本原因) 断开，bye 排在 incompatible 之后发出，
+//     agent 侧据对端 bye（ClosePeerBye + 版本原因）即按最大退避，不依赖 Handler 是否先处理了 incompatible。
+//     agent 侧收到 incompatible 时本端 Close(m.Reason)（CloseLocal + 版本原因）只是兜底。
 //   - revoked 只认对端 bye（本端 Close 带 revoked 不代表自己被吊销）。
 //   - 其余（连接失败、握手超时或协议错误、其他 auth_fail 原因、会话断开、bye{replaced|shutdown}）按退避序列。
 func DefaultPolicy(err error, reason *CloseReason) Decision {
@@ -140,7 +141,8 @@ type ReconnectorConfig struct {
 	// Policy 为空时用 DefaultPolicy。
 	Policy Policy
 	// OnSession 在每次连上后同步调用，应快速返回；会话断开后重连循环继续。可为空。
-	// 上层收到 incompatible 时应调用 s.Close(m.Reason)，让 DefaultPolicy 按最大退避处置。
+	// 版本不兼容主要靠对端 bye{version_too_old|version_too_new} 判定为最大退避；
+	// 上层收到 incompatible 时调用 s.Close(m.Reason) 只是兜底（hub 侧发完 incompatible 应 Close(版本原因)）。
 	// 不得在 OnSession 内调用 Reconnector.Stop（会死锁），需要停止时另起协程或取消 ctx。
 	OnSession func(*Session)
 	// Clock 为空时用 Dialer.Clock，再为空用 clock.Real{}。

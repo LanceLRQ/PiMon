@@ -97,6 +97,8 @@ type Peer struct {
 // 都不会交给 Handler：响应只按 request_id 交给等待者，没有等待者的（例如超时后迟到的）
 // 由会话层丢弃；请求类消息（run_now、logs_get、upgrade_info_get）一律交给 Handler。
 // Done 关闭时，正在执行的 Handler 可能仍在运行，会话不等待它返回。
+// 会话断开（对端 bye、读错误、本端 Close 等）时，收件队列中尚未交给 Handler 的消息可能被丢弃，
+// Handler 返回后不保证还有后续回调。
 type Handler func(s *Session, msg agent.Message)
 
 // SessionOptions 是会话的可选参数，零值字段取默认值。
@@ -329,8 +331,10 @@ func (s *Session) deliver(id string, msg agent.Message) bool {
 }
 
 // Close 关闭会话并等到关闭完成，可重复与并发调用（后续调用只等待）。
-// reason 非空时先发 bye{reason}，最多等 ByeFlushTimeout（走 Clock）让它写出；
-// 发送队列已满时不发 bye 直接关闭。会话已因其他原因关闭时保留原有原因。
+// reason 非空时把 bye{reason} 排在已入队帧之后，先按序写出此前 Send 的帧再写 bye，
+// 最多等 ByeFlushTimeout（走 Clock），超时即放弃；发送队列已满时不发 bye 直接关闭。
+// reason 为空时不发 bye、不等待，已入队未写出的帧可能被丢弃；需要保证先前 Send 的帧送达，必须带 reason。
+// 会话已因其他原因关闭时保留原有原因。
 func (s *Session) Close(reason string) {
 	s.mu.Lock()
 	if s.closing {
