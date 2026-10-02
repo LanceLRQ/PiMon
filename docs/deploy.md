@@ -42,7 +42,7 @@ timedatectl
 ### 显示器
 
 - 在显示器自带的 OSD 菜单里关闭「无信号自动关机」「节能」之类的选项。树莓派用软件方式关屏后，显示器会检测到无信号，开启这些选项会让它进入待机而唤不醒。
-- 一些屏幕不提供 EDID（分辨率信息），树莓派无法自动识别。这时在 `/boot/firmware/cmdline.txt` 的**同一行末尾**追加一段空格加 `video=HDMI-A-1:<宽>x<高>@60D`，保存后重启。例如 10 寸 1280×800 的屏：
+- 一些屏幕不提供 EDID（分辨率信息），树莓派无法自动识别。这时在 `/boot/firmware/cmdline.txt` 的**同一行末尾**追加一段空格加 `video=HDMI-A-1:<宽>x<高>@60D`，保存后重启。树莓派 4B 有 HDMI-A-1 与 HDMI-A-2 两个口，请按实际接屏的接口修改，可用 `ls /sys/class/drm/` 查看（如 `card1-HDMI-A-1`）。例如 10 寸 1280×800 的屏：
 
   ```text
   ... rootwait video=HDMI-A-1:1280x800@60D
@@ -50,13 +50,19 @@ timedatectl
 
   `cmdline.txt` 只能有一行，不要换行。修改前先备份：`sudo cp /boot/firmware/cmdline.txt /boot/firmware/cmdline.txt.bak`。
 - 只有一个 Type-C 口、供电和触摸数据共用同一根线的触摸屏，不能直接接树莓派的 USB 口供电。请使用带外接电源的 USB HUB，或者供电与数据分离的线，否则会出现供电不足、触摸时断时续。
-- 外接键盘时，布局默认是 `gb`。需要其他布局时，在 `/etc/xdg/labwc/environment` 里修改 `XKB_DEFAULT_LAYOUT`（例如改成 `us`），重新登录后生效。
+- 外接键盘的布局取决于安装系统时选的键盘布局。需要其他布局时，在桌面用户的 `~/.config/labwc/environment` 里添加或修改 `XKB_DEFAULT_LAYOUT=us`（`us` 换成你要的布局），重新登录后生效。`install --kiosk` 只改这个文件里的 `XCURSOR_THEME` 一行，其他行保留。
 
 ## 安装
 
 ### 获取二进制
 
-下载与树莓派对应的二进制（linux/arm64 的 `pimon-hub`），放到树莓派上，并加上可执行权限：
+目前没有发布下载，需要从源码构建（在开发机上执行，需要 Go 与 pnpm）：
+
+```bash
+make build
+```
+
+产物在 `bin/pimon-hub-linux-arm64`。发布后会提供下载。把它拷到树莓派上，改名为 `pimon-hub` 并加上可执行权限：
 
 ```bash
 chmod +x ./pimon-hub
@@ -158,33 +164,40 @@ sudo ./pimon-hub install
 
 下面的命令按顺序执行。`<桌面用户>` 是配置过 kiosk 的桌面用户，没有配置 kiosk 的话跳过相关步骤。
 
-1. 停止并禁用服务，删除 unit：
+1. 停止并禁用 hub 服务，删除 unit：
 
    ```bash
-   sudo systemctl disable --now pimon-hub pimon-session-watchdog
-   sudo rm -f /etc/systemd/system/pimon-hub.service /etc/systemd/system/pimon-session-watchdog.service
+   sudo systemctl disable --now pimon-hub
+   sudo rm -f /etc/systemd/system/pimon-hub.service
+   ```
+
+   会话看门狗单独处理（没用 `--kiosk` 安装则跳过这一段）：
+
+   ```bash
+   sudo systemctl disable --now pimon-session-watchdog
+   sudo rm -f /etc/systemd/system/pimon-session-watchdog.service
+   ```
+
+   最后重新加载 systemd：
+
+   ```bash
    sudo systemctl daemon-reload
    ```
 
-   没有安装过会话看门狗时，`disable` 会提示该服务不存在，忽略即可。
+2. 还原桌面用户的 labwc 配置（先做这一步，再做第 3 步删除光标主题，避免配置指向已删除的主题）：
 
-2. 结束本机屏幕守护进程，并从桌面用户的 labwc 配置里还原：
+   - 编辑 `~/.config/labwc/autostart`，删除包含 `pimon-hub kiosk` 的那一行。如果这个文件是 install 新建的、里面没有别的内容，直接删除文件即可。
+   - install 删除过 swayidle 行的文件（`~/.config/labwc/autostart` 与 `/etc/xdg/labwc-greeter/autostart`）：需要恢复系统空闲息屏时，把被删的 swayidle 原行加回对应文件。install 只在文件原本存在且内容有变化时才在旁边留下备份 `autostart.pimon-bak-*`，有备份就可以从中找回原行；没有备份说明没有改过。
+   - `~/.config/labwc/environment`：有 `environment.pimon-bak-*` 备份就按备份还原原来的 `XCURSOR_THEME`；没有备份，就直接删除 `XCURSOR_THEME=pimon-hidden` 这一行（或改回你原来用的主题）。文件是 install 新建的话，直接删除文件。
+   - 本机屏幕守护进程会在桌面注销或重启后消失；想立即结束，以桌面用户身份执行 `pkill -f '[p]imon-hub kiosk'`。
 
-   ```bash
-   pkill -f 'pimon-hub kiosk'
-   ```
-
-   - 编辑 `~/.config/labwc/autostart`，删除包含 `pimon-hub kiosk` 的那一行。
-   - install 删除过 swayidle 行的文件（`~/.config/labwc/autostart` 与 `/etc/xdg/labwc-greeter/autostart`）旁边有 `autostart.pimon-bak-*` 备份。需要恢复系统空闲息屏时，把备份里的 swayidle 行加回对应文件。
-   - `~/.config/labwc/environment` 同样有 `environment.pimon-bak-*` 备份，按它还原 `XCURSOR_THEME`。
-
-3. 删除透明鼠标指针主题和 kiosk 的浏览器配置：
+3. 删除透明鼠标指针主题和 kiosk 的浏览器配置（以桌面用户身份执行）：
 
    ```bash
    rm -rf ~/.icons/pimon-hidden ~/.local/state/pimon
    ```
 
-   上面的命令以桌面用户身份执行。确认不再需要后，也可以删除各处的 `.pimon-bak-*` 备份文件。
+   确认不再需要后，也可以删除各处的 `.pimon-bak-*` 备份文件。完成后注销并重新登录桌面。
 
 4. 把桌面用户移出 `pimon` 组：
 
@@ -214,7 +227,7 @@ sudo ./pimon-hub install
 
 hub 每天在设定时刻（默认 04:00，按「设置」里的时区）把整库备份到 `/var/lib/pimon/backups`，默认保留最近 7 份，时刻和份数可以在设置里修改。升级前还会额外做一份 `pre-upgrade` 备份。备份文件名形如 `pimon-backup-20261002-200000-daily.tar.gz`（时间为 UTC）。
 
-在网页管理端的备份页面可以立即备份，也可以下载备份文件。建议定期把备份下载或拷贝到树莓派之外的地方，尤其是使用 SD 卡时。
+在网页管理端的「系统」页 → 「备份」面板可以立即备份，也可以下载备份文件；备份时刻和保留份数在「设置」页的备份区修改。建议定期把备份下载或拷贝到树莓派之外的地方，尤其是使用 SD 卡时。
 
 ### 恢复
 
@@ -264,7 +277,7 @@ hub 设置里还有一个「直连 HTTPS」开关，使用自签名证书。**�
 
 - 拉起 Chromium 全屏显示 PiMon 屏幕页，并用屏幕令牌自动登录。
 - Chromium 崩溃后自动重启；连续崩溃时间隔从 1 秒起逐次加倍，最长 60 秒，稳定运行 5 分钟后恢复。
-- 屏幕令牌或界面缩放变化时自动重启 Chromium；开启「每日重启」后，到点重启 Chromium（在「设置」的屏幕显示参数里配置）。
+- 屏幕令牌或界面缩放变化时自动重启 Chromium；开启「每日重启」后，到点重启 Chromium（在屏幕编辑器的「每日重启」里配置）。
 - 按「设置」里的时段计划开关屏，使用 `wlopm` 控制 HDMI 输出。
 - 关屏期间触摸屏幕即可唤醒（需要触摸屏）。
 - hub 升级后自动换用新版本的二进制。
@@ -311,7 +324,7 @@ install 会检查端口，被占用时输出占用者的进程号和程序，类
 [失败] 检查端口：端口 31415 已被占用：pid 777（/usr/bin/python3）
 ```
 
-结束该进程，或者在设置里改用别的端口后再运行 install。可以用下面的命令自己查：
+结束该进程后再运行 install。hub 的端口目前固定为 31415，需要对外使用别的端口时，请用 nginx 反代到 31415（见下文）。可以用下面的命令自己查：
 
 ```bash
 sudo ss -ltnp | grep 31415
@@ -322,7 +335,7 @@ sudo ss -ltnp | grep 31415
 依次检查：
 
 1. 看 kiosk 日志有没有报错：`journalctl -t pimon-kiosk -e`。
-2. 屏幕是否被软件关了：在桌面用户的终端里执行 `wlopm`，看输出是 `on` 还是 `off`；手动打开用 `wlopm --on '*'`。时段计划设了夜间关屏时，黑屏可能是预期行为。
+2. 屏幕是否被软件关了：在桌面用户的终端里执行 `wlopm`，看输出是 `on` 还是 `off`；手动打开用 `wlopm --on '*'`。通过 SSH 登录时需要带上环境变量：`WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/<uid> wlopm`（`<uid>` 用 `id -u <桌面用户>` 查）。时段计划设了夜间关屏时，黑屏可能是预期行为。
 3. 显示器 OSD 里的「无信号自动关机」「节能」是否关闭。
 4. 识别不到屏幕或分辨率不对时，检查 `/boot/firmware/cmdline.txt` 里的 `video=` 参数（见上文）。
 5. 检查电源：`vcgencmd get_throttled`，欠压会导致黑屏和重启。
