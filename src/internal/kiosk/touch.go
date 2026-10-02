@@ -57,8 +57,8 @@ type TouchConfig struct {
 	Open func(path string) (io.ReadCloser, error)
 	// Mode 返回当前屏幕状态的 mode（on/off）。
 	Mode func() string
-	// Wake 发出一次 kiosk_wake。
-	Wake func()
+	// Wake 发出一次 kiosk_wake，返回是否已投递（链路未连接时为 false）。
+	Wake func() bool
 	// OnChange 在检测结果发生变化（含首次检测）时调用，用于立即上报。
 	OnChange func()
 	// Interval 是重新检测的周期，默认 60 秒。
@@ -195,9 +195,13 @@ func (w *TouchWatcher) onTouch() {
 		w.mu.Unlock()
 		return
 	}
+	w.mu.Unlock()
+	if !w.cfg.Wake() {
+		return // 未投递不占去抖窗口，下一次触摸可以重试
+	}
+	w.mu.Lock()
 	w.lastWake = now
 	w.mu.Unlock()
-	w.cfg.Wake()
 }
 
 func (w *TouchWatcher) shutdown() {

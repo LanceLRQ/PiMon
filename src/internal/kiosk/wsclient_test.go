@@ -533,11 +533,15 @@ func TestWSLink_上报只保留最新(t *testing.T) {
 
 func TestWSLink_Wake发送kiosk_wake_未连接时丢弃(t *testing.T) {
 	f := newWSFixture(t)
-	f.link.Wake() // 未连接：不 panic、不阻塞
+	if f.link.Wake() { // 未连接：不 panic、不阻塞，返回未投递
+		t.Fatal("未连接时 Wake 应返回 false")
+	}
 	f.run(t)
 	f.hub.nextConn(t)
 	f.waitConnected(t)
-	f.link.Wake()
+	if !f.link.Wake() {
+		t.Fatal("已连接时 Wake 应返回 true")
+	}
 	m := f.hub.nextMsg(t, "kiosk_wake")
 	if _, has := m["minutes"]; has {
 		t.Fatalf("不应带 minutes（用 hub 默认）: %v", m)

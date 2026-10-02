@@ -128,17 +128,20 @@ func (l *WSLink) Report(r model.KioskReport) {
 	}
 }
 
-// Wake 请求 hub 唤醒屏幕（kiosk_wake，时长用 hub 默认）；不阻塞，未连接时丢弃。
-func (l *WSLink) Wake() {
+// Wake 请求 hub 唤醒屏幕（kiosk_wake，时长用 hub 默认）；不阻塞。
+// 返回是否已投递：未连接时丢弃并返回 false；已有待发的唤醒请求时合并，视为已投递。
+func (l *WSLink) Wake() bool {
 	l.mu.Lock()
 	s := l.cur
 	l.mu.Unlock()
-	if s != nil {
-		select {
-		case s.wake <- struct{}{}:
-		default:
-		}
+	if s == nil {
+		return false
 	}
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
+	return true
 }
 
 // Run 连接 hub 并维持连接，直到 ctx 结束。每次拨号前通过 sink.ReadToken 重读令牌；

@@ -51,6 +51,8 @@ type touchFixture struct {
 	w       *TouchWatcher
 	mode    atomic.Value
 	wakes   chan struct{}
+	// undelivered 为 true 时 Wake 返回未投递（链路未连接）。
+	undelivered atomic.Bool
 	changes atomic.Int32
 
 	mu      sync.Mutex
@@ -92,7 +94,7 @@ func newTouchFixture(t *testing.T, devices ...string) *touchFixture {
 			return r, nil
 		},
 		Mode:     func() string { return f.mode.Load().(string) },
-		Wake:     func() { f.wakes <- struct{}{} },
+		Wake:     func() bool { f.wakes <- struct{}{}; return !f.undelivered.Load() },
 		OnChange: func() { f.changes.Add(1) },
 	})
 	return f
@@ -187,6 +189,22 @@ func TestTouchWatcher_五秒去抖(t *testing.T) {
 	f.clk.Advance(time.Second) // 距首次满 5 秒
 	f.send(t, p, evTouchDown)
 	f.wantWake(t)
+}
+
+func TestTouchWatcher_唤醒未投递时不记去抖(t *testing.T) {
+	f := newTouchFixture(t, "/dev/input/event3")
+	runUntilCancel(t, f.w.Run)
+	p := f.waitOpened(t)
+
+	f.undelivered.Store(true)
+	f.send(t, p, evTouchDown)
+	f.wantWake(t) // 尝试过但链路未连接
+	f.undelivered.Store(false)
+	f.send(t, p, evTouchDown) // 时钟没动：未投递的那次不应占去抖窗口
+	f.wantWake(t)
+	f.send(t, p, evTouchDown)
+	f.sync(t, p)
+	f.wantNoWake(t) // 投递成功后才开始去抖
 }
 
 func TestTouchWatcher_设备打不开重测时重试(t *testing.T) {
