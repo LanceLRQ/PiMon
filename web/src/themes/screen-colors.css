@@ -1,0 +1,38 @@
+/* 屏幕命名空间的 Tailwind 颜色映射：text-s-ok、bg-s-card、border-s-border 等。
+   屏幕端与模板只许用这些类（eslint 禁用管理端颜色类与默认调色板）。
+   inline 模式让工具类直接引用 var(--status-*)，由 data-theme 子树按主题解析；
+   管理端没有这些变量，所以这些类不能用在管理端。 */
+@theme inline {
+  --color-s-bg: var(--background);
+  --color-s-fg: var(--foreground);
+  --color-s-card: var(--card);
+  --color-s-card-fg: var(--card-foreground);
+  --color-s-popover: var(--popover);
+  --color-s-popover-fg: var(--popover-foreground);
+  --color-s-muted: var(--muted);
+  --color-s-muted-fg: var(--muted-foreground);
+  --color-s-border: var(--border);
+  --color-s-primary: var(--primary);
+  --color-s-primary-fg: var(--primary-foreground);
+  --color-s-ring: var(--ring);
+  --color-s-raised: var(--surface-raised);
+  --color-s-faint: var(--foreground-faint);
+  --color-s-ok: var(--status-ok-color);
+  --color-s-ok-fg: var(--status-ok-foreground);
+  --color-s-warning: var(--status-warning-color);
+  --color-s-warning-fg: var(--status-warning-foreground);
+  --color-s-warning-bg: var(--status-warning-bg);
+  --color-s-critical: var(--status-critical-color);
+  --color-s-critical-fg: var(--status-critical-foreground);
+  --color-s-critical-bg: var(--status-critical-bg);
+  --color-s-unknown: var(--status-unknown-color);
+  --color-s-unknown-fg: var(--status-unknown-foreground);
+  --color-s-error: var(--status-error-color);
+  --color-s-error-fg: var(--status-error-foreground);
+  --color-s-chart-1: var(--chart-1);
+  --color-s-chart-2: var(--chart-2);
+  --color-s-chart-3: var(--chart-3);
+  --color-s-chart-4: var(--chart-4);
+  --color-s-chart-5: var(--chart-5);
+  --color-s-chart-grid: var(--chart-grid);
+}

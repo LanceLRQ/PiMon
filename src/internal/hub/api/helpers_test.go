@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -21,6 +22,8 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/screens"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/screenstate"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
@@ -118,13 +121,16 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 			Clock: clk, Version: "v-test", DataDir: dir, Plugins: reg, Ring: ring,
 			ProcWriteBytes: func() (int64, bool) { return 0, false },
 		}),
+		DataDir:      dir,
+		ListenAddr:   func() string { return "0.0.0.0:41999" },
+		LocalIPs:     func() []net.IP { return []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("192.168.7.8")} },
 		Plugins:      reg,
 		Instances:    inst,
 		History:      hist,
 		Settings:     st,
 		Hasher:       hasher,
 		Limiter:      auth.NewLimiter(clk, 10, 15*time.Minute),
-		SetupCodes:   auth.NewSetupCodes(db, clk),
+		SetupCodes:   auth.NewSetupCodes(db, clk, box),
 		Admins:       auth.NewAdmins(db, clk),
 		Sessions:     auth.NewSessions(db, clk),
 		ScreenTokens: auth.NewScreenTokens(db, clk, tokenPath),
@@ -135,6 +141,12 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 		Proxies: proxies.New(proxies.Config{DB: db, Box: box, Clock: clk, Referrers: refs}),
 	}
 	inst.UseProxies(deps.Proxies)
+	deps.Screens = screens.New(screens.Config{DB: db, Clock: clk, Plugins: reg, Instances: inst})
+	inst.UseScreenRefs(deps.Screens)
+	deps.ScreenState = screenstate.New(screenstate.Config{DB: db, Clock: clk, Timezone: func() string { return st.Get().Timezone }})
+	if err := deps.ScreenState.Load(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if err := deps.ScreenTokens.EnsureExists(ctx); err != nil {
 		t.Fatal(err)
 	}

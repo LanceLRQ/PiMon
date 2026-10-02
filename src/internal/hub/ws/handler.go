@@ -124,7 +124,7 @@ func (h *Hub) handle(c *client, raw []byte) {
 	case ui.TypeSubscribe:
 		h.subscribe(c.ctx, c, msg.Topics)
 	case ui.TypeViewportReport:
-		// M1d 的屏幕视口上报；本期只算作活动。
+		h.handleReport(c, msg)
 	default:
 		c.sendError(ui.ErrBadMessage, map[string]any{})
 	}

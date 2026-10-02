@@ -315,6 +315,20 @@ func (p *plugin) autoLocate(ctx context.Context) (location, error) {
 	return loc, nil
 }
 
+// errNoCity 表示既没有选城市也没有开启自动定位；这不是采集失败，而是尚未配置完成。
+var errNoCity = errors.New("未选择城市 / No city chosen")
+
+// cityRequiredKey 是未选城市提示的 i18n 键（前端按 plugin.weather.<文本> 查找，即 plugin.weather.city_required）。
+const cityRequiredKey = "city_required"
+
+// setupReport 是未选城市时的报告：状态未知，并给出 setup 项供模板显示「请选择城市」占位。
+func setupReport(now time.Time) *report.Report {
+	return &report.Report{
+		Status: report.StatusUnknown, CollectedAt: now.UnixMilli(),
+		Items: []report.Item{{Key: "setup", Type: report.TypeState, State: report.StatusUnknown, Text: cityRequiredKey}},
+	}
+}
+
 // resolve 确定本次使用的位置，并返回更新后的 state。
 func (p *plugin) resolve(ctx context.Context, in runtime.Input, now time.Time, st state) (location, state, error) {
 	loc, ok, err := parseCity(in.Config["city"])
@@ -325,7 +339,7 @@ func (p *plugin) resolve(ctx context.Context, in runtime.Input, now time.Time, s
 		return loc, st, nil
 	}
 	if !cfg.Bool(in.Config, "auto_locate", false) {
-		return location{}, st, errors.New("未选择城市：请在配置中选择城市或开启自动定位 / No city chosen: pick a city or enable auto-locate")
+		return location{}, st, errNoCity
 	}
 	if st.Located != nil && st.Located.valid() && now.Sub(time.UnixMilli(st.LocatedAt)) < locateTTL {
 		return *st.Located, st, nil
@@ -386,6 +400,9 @@ func (p *plugin) Collect(ctx context.Context, in runtime.Input) (*report.Report,
 	now := clk.Now()
 	st := parseState(in.State)
 	loc, st, err := p.resolve(ctx, in, now, st)
+	if errors.Is(err, errNoCity) {
+		return setupReport(now), nil
+	}
 	if err != nil {
 		return nil, err
 	}

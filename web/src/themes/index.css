@@ -1,0 +1,7 @@
+/* 屏幕根与编辑器画布的聚合入口：三套主题 token + 降低特效覆盖。
+   不要在 main.tsx 引入，管理端与屏幕端共用 index.html，全局引入会串色。
+   降低特效必须排在最后，才能压过主题里同名的 effect/motion token。 */
+@import "./ambient/tokens.css";
+@import "./mission-control/tokens.css";
+@import "./industrial/tokens.css";
+@import "./reduce-effects.css";

@@ -36,3 +36,44 @@ func TestCollectReturnsEmptyOKReport(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// sizesOf 返回 manifest 里某小组件声明的「尺寸 → 模板」。
+func sizesOf(t *testing.T, m *manifest.Manifest, id string) map[string]string {
+	t.Helper()
+	for _, w := range m.Widgets {
+		if w.ID != id {
+			continue
+		}
+		out := map[string]string{}
+		for _, s := range w.Sizes {
+			out[s.Size] = s.Template
+			if len(s.Bind) != 0 {
+				t.Errorf("%s %s 应为空绑定: %+v", id, s.Size, s.Bind)
+			}
+		}
+		return out
+	}
+	t.Fatalf("manifest 缺少小组件 %s", id)
+	return nil
+}
+
+func TestManifestDeclaresClockAndText(t *testing.T) {
+	src, _ := runtime.Builtin("core")
+	m := src.Manifest()
+	if len(m.Widgets) != 2 {
+		t.Fatalf("core 只声明 clock 与 text 两个小组件: %d", len(m.Widgets))
+	}
+	clock := sizesOf(t, m, "clock")
+	if len(clock) != 3 || clock["1x1"] != "clock" || clock["2x1"] != "clock" || clock["4x2"] != "clock" {
+		t.Fatalf("clock 尺寸不符: %+v", clock)
+	}
+	text := sizesOf(t, m, "text")
+	for _, k := range []string{"2x1", "2x2", "4x1", "4x2"} {
+		if text[k] != "text" {
+			t.Errorf("text 缺少尺寸 %s: %+v", k, text)
+		}
+	}
+	if len(text) != 4 {
+		t.Errorf("text 尺寸集应有限: %+v", text)
+	}
+}

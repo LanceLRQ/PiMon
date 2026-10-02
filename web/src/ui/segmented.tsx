@@ -14,11 +14,12 @@ interface SegmentedProps<V extends string> {
   value: V
   onChange: (value: V) => void
   ariaLabel: string
+  disabled?: boolean
   className?: string
 }
 
 // 分段选择：细线描边，选中项反色；按单选组暴露给辅助技术
-export function Segmented<V extends string>({ options, value, onChange, ariaLabel, className }: SegmentedProps<V>) {
+export function Segmented<V extends string>({ options, value, onChange, ariaLabel, disabled, className }: SegmentedProps<V>) {
   return (
     <div
       role="radiogroup"
@@ -34,10 +35,11 @@ export function Segmented<V extends string>({ options, value, onChange, ariaLabe
             role="radio"
             aria-checked={on}
             aria-label={o.title}
+            disabled={disabled}
             title={o.title}
             onClick={() => onChange(o.value)}
             className={cn(
-              'flex h-7 flex-1 items-center justify-center gap-1 px-2.5 text-xs whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'flex h-7 flex-1 items-center justify-center gap-1 px-2.5 text-xs whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
               i > 0 && 'border-l border-border',
               on ? 'bg-inv-bg text-inv-ink' : 'text-ink-2 hover:bg-panel-2',
             )}

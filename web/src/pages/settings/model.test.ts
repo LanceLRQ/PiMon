@@ -9,6 +9,7 @@ const base: Settings = {
   trusted_proxies: ['192.168.1.2/32'],
   https_enabled: false,
   reduce_effects: false,
+  screen: { carousel_mode: 'auto', idle_home_seconds: 60, default_dwell_seconds: 15, input_mode: 'auto', ui_scale: 1 },
   retention: { raw_hours: 24, five_min_days: 30, hour_days: 365 },
   backup: { daily_at: '04:00', keep: 7 },
 }
@@ -62,6 +63,15 @@ describe('保存前规整', () => {
     expect(out.access_url).toBe('https://pimon.home.arpa')
     expect(out.trusted_proxies).toEqual(['10.0.0.1'])
     expect(d.trusted_proxies).toEqual([' 10.0.0.1 ', '', '  '])
+  })
+
+  it('屏幕显示参数原样回传且不与草稿共享引用', () => {
+    const d = clone(base)
+    d.screen.carousel_mode = 'home_only'
+    const out = normalizeForSave(d)
+    expect(out.screen).toEqual({ ...base.screen, carousel_mode: 'home_only' })
+    expect(out.screen).not.toBe(d.screen)
+    expect(dirtyKeys(d, base)).toEqual([])
   })
 })
 

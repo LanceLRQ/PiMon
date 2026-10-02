@@ -1,0 +1,110 @@
+/* 氛围（ambient）：转写自 ui-demo 方向 3。暖炭深底、柔光琥珀、圆角卡片。
+   L1 只用 hex；L2 只引用本文件的 --p-*；不含 backdrop-filter、呼吸与闪烁动画。 */
+:root[data-theme="ambient"],
+/* stylelint-disable-next-line no-descending-specificity */
+[data-theme="ambient"] {
+  /* L1 原始层 */
+  --p-bg-deep: #131215;
+  --p-charcoal: #1c1a20;
+  --p-raised: #26232a;
+  --p-popover: #232027;
+  --p-muted: #25222b;
+  --p-ink-hi: #f2ece2;
+  --p-ink-mid: #a89f92;
+  --p-ink-low: #716e6b;
+  --p-line: #342f33;
+  --p-line-dash: #5a5359;
+  --p-accent: #e8ab6a;
+  --p-accent-glow: #e8ab6a61;
+  --p-night: #8fa6d6;
+  --p-ok: #a9c9a1;
+  --p-warn: #e4b268;
+  --p-crit: #e2857f;
+  --p-idle: #8a8578;
+  --p-error: #b9a0e0;
+  --p-warn-bg: #33281a;
+  --p-crit-bg: #3a1f20;
+  --p-grid: #2a272d;
+  --p-shadow: #00000052;
+
+  /* L2 表面与文字 */
+  --background: var(--p-bg-deep);
+  --foreground: var(--p-ink-hi);
+  --card: var(--p-charcoal);
+  --card-foreground: var(--p-ink-hi);
+  --popover: var(--p-popover);
+  --popover-foreground: var(--p-ink-hi);
+  --muted: var(--p-muted);
+  --muted-foreground: var(--p-ink-mid);
+  --border: var(--p-line);
+  --primary: var(--p-accent);
+  --primary-foreground: var(--p-bg-deep);
+  --ring: var(--p-accent);
+  --surface-raised: var(--p-raised);
+
+  /* faint 只用于装饰或大号文字（>=18px 或 >=14px 粗体），对比度口径 >=3；
+     承载信息的小字（时间戳、单位、标签）一律用 --muted-foreground（>=4.5，Ruling 42） */
+  --foreground-faint: var(--p-ink-low);
+
+  /* L2 状态：色 + 形 + 强调 */
+  --status-ok-color: var(--p-ok);
+  --status-ok-foreground: var(--p-bg-deep);
+  --status-ok-marker: dot;
+  --status-ok-weight: normal;
+  --status-warning-color: var(--p-warn);
+  --status-warning-foreground: var(--p-bg-deep);
+  --status-warning-bg: var(--p-warn-bg);
+  --status-warning-marker: ring;
+  --status-warning-weight: normal;
+  --status-critical-color: var(--p-crit);
+  --status-critical-foreground: var(--p-bg-deep);
+  --status-critical-bg: var(--p-crit-bg);
+  --status-critical-marker: triangle;
+  --status-critical-weight: strong;
+  --status-unknown-color: var(--p-idle);
+  --status-unknown-foreground: var(--p-bg-deep);
+  --status-unknown-marker: diamond;
+  --status-unknown-weight: normal;
+  --status-error-color: var(--p-error);
+  --status-error-foreground: var(--p-bg-deep);
+  --status-error-marker: square;
+  --status-error-weight: normal;
+
+  /* L2 弱化态 */
+  --state-dim-opacity: 0.45;
+  --state-placeholder-border: 1px dashed var(--p-line-dash);
+
+  /* L2 排版 */
+  --font-display: "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-numeric: "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-label: "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-body: "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --size-value-xl: 64px;
+  --size-value-lg: 40px;
+  --size-value-md: 28px;
+  --size-value-sm: 18px;
+  --size-label: 12px;
+
+  /* L2 形状、间距与密度 */
+  --radius: 18px;
+  --radius-card: var(--radius);
+  --border-card-width: 1px;
+  --border-card-style: solid;
+  --grid-gap: 12px;
+  --card-pad: 20px;
+  --density: airy;
+
+  /* L2 图表 */
+  --chart-1: var(--p-accent);
+  --chart-2: var(--p-ok);
+  --chart-3: var(--p-night);
+  --chart-4: var(--p-crit);
+  --chart-5: var(--p-error);
+  --chart-grid: var(--p-grid);
+
+  /* L2 特效与动效 */
+  --effect-card-shadow: 0 16px 36px var(--p-shadow);
+  --effect-glow: 0 0 9px var(--p-accent-glow);
+  --effect-backdrop: none;
+  --motion-duration: 200ms;
+}

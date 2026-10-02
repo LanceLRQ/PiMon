@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { Instance, Settings } from '@/types/generated'
+import type { Instance, LayoutState, ScreenState, Settings } from '@/types/generated'
 import type { Patch, ScreenSettings, Snapshot } from '@/types/protocol.generated'
 
 // 实时数据存储：snapshot 整体覆盖，patch 按实体增量合并。
@@ -14,6 +14,9 @@ export interface LiveState {
   settings: Settings | null
   screenSettings: ScreenSettings | null
   instances: Instance[]
+  // 当前布局（原始，带版本）与屏幕当前状态；管理员会话默认订阅 layout、screen_state
+  layout: LayoutState | null
+  screenState: ScreenState | null
   // 服务端时钟减本机时钟（毫秒），用于校正时钟偏差
   clockOffsetMs: number
   // 中枢已升级但本页刷新被防循环机制拦下：外壳提示用户手动刷新
@@ -30,6 +33,8 @@ export const initialLiveState: LiveState = {
   settings: null,
   screenSettings: null,
   instances: [],
+  layout: null,
+  screenState: null,
   clockOffsetMs: 0,
   buildOutdated: false,
   lastError: null,
@@ -77,6 +82,8 @@ export function createLiveStore(): LiveStore {
         settings: s.settings ?? null,
         screenSettings: s.screen_settings ?? null,
         instances: s.instances ?? [],
+        layout: s.layout ?? null,
+        screenState: s.screen_state ?? null,
         clockOffsetMs: offset ?? state.clockOffsetMs,
         lastError: null,
       })
@@ -100,6 +107,12 @@ export function createLiveStore(): LiveStore {
         case 'settings':
           if (p.settings) next.settings = p.settings
           if (p.screen_settings) next.screenSettings = p.screen_settings
+          break
+        case 'layout':
+          if (p.layout) next.layout = p.layout
+          break
+        case 'screen_state':
+          if (p.screen_state) next.screenState = p.screen_state
           break
         default:
           // 未知实体：向前兼容，忽略
@@ -137,3 +150,5 @@ export const selectInstances = (s: LiveState) => s.instances
 export const selectSettings = (s: LiveState) => s.settings
 export const selectBuildOutdated = (s: LiveState) => s.buildOutdated
 export const selectConnected = (s: LiveState) => s.connected
+export const selectLayout = (s: LiveState) => s.layout
+export const selectScreenState = (s: LiveState) => s.screenState

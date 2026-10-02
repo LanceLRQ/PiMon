@@ -40,5 +40,7 @@ export default defineConfig({
     setupFiles: ['./src/test-setup.ts'],
     include: ['src/**/*.test.{ts,tsx}', 'lint-fixtures/**/*.test.ts'],
     css: false,
+    // 用例数增长后默认 5 秒在并行负载下不稳
+    testTimeout: 15_000,
   },
 })

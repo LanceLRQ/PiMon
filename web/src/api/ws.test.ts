@@ -220,4 +220,53 @@ describe('LiveSocket', () => {
     expect(FakeSocket.instances).toHaveLength(1)
     expect(store.getState().connected).toBe(false)
   })
+  it('screen_control 交给注册的回调，没有回调时忽略', () => {
+    const onScreenControl = vi.fn()
+    sock.stop()
+    sock = new LiveSocket({
+      store,
+      url: 'ws://hub/ws',
+      createSocket: (u) => new FakeSocket(u) as unknown as WebSocket,
+      getPageBuild: () => null,
+      onScreenControl,
+    })
+    sock.start()
+    last().open()
+    const msg = { type: 'screen_control', server_time: '2026-10-01T00:00:00Z', action: 'switch', screen_id: 's1', op_id: 7 }
+    last().receive(msg)
+    expect(onScreenControl).toHaveBeenCalledWith(msg)
+    sock.stop()
+    sock = new LiveSocket({ store, url: 'ws://hub/ws', createSocket: (u) => new FakeSocket(u) as unknown as WebSocket, getPageBuild: () => null })
+    sock.start()
+    last().open()
+    expect(() => last().receive(msg)).not.toThrow()
+  })
+
+  it('每次连接建立时调用 onConnected（含重连），可用公开的 send 发消息', () => {
+    const onConnected = vi.fn()
+    sock.stop()
+    sock = new LiveSocket({
+      store,
+      url: 'ws://hub/ws',
+      createSocket: (u) => new FakeSocket(u) as unknown as WebSocket,
+      getPageBuild: () => null,
+      random: () => 1,
+      onConnected,
+    })
+    sock.start()
+    last().open()
+    expect(onConnected).toHaveBeenCalledTimes(1)
+    sock.send({ type: 'viewport_report', current_screen: 'index' })
+    expect(last().sent).toEqual(['{"type":"viewport_report","current_screen":"index"}'])
+    last().drop()
+    vi.advanceTimersByTime(1000)
+    last().open()
+    expect(onConnected).toHaveBeenCalledTimes(2)
+  })
+
+  it('连接未打开时 send 静默丢弃', () => {
+    sock.start()
+    sock.send({ type: 'viewport_report', current_screen: 'index' })
+    expect(last().sent).toEqual([])
+  })
 })

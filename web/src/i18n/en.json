@@ -55,9 +55,18 @@
     "reload": "Reload page",
     "sessionError": "Cannot read the session state. Check that the hub is running.",
     "retry": "Retry",
-    "screenPlaceholder": "The screen app arrives in M1d",
     "notFound": "Page not found",
     "versionUpdated": "The hub was upgraded. Reload the page to load the new version."
+  },
+  "plugin": {
+    "hub-self": {
+      "online": "Online",
+      "offline": "Offline",
+      "unknown": "Unknown"
+    },
+    "weather": {
+      "city_required": "Please choose a city"
+    }
   },
   "placeholder": {
     "pending": "This page will be implemented in a later task.",
@@ -127,6 +136,13 @@
     "instance": {
       "not_found": "Instance not found",
       "in_use": "The instance is used by screens and cannot be deleted"
+    },
+    "layout": {
+      "conflict": "The layout was updated elsewhere. Reload before saving.",
+      "invalid": "The layout is invalid: overlapping, out-of-bounds or disallowed sizes"
+    },
+    "schedule": {
+      "invalid": "The schedule is invalid: bad format or theme, overlapping periods, or gaps in the 24 hours"
     },
     "run": {
       "timeout": "Collection timed out",
@@ -283,6 +299,7 @@
     "inSeconds": "in {{n}}s",
     "inMinutes": "in {{n}} min",
     "inHours": "in {{n}} h",
+    "inHoursMinutes": "in {{h}} h {{m}} min",
     "inDays": "in {{n}} d",
     "uptimeDays": "{{d}}d {{h}}h",
     "uptimeHours": "{{h}}h {{m}}m",
@@ -497,12 +514,38 @@
     },
     "screen": {
       "title": "Screen",
-      "meta": "arrives in M1d",
-      "pending": "Screen module not connected yet",
       "keyRefresh": "Refresh",
       "keySwitch": "Switch screen",
-      "keyOff": "Screen off",
-      "keyWake": "Wake temporarily"
+      "keyOff": "Display off",
+      "keyWake": "Wake",
+      "online": "Display online",
+      "offline": "Display offline",
+      "never": "Display never connected",
+      "unavailable": "The display status cannot be read right now",
+      "thumbLabel": "Screen thumbnail",
+      "thumbEmpty": "No layout yet",
+      "thumbOff": "Display is off",
+      "kvResolution": "Resolution",
+      "kvGrid": "Grid",
+      "kvInput": "Input mode",
+      "kvCurrent": "Current screen",
+      "kvTheme": "Current theme",
+      "kvNext": "Next change",
+      "touchYes": "Touch",
+      "touchNo": "No touch",
+      "unknown": "Unknown",
+      "keySwitchTo": "To {{name}}",
+      "keyOn": "Display on",
+      "wakeMinutes": "{{n}} min",
+      "sent": "Sent: {{action}}",
+      "action": {
+        "refresh": "refresh",
+        "switch": "switch screen",
+        "off": "display off",
+        "on": "display on",
+        "wake": "temporary wake"
+      },
+      "nextAt": "{{time}}"
     },
     "table": "All instances"
   },
@@ -963,9 +1006,24 @@
       "cached": "Refreshed every 60 s"
     },
     "screen": {
-      "title": "Screen",
-      "meta": "M1d",
-      "placeholder": "Screen online state, resolution and kiosk daemon details appear here once screen sessions are wired up in M1d."
+      "title": "Display",
+      "meta": "display",
+      "online": "Online",
+      "offline": "Offline",
+      "never": "Never connected",
+      "resolution": "Resolution",
+      "grid": "Grid",
+      "input": "Input mode",
+      "scale": "UI scale",
+      "current": "Current screen",
+      "lastSeen": "Last online",
+      "unknown": "Unknown",
+      "manage": "Adjust in Screen management",
+      "touchYes": "Touch",
+      "touchNo": "No touch",
+      "touchAuto": "Auto",
+      "unavailable": "The display status cannot be read right now.",
+      "inputAuto": "Auto (detected: {{kind}})"
     },
     "idle": {
       "title": "System idle-blank check",
@@ -1025,6 +1083,643 @@
       "backingUp": "Backing up…",
       "created": "Created backup \"{{name}}\"",
       "loadFailed": "Could not load the backup list"
+    }
+  },
+  "screenThemes": {
+    "ambient": "Ambient",
+    "mission-control": "Mission Control",
+    "industrial": "Industrial"
+  },
+  "screenWidget": {
+    "unknown": "Unknown",
+    "unconfigured": "Not configured",
+    "broken": "Broken reference",
+    "stale": "Stale",
+    "offline": "Offline",
+    "maintenance": "Maintenance",
+    "templatePending": "This template will be available in a later version",
+    "never": "Never",
+    "textEmpty": "No text set",
+    "more": "+{{n}}",
+    "chart": {
+      "loading": "Loading",
+      "empty": "No history yet",
+      "unsupported": "No history curve for this item"
+    },
+    "weather": {
+      "attribution": "Weather data by Open-Meteo.com",
+      "humidity": "Humidity",
+      "wind": "Wind",
+      "tomorrow": "Tomorrow"
+    },
+    "level": {
+      "ok": "Normal",
+      "warning": "Warning",
+      "critical": "Critical",
+      "unknown": "Unknown",
+      "error": "Collection failed"
+    },
+    "noItems": "No items"
+  },
+  "screenApp": {
+    "detail": {
+      "close": "Close",
+      "items": "All data items",
+      "history": "History",
+      "noItems": "No data yet",
+      "updated": "Updated"
+    },
+    "disconnected": "Connection lost, showing data from {{time}}",
+    "tokenInvalid": {
+      "title": "Screen token is no longer valid",
+      "body": "Restart the kiosk on the Raspberry Pi (or open this page again with the screen token link) to get a new session."
+    },
+    "hubDown": {
+      "title": "The hub is not running",
+      "body": "Cannot reach the hub. Make sure pimon-hub is running on the Raspberry Pi; this screen reconnects automatically."
+    },
+    "adminPreview": {
+      "back": "Back to admin",
+      "badge": "Admin preview",
+      "hint": "Reports no display size and does not affect the display online status",
+      "loading": "Loading preview…",
+      "failed": "Failed to load the preview"
+    },
+    "setup": {
+      "title": "First-time setup",
+      "codeLabel": "Setup code",
+      "openOnPhone": "Open {{url}} on your phone to finish setup",
+      "unavailable": "The setup code is not available yet, please wait…",
+      "hint": "Enter the code on your phone and set the admin password; this screen will open the dashboard automatically.",
+      "raspberryHost": "Pi address",
+      "alsoTry": "Or try: {{urls}}"
+    }
+  },
+  "layoutEd": {
+    "mobile": {
+      "title": "Edit the layout on a computer",
+      "body": "On a phone you can check the screen status, switch screens and turn it on or off.",
+      "remote": "Go to remote control"
+    },
+    "loading": "Loading layout…",
+    "loadFailed": "Could not load the layout: {{error}}",
+    "retry": "Retry",
+    "tabs": "Screen tabs",
+    "baseVersion": "Based on v{{version}}",
+    "grid": {
+      "label": "Grid",
+      "oob": "{{n}} out of bounds"
+    },
+    "screen": {
+      "online": "online",
+      "offline": "offline"
+    },
+    "template": {
+      "value": "Generic · Value",
+      "gauge": "Generic · Gauge",
+      "state": "Generic · State",
+      "chart": "Generic · Trend chart",
+      "list": "Generic · List",
+      "table": "Generic · Table",
+      "status-grid": "Aggregate · Status grid",
+      "clock": "Clock",
+      "text": "Text",
+      "weather": "Weather"
+    },
+    "lib": {
+      "title": "Widget library",
+      "search": "Search widgets / plugin id",
+      "tab": {
+        "plugin": "Plugin",
+        "generic": "Generic",
+        "aggregate": "Aggregate"
+      },
+      "none": "No matching widgets",
+      "add": "Add \"{{name}}\" to the canvas",
+      "hint": "Drag onto the canvas · snaps to the grid"
+    },
+    "stage": {
+      "occupied": "used {{used}}/{{total}}",
+      "preview": "Preview theme",
+      "previewState": "Preview state",
+      "state": {
+        "real": "Actual",
+        "ok": "ok",
+        "warning": "warning",
+        "critical": "critical"
+      },
+      "stateTitle": {
+        "real": "Show real data",
+        "ok": "Show everything as ok (canvas only)",
+        "warning": "Show everything as warning (canvas only)",
+        "critical": "Show everything as critical (canvas only)"
+      }
+    },
+    "canvas": {
+      "label": "Screen canvas",
+      "widget": "{{title}}, column {{col}} row {{row}}, {{size}}",
+      "noRoom": "No room"
+    },
+    "keys": {
+      "dragKey": "drag",
+      "drag": "move",
+      "move": "nudge by cell",
+      "delete": "delete",
+      "esc": "deselect",
+      "undo": "undo"
+    },
+    "reject": {
+      "overlap": "No room: overlaps another widget",
+      "out_of_bounds": "No room: outside the grid",
+      "size_not_allowed": "That size is not declared for this widget",
+      "no_space": "There is no free spot on the canvas for it",
+      "gridShrink": "This grid would push {{n}} widget(s) out of bounds. Move or delete them first."
+    },
+    "insp": {
+      "title": "Inspector",
+      "metaWidget": "widget",
+      "metaScreen": "screen",
+      "screenHint": "Screen properties · no widget selected",
+      "summary": "Summary",
+      "grid": "Grid",
+      "widgets": "Widgets",
+      "occupied": "Occupied",
+      "source": "Source",
+      "binding": "Data binding",
+      "instance": "Instance",
+      "item": "Data item",
+      "pickInstance": "Pick an instance",
+      "pickItem": "Pick a data item",
+      "autoInstance": "Automatic (the plugin's earliest instance)",
+      "missingInstance": "(instance no longer exists)",
+      "addRef": "Add data item",
+      "removeRef": "Remove item {{n}}",
+      "size": "Size",
+      "sizeFrom": {
+        "plugin": "declared by plugin",
+        "catalog": "allowed by catalog"
+      },
+      "position": "Position",
+      "positionHint": "highlights the canvas rulers",
+      "col": "col",
+      "row": "row",
+      "left": "Move left",
+      "right": "Move right",
+      "up": "Move up",
+      "down": "Move down",
+      "display": "Display options",
+      "titleLabel": "Title",
+      "titlePlaceholder": "Leave empty for the default title",
+      "icon": "Icon",
+      "iconNone": "No icon",
+      "text": "Body text",
+      "threshold": "Manual threshold colouring",
+      "thresholdOff": "When off, the widget follows the data item's own state; numeric items stay neutral.",
+      "direction": "Trigger direction",
+      "above": "Above",
+      "aboveTitle": "Escalate when the value reaches or exceeds the threshold",
+      "below": "Below",
+      "belowTitle": "Escalate when the value reaches or falls below the threshold",
+      "warning": "Warning threshold",
+      "critical": "Critical threshold",
+      "remove": "Delete widget"
+    },
+    "saved": "Saved as v{{version}} and pushed to the display",
+    "saveInvalid": "The layout failed validation ({{n}} problem(s)); check overlaps, bounds and sizes",
+    "undo": {
+      "label": "Undo",
+      "title": "Undo the latest change (⌘Z)",
+      "conflict": "Cannot undo: restoring it would overlap the current draft. The conflicting widgets are highlighted on the canvas; resolve them first.",
+      "outOfBounds": "Cannot undo: restoring it would fall outside the current grid. If the grid was shrunk, undo the grid change first."
+    },
+    "bar": {
+      "history": "History",
+      "discard": "Discard",
+      "save": "Save and push",
+      "saving": "Saving…"
+    },
+    "chg": {
+      "title": "Unsaved changes",
+      "dirty": "{{n}} unsaved",
+      "clean": "Same as v{{version}}",
+      "meta": "Based on v{{base}} · saving creates v{{next}} and pushes it to the display",
+      "none": "No unsaved changes",
+      "undoOne": "Undo",
+      "kind": {
+        "grid": "Grid",
+        "add": "Added",
+        "remove": "Removed",
+        "move": "Moved",
+        "resize": "Size",
+        "config": "Settings",
+        "screenAdd": "New screen",
+        "screenRename": "Renamed"
+      }
+    },
+    "discardDlg": {
+      "title": "Discard all unsaved changes?",
+      "body": "The draft returns to v{{version}}; {{n}} change(s) will be lost.",
+      "cancel": "Keep editing",
+      "confirm": "Discard changes"
+    },
+    "leave": {
+      "title": "Leave the layout editor?",
+      "body": "You have unsaved layout changes; they will be lost if you leave.",
+      "stay": "Stay on this page",
+      "leave": "Discard changes and leave"
+    },
+    "conflict": {
+      "title": "The layout was updated by someone else",
+      "body": "You edited from v{{base}}, but the server is now at v{{latest}}.",
+      "overwriteHint": "Keeping mine overwrites their changes with your draft; their version stays in the history and can be rolled back to at any time.",
+      "view": "View their changes",
+      "overwrite": "Keep mine and resubmit on the latest version",
+      "close": "Later",
+      "theirsTitle": "Their changes (v{{base}} → v{{latest}})",
+      "theirsNone": "No differences to list against your base",
+      "again": "The latest version changed again (v{{latest}}); review their changes again before resubmitting"
+    },
+    "history": {
+      "title": "Version history",
+      "sub": "Last {{n}} versions",
+      "current": "Current",
+      "preview": "Preview",
+      "rollback": "Roll back to this version",
+      "back": "Back to list",
+      "empty": "No versions yet",
+      "source": {
+        "seed": "Initial layout",
+        "edit": "Manual edit",
+        "rollback": "Rollback",
+        "auto": "Auto adjusted"
+      },
+      "summary": "Added {{a}} · Removed {{r}} · Changed {{c}}",
+      "gridChanged": "Grid changed",
+      "rolledFrom": "Rolled back from v{{v}}",
+      "brokenTag": "Has broken references",
+      "brokenTitle": "This version has widgets with broken references",
+      "diffTitle": "Differences from current v{{v}}",
+      "noDiff": "Same as the current version",
+      "confirmTitle": "Roll back to v{{v}}?",
+      "confirmGo": "Roll back to v{{v}}",
+      "confirmBody": "This creates a new version v{{next}} with the content of v{{v}}; intermediate versions are not deleted.",
+      "confirmDirty": "You have {{n}} unsaved change(s); they will be lost after the rollback.",
+      "confirmBroken": "{{n}} widget(s) in this version have broken references and will show as placeholders after the rollback:",
+      "done": "Rolled back, created v{{version}}",
+      "reordered": "Order changed"
+    },
+    "broken": {
+      "instance_missing": "The bound instance no longer exists",
+      "instance_plugin_mismatch": "The instance does not belong to the widget's plugin",
+      "plugin_missing": "The plugin is unavailable",
+      "widget_missing": "The plugin no longer provides this widget",
+      "size_unsupported": "The plugin no longer provides this size"
+    },
+    "screenTab": {
+      "nameLabel": "Screen name",
+      "rename": "Rename screen",
+      "add": "Add screen",
+      "full": "Screen limit reached ({{max}})",
+      "defaultName": "Screen {{n}}"
+    }
+  },
+  "outOfBounds": {
+    "title": "Shrinking to {{cols}}×{{rows}} puts {{n}} widget(s) out of bounds",
+    "body": "The widgets below do not fit the new grid; continuing removes them from the layout.",
+    "cancel": "Keep current grid",
+    "confirm": "Remove {{n}} and shrink"
+  },
+  "screens": {
+    "sub": "The index home page plus any number of screens, one grid per screen",
+    "add": "Add screen",
+    "editLayout": "Edit layout",
+    "loading": "Loading screen settings…",
+    "loadFailed": "Could not load screen settings: {{error}}",
+    "retry": "Retry",
+    "save": "Save",
+    "saving": "Saving…",
+    "discard": "Discard changes",
+    "saved": "Saved",
+    "saveInvalid": "The layout is invalid ({{n}} problems). Please check and try again",
+    "dirty": "{{n}} unsaved changes",
+    "dirtyHint": "Based on v{{base}} · saving layout changes creates v{{next}} and pushes it to the display",
+    "conflict": "The layout was changed elsewhere: you are on v{{base}}, the latest is v{{latest}}. Reloading discards the unsaved changes on this page.",
+    "conflictReload": "Reload the latest layout",
+    "leave": {
+      "title": "Leave screen management?",
+      "body": "There are unsaved changes that will be lost.",
+      "stay": "Stay on page",
+      "leave": "Discard and leave"
+    },
+    "chg": {
+      "grid": "Grid {{from}} → {{to}}",
+      "add": "Add screen {{id}} \"{{name}}\"",
+      "rename": "Rename {{id}}: \"{{from}}\" → \"{{to}}\"",
+      "dwell": "{{id}} dwell: {{from}} → {{to}}",
+      "default": "default",
+      "rotationOn": "{{id}} joins the rotation",
+      "rotationOff": "{{id}} leaves the rotation",
+      "remove": "Delete screen {{id}} \"{{name}}\"",
+      "order": "Changed the rotation order of the screens",
+      "display": "Screen display options (rotation, input mode or UI scale)"
+    },
+    "rotation": {
+      "title": "Rotation",
+      "homeOnly": "Home page only",
+      "homeOnlyDesc": "Other screens can only be switched remotely.",
+      "auto": "Auto rotation",
+      "autoDesc": "Rotate the participating screens in the order listed below.",
+      "noTouchWarn": "This display has no touch: with \"Home page only\", other screens can only be switched from Remote control, and there is no way to page by hand on the display.",
+      "dwell": "Default dwell",
+      "dwellHelp": "Each screen can override it.",
+      "idle": "Idle back to home",
+      "idleHelp": "After switching remotely to another screen, how long without interaction before returning to index.",
+      "secondsUnit": "s",
+      "dec": "Decrease",
+      "inc": "Increase"
+    },
+    "grid": {
+      "title": "Grid",
+      "meta": "Display reports {{w}}×{{h}}",
+      "metaNone": "No display report yet",
+      "recommend": "recommended {{cols}}×{{rows}}",
+      "label": "Columns × rows",
+      "cols": "cols",
+      "rows": "rows",
+      "colsLabel": "Columns",
+      "rowsLabel": "Rows",
+      "lessCol": "Fewer columns",
+      "moreCol": "More columns",
+      "lessRow": "Fewer rows",
+      "moreRow": "More rows",
+      "presets": "Presets",
+      "help": "Presets match 800×480 · 1024×600 · 1280×720; ★ is the one recommended for the display. When shrinking the grid, widgets that no longer fit are removed after you confirm.",
+      "cell": "Cell size",
+      "cellInfo": "{{w}}×{{h}} px per cell",
+      "cells": "{{n}} cells"
+    },
+    "list": {
+      "title": "Screens",
+      "meta": "Drag the handle to change the rotation order · index stays on top",
+      "col": {
+        "thumb": "Thumbnail",
+        "screen": "Screen",
+        "widgets": "Widgets",
+        "dwell": "Dwell",
+        "rotation": "In rotation",
+        "modified": "Last changed"
+      },
+      "homeTag": "Home · cannot delete",
+      "homePinned": "index is always first",
+      "dragHint": "Drag to reorder; Up and Down arrow keys on the handle also work",
+      "grip": "Reorder handle for {{id}}",
+      "thumbLabel": "Thumbnail of {{id}}",
+      "widgets": "{{n}}",
+      "dwellLabel": "Dwell seconds for {{id}}",
+      "dwellPlaceholder": "default {{n}}",
+      "dwellInvalid": "Dwell must be a whole number of seconds from {{min}} to {{max}}; leave empty for the default",
+      "rotationLabel": "{{id}} in rotation",
+      "unsaved": "unsaved",
+      "modifiedNone": "—",
+      "editLayout": "Edit layout",
+      "delete": "Delete {{id}}",
+      "rename": "Click to rename",
+      "renameLabel": "Name of {{id}}"
+    },
+    "delete": {
+      "title": "Delete screen {{id}}?",
+      "body": "Screen \"{{name}}\" and its {{n}} widgets will be removed from the layout once you save; the version history can still roll it back.",
+      "cancel": "Cancel",
+      "confirm": "Delete"
+    },
+    "input": {
+      "title": "Display input",
+      "label": "Input mode",
+      "auto": "Auto detect",
+      "touch": "Touch",
+      "none": "No touch",
+      "detected": "Currently detected as \"{{kind}}\".",
+      "detectedNone": "The display has not reported touch capability yet.",
+      "hasTouch": "touch",
+      "noTouch": "no touch",
+      "help": "Without touch the display shows no paging hint; rotation and remote switching are unaffected."
+    },
+    "scale": {
+      "title": "UI scale",
+      "label": "Scale",
+      "help": "Enlarges text and spacing on high-resolution displays; the grid columns × rows stay the same.",
+      "restart": "Saving only stores the setting; it takes effect after the kiosk restarts Chromium."
+    },
+    "settingsFailedAfterLayout": "The layout was saved (v{{version}}), but saving the settings failed: {{error}}"
+  },
+  "remote": {
+    "sub": "Without touching the screen: refresh, switch, power",
+    "offlineHint": "The display is offline: refresh and switch screen are unavailable. Power on, power off and wake apply once the display reconnects.",
+    "nextNone": "No further changes",
+    "next": "Next change {{at}} ({{in}})",
+    "status": {
+      "title": "Current screen state",
+      "meta": "refreshes every 10 s",
+      "detail": "Screen picture and details"
+    },
+    "state": {
+      "on": "Showing",
+      "off": "Screen off",
+      "offline": "Display offline"
+    },
+    "reason": {
+      "schedule": "Following the schedule.",
+      "remote_on": "Turned on remotely until {{until}} (the next period boundary), then back to the schedule.",
+      "remote_off": "Turned off remotely until {{until}} (the next period boundary), then back to the schedule.",
+      "wake": "Temporarily lit; back to the schedule when it ends at {{until}}.",
+      "remote_on_open": "Turned on remotely until the next period boundary, then back to the schedule.",
+      "remote_off_open": "Turned off remotely until the next period boundary, then back to the schedule.",
+      "wake_open": "Temporarily lit; back to the schedule when it ends."
+    },
+    "kv": {
+      "display": "Display",
+      "screen": "Current screen",
+      "theme": "Theme",
+      "next": "Next change",
+      "wake": "Temporary wake",
+      "input": "Input",
+      "online": "Online",
+      "onlineVp": "Online · {{w}}×{{h}}",
+      "offline": "Offline",
+      "never": "Never connected",
+      "wakeUntil": "until {{time}}"
+    },
+    "keys": {
+      "title": "Keys",
+      "meta": "k1–k6 · sent to the kiosk right away",
+      "refresh": {
+        "label": "Refresh",
+        "desc": "Reload the screen page; layout and data update immediately."
+      },
+      "switch": {
+        "label": "Switch screen",
+        "desc": "Go to the target screen; back to the home screen after {{n}} s idle.",
+        "target": "Target screen",
+        "go": "Switch"
+      },
+      "on": {
+        "label": "Power on",
+        "desc": "Light the screen until the next schedule boundary, then follow the schedule again."
+      },
+      "off": {
+        "label": "Power off",
+        "desc": "Turn the display off until the next schedule boundary, then follow the schedule again."
+      },
+      "wake": {
+        "label": "Temporary wake",
+        "desc": "Light the screen during an off period; it returns to the schedule when time is up.",
+        "minutes": "Wake duration",
+        "unit": "min",
+        "go": "Wake"
+      },
+      "token": {
+        "label": "Reset screen token",
+        "desc": "The old token stops working at once; the kiosk must sign in again with the new token link."
+      }
+    },
+    "ops": {
+      "title": "Operation log",
+      "meta": "last {{n}}",
+      "empty": "No operations yet",
+      "from": "from {{ip}}",
+      "toScreen": "→ {{id}}",
+      "minutes": "{{n}} min",
+      "delivered": "sent",
+      "undelivered": "not delivered at the time",
+      "action": {
+        "refresh": "Refresh",
+        "switch": "Switch screen",
+        "on": "Power on",
+        "off": "Power off",
+        "wake": "Temporary wake",
+        "token_reset": "Reset screen token"
+      }
+    },
+    "token": {
+      "title": "Reset the screen token?",
+      "warn": "The old token stops working at once; the screen is disconnected and shows \"Screen token invalid\".",
+      "consequence": "The kiosk must sign in again with the new token link. Until then the screen stays on its last frame and does not update.",
+      "cancel": "Cancel",
+      "confirm": "Reset token",
+      "close": "Done",
+      "doneTitle": "Token reset",
+      "doneBody": "The new token was written to the screen.token file in the hub data directory. Open this link in the kiosk browser to sign in again:",
+      "doneHint": "Replace <token> with the contents of screen.token (a single line of text)."
+    }
+  },
+  "schedule": {
+    "sub": "The screen switches theme or turns off by period, in the global time zone",
+    "loading": "Loading the schedule…",
+    "loadFailed": "Could not load the schedule: {{error}}",
+    "retry": "Retry",
+    "readoutTz": "Time zone {{tz}}",
+    "readoutNow": "Now {{time}}",
+    "save": "Save and push",
+    "saving": "Saving…",
+    "discard": "Discard changes",
+    "saved": "Schedule saved and pushed",
+    "dirty": "{{n}} unsaved changes",
+    "leave": {
+      "title": "Leave the schedule?",
+      "body": "The schedule or Reduce effects has unsaved changes that will be lost.",
+      "stay": "Keep editing",
+      "leave": "Discard and leave"
+    },
+    "override": "A remote action currently controls the screen; the schedule takes over again when it ends.",
+    "overrideLink": "Go to Remote",
+    "tl": {
+      "title": "24-hour timeline",
+      "meta": "click a block to select · drag or use arrow keys to move boundaries · pick a theme below",
+      "now": "Now {{time}}",
+      "seg": "{{from}}–{{to}} {{theme}}",
+      "off": "Off",
+      "handle": "Adjust the boundary at {{time}} (arrow keys ±5 min, Shift+arrow ±1 h)",
+      "current": "Current {{theme}} · {{from}}–{{to}}",
+      "next": "Next change {{at}} {{theme}} ({{in}})",
+      "none": "No further changes",
+      "tz": "Global time zone {{tz}}"
+    },
+    "list": {
+      "title": "Periods",
+      "meta": "covers 24 h · no overlap",
+      "colNo": "#",
+      "colRange": "Range",
+      "colLen": "Length",
+      "colTheme": "Theme / off",
+      "overnight": "overnight",
+      "current": "current",
+      "edit": "Edit",
+      "delete": "Delete period {{n}}",
+      "deleted": "Period deleted; the previous one now ends at {{time}}",
+      "hours": "{{h}} h",
+      "hoursMinutes": "{{h}} h {{m}} min",
+      "minutes": "{{m}} min",
+      "add": "Add period",
+      "addHint": "A new period is cut out of the one it falls in, so the timeline always covers 24 hours.",
+      "tooShort": "This period is too short to split",
+      "full": "Reached the limit of {{max}} periods"
+    },
+    "edit": {
+      "title": "Edit period {{n}}",
+      "start": "Start",
+      "end": "End",
+      "startAria": "Start time HH:MM",
+      "endAria": "End time HH:MM",
+      "kind": "Period type",
+      "kindTheme": "Theme",
+      "kindOff": "Off",
+      "hintTheme": "Pick a theme in 02.3 below",
+      "hintOff": "Off periods have no theme; see 02.5 for wake rules",
+      "invalidTime": "Use the HH:MM format",
+      "linked": "Changing a start or end time moves the neighbouring boundary too, so periods stay edge to edge."
+    },
+    "problems": {
+      "title": "The schedule is invalid and must be fixed before saving",
+      "backend": "Rejected by the server",
+      "format": "Bad time format",
+      "theme": "Theme is not a built-in theme or off",
+      "empty": "At least one period is required",
+      "gap": "{{from}}–{{to}} is not covered by any period",
+      "overlap": "{{from}}–{{to}} is covered by several periods",
+      "period": "Period {{n}}: {{msg}}"
+    },
+    "themes": {
+      "title": "Themes",
+      "metaOff": "The selected period is off",
+      "metaPick": "Picking a theme for {{from}}–{{to}}",
+      "dark": "dark",
+      "light": "light",
+      "default": "default",
+      "picked": "Selected",
+      "usedBy": "Used {{ranges}}",
+      "unused": "Unused",
+      "card": "{{name}} ({{id}})",
+      "preview": "{{name}} theme preview"
+    },
+    "reduce": {
+      "title": "Reduce effects",
+      "help": "Turns off glow and motion; good for always-on use or weak hardware. Same switch as Settings · Display.",
+      "settingsFailedAfterPlan": "The schedule was saved but Reduce effects could not be saved: {{error}}"
+    },
+    "wake": {
+      "title": "Wake rules",
+      "meta": "read-only · during off periods",
+      "crit": "Wake on critical alert",
+      "critTag": "from M4",
+      "critSub": "Lights for 10 minutes, then off again",
+      "remote": "Remote power on",
+      "remoteTag": "available",
+      "remoteSub": "Remote page keys k3 / k5",
+      "touch": "Touch wake",
+      "touchNo": "no touch now",
+      "touchYes": "touch available",
+      "touchUnknown": "not reported yet",
+      "touchSub": "Tap the screen to light it when touch is present"
     }
   }
 }

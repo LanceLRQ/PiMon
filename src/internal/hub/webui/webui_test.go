@@ -117,3 +117,27 @@ func TestEmbeddedCompiles(t *testing.T) {
 		t.Fatal("Embedded 不应为 nil")
 	}
 }
+
+func TestScreenServiceWorkerScript(t *testing.T) {
+	dist := fakeDist()
+	dist["screen/sw.js"] = &fstest.MapFile{Data: []byte("self.addEventListener('fetch', () => {})")}
+	h := New(dist, "b")
+	rec := get(h, "GET", "/screen/sw.js")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "addEventListener") {
+		t.Fatalf("sw.js 应原样返回而不是回退到 index: %d %q", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "javascript") {
+		t.Fatalf("sw.js Content-Type %q", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Fatalf("sw.js 必须每次校验，缓存头 %q", cc)
+	}
+	// 脚本在 /screen/ 下，要把作用域放宽到 /screen（不带斜杠）必须有这个头，且只放宽到 /screen
+	if got := rec.Header().Get("Service-Worker-Allowed"); got != "/screen" {
+		t.Fatalf("Service-Worker-Allowed %q", got)
+	}
+	// 其它静态文件不带该头
+	if get(h, "GET", "/favicon.svg").Header().Get("Service-Worker-Allowed") != "" {
+		t.Fatal("只有 sw.js 允许放宽作用域")
+	}
+}

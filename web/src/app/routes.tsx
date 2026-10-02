@@ -2,7 +2,6 @@ import { lazy, Suspense, type ComponentType, type ReactNode } from 'react'
 import { Route, Routes } from 'react-router'
 import { AdminLayout } from './AdminLayout'
 import { NotFoundPage } from './NotFoundPage'
-import { ScreenPlaceholderPage } from './ScreenPlaceholderPage'
 import { PublicRoute, RequireSession } from './guard'
 import { LazyBoundary, RouteFallback } from './route-fallback'
 
@@ -32,6 +31,7 @@ const LayoutEditorPage = page(() => import('@/pages/screens/ScreensPages'), (m) 
 const SchedulePage = page(() => import('@/pages/screens/ScreensPages'), (m) => m.SchedulePage)
 const RemotePage = page(() => import('@/pages/screens/ScreensPages'), (m) => m.RemotePage)
 const SettingsPage = page(() => import('@/pages/settings/SettingsPage'), (m) => m.SettingsPage)
+const ScreenPage = page(() => import('@/screen/ScreenGate'), (m) => m.ScreenGate)
 const SetupPage = page(() => import('@/pages/setup/SetupPage'), (m) => m.SetupPage)
 const SystemPage = page(() => import('@/pages/system/SystemPage'), (m) => m.SystemPage)
 
@@ -45,9 +45,9 @@ export function AppRoutes() {
       <Route element={<PublicRoute page="setup" />}>
         <Route path="/setup" element={<SetupPage />} />
       </Route>
+      {/* 屏幕端应用：自带守卫（令牌失效页、设置码页、管理员预览提示），不走 RequireSession，也不带管理外壳 */}
+      <Route path="screen/*" element={<ScreenPage />} />
       <Route element={<RequireSession />}>
-        {/* 屏幕端由 M1d 提供；此前占位，不带管理外壳、不连管理 WebSocket */}
-        <Route path="screen/*" element={<ScreenPlaceholderPage />} />
         <Route element={<AdminLayout />}>
           <Route index element={<OverviewPage />} />
           <Route path="screens" element={<ScreensPage />} />

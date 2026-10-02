@@ -8,22 +8,11 @@ import { Note } from '@/ui/note'
 import { PageHeader } from '@/ui/page-header'
 import { Section } from '@/ui/section'
 import { BackupsPanel } from './BackupsPanel'
+import { KV } from './KV'
 import { LogPanel } from './LogPanel'
 import { PluginsPanel } from './PluginsPanel'
+import { ScreenPanel } from './ScreenPanel'
 import { useSystemInfo } from './use-system'
-
-function KV({ rows }: { rows: { k: string; v: ReactNode }[] }) {
-  return (
-    <dl>
-      {rows.map((r) => (
-        <div key={r.k} className="flex items-start justify-between gap-3 border-t border-border px-4 py-2 text-[13px] first:border-t-0">
-          <dt className="shrink-0 text-muted-foreground">{r.k}</dt>
-          <dd className="min-w-0 text-right font-mono text-[12.5px] break-words">{r.v}</dd>
-        </div>
-      ))}
-    </dl>
-  )
-}
 
 function Placeholder({ text }: { text: string }) {
   return <div className="px-4 py-5 text-[12.5px] leading-[1.6] text-muted-foreground">{text}</div>
@@ -82,9 +71,7 @@ export function SystemPage() {
             {info ? <Resources info={info} unknown={unknown} /> : <Placeholder text={t('common.loading')} />}
           </Section>
 
-          <Section no="06.3" title={t('system.screen.title')} meta={t('system.screen.meta')}>
-            <Placeholder text={t('system.screen.placeholder')} />
-          </Section>
+          <ScreenPanel />
         </div>
 
         <div className="grid grid-cols-2 gap-4 mobile:grid-cols-1">

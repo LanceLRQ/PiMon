@@ -12,6 +12,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
+	"github.com/LanceLRQ/PiMon/src/pkg/model"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/proxy"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
@@ -34,6 +35,12 @@ var (
 // 代理不存在时应返回 proxies.ErrNotFound。
 type ProxyResolver interface {
 	Resolve(ctx context.Context, id string) (*proxy.Proxy, error)
+}
+
+// ScreenReferrers 回答"哪些 screen 引用了某实例"（由 screens.Service 实现）。
+// 它只读布局，不会回调实例服务。
+type ScreenReferrers interface {
+	ScreensUsing(ctx context.Context, instanceID string) ([]model.ScreenRef, error)
 }
 
 // Config 是实例服务的依赖。
@@ -74,6 +81,7 @@ type Service struct {
 	flushEvery time.Duration
 
 	proxies   ProxyResolver
+	screens   ScreenReferrers
 	cbMu      sync.RWMutex
 	onChange  func(id string)
 	writeErrs atomic.Int64
@@ -123,6 +131,10 @@ func New(c Config) *Service {
 // UseProxies 接入代理仓库。代理仓库又需要本服务作为 Referrers，所以单独设置，
 // 须在 Start 与任何请求之前调用。
 func (s *Service) UseProxies(p ProxyResolver) { s.proxies = p }
+
+// UseScreenRefs 接入屏幕布局，使删除实例前能查出引用它的 screen。
+// 屏幕布局服务建好后再注入，须在 Start 与任何请求之前调用；不接入时视为没有引用。
+func (s *Service) UseScreenRefs(r ScreenReferrers) { s.screens = r }
 
 // Start 启动调度器、Streamer 管理器与每 30 秒一次的落盘循环，并订阅插件注册表的
 // 重新扫描通知。ctx 结束后依次停止调度、停止 Streamer、做最后一次落盘，

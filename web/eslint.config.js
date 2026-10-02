@@ -18,6 +18,28 @@ const forbidden = [
   },
 ]
 
+// 屏幕端只能用屏幕命名空间颜色类（text-s-ok、bg-s-card 等，定义见 src/themes/screen-colors.css）。
+// 管理端映射（text-status-ok、bg-primary 等）在屏幕子树里会静默取到管理端颜色，Tailwind 默认调色板则完全绕开主题。
+const colorUtility = String.raw`(bg|text|border|fill|stroke|ring|outline|from|via|to|shadow|accent|caret|decoration|divide)`
+const adminColors = [
+  'background', 'foreground', 'card(-foreground)?', 'popover(-foreground)?', 'primary(-foreground)?',
+  'secondary(-foreground)?', 'muted(-foreground)?', 'accent(-foreground)?', 'destructive', 'border', 'input', 'ring',
+  'panel-2', 'ink-2', 'line-strong', 'inv-bg', 'inv-ink', 'signal(-text|-soft)?', 'status-(ok|warn|crit|unknown)',
+].join('|')
+const paletteColors = String.raw`(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-\d{2,3}|white|black`
+const classStart = String.raw`(^|[\s:!])`
+const classEnd = String.raw`(?![\w-])`
+forbidden.push(
+  {
+    pattern: `${classStart}${colorUtility}-(${adminColors})${classEnd}`,
+    message: '屏幕端与模板目录禁止管理端颜色类，请改用屏幕命名空间颜色类（text-s-*、bg-s-* 等）',
+  },
+  {
+    pattern: `${classStart}${colorUtility}-(${paletteColors})${classEnd}`,
+    message: '屏幕端与模板目录禁止 Tailwind 默认调色板类，请改用屏幕命名空间颜色类（text-s-*、bg-s-* 等）',
+  },
+)
+
 const restrictedSyntax = forbidden.flatMap(({ pattern, message }) => [
   { selector: `Literal[value=/${pattern}/]`, message },
   { selector: `TemplateElement[value.raw=/${pattern}/]`, message },
@@ -32,6 +54,11 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
     plugins: { 'react-hooks': reactHooks },
     rules: reactHooks.configs.recommended.rules,
+  },
+  {
+    // 屏幕端 Service Worker 是不经打包的经典脚本，运行在 worker 环境
+    files: ['public/screen/sw.js'],
+    languageOptions: { globals: { ...globals.serviceworker } },
   },
   {
     files: themedFiles,

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 )
@@ -20,15 +21,17 @@ const SetupCodeTTL = 24 * time.Hour
 // Crockford base32 字母表（不含 I L O U）。
 var crockford = base32.NewEncoding("0123456789ABCDEFGHJKMNPQRSTVWXYZ").WithPadding(base32.NoPadding)
 
-// SetupCodes 管理首次设置用的一次性设置码，库中只存 sha256。
+// SetupCodes 管理首次设置用的一次性设置码：库中存 sha256 用于校验，
+// 另存加密副本（code_enc）让屏幕会话能向管理员显示设置码。
 type SetupCodes struct {
 	db  *store.DB
 	clk clock.Clock
+	box *secret.Box
 }
 
-// NewSetupCodes 创建设置码服务。
-func NewSetupCodes(db *store.DB, clk clock.Clock) *SetupCodes {
-	return &SetupCodes{db: db, clk: clk}
+// NewSetupCodes 创建设置码服务；box 用于加密显示用的设置码副本。
+func NewSetupCodes(db *store.DB, clk clock.Clock, box *secret.Box) *SetupCodes {
+	return &SetupCodes{db: db, clk: clk, box: box}
 }
 
 // Generate 生成新设置码并覆盖旧码，返回展示形式（6 组 × 4 位）与过期时间。
@@ -39,18 +42,43 @@ func (s *SetupCodes) Generate(ctx context.Context) (string, time.Time, error) {
 	}
 	plain := crockford.EncodeToString(raw)
 	exp := s.clk.Now().Add(SetupCodeTTL)
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO setup_codes (id, code_hash, expires_at) VALUES (1, ?, ?)
-		 ON CONFLICT(id) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at`,
-		hashToken(plain), store.FormatTime(exp))
-	if err != nil {
-		return "", time.Time{}, err
-	}
 	groups := make([]string, 0, 6)
 	for i := 0; i < len(plain); i += 4 {
 		groups = append(groups, plain[i:i+4])
 	}
-	return strings.Join(groups, "-"), exp, nil
+	display := strings.Join(groups, "-")
+	enc, err := s.box.Encrypt(display)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO setup_codes (id, code_hash, expires_at, code_enc) VALUES (1, ?, ?, ?)
+		 ON CONFLICT(id) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, code_enc = excluded.code_enc`,
+		hashToken(plain), store.FormatTime(exp), enc)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return display, exp, nil
+}
+
+// Reveal 返回有效设置码的展示形式与过期时间；无码、已过期、没有加密副本（旧版本生成）
+// 或密钥不符时 ok=false。
+func (s *SetupCodes) Reveal(ctx context.Context) (code string, exp time.Time, ok bool, err error) {
+	if _, exp, ok, err = s.load(ctx); err != nil || !ok {
+		return "", time.Time{}, false, err
+	}
+	var enc string
+	if err = s.db.QueryRowContext(ctx, `SELECT code_enc FROM setup_codes WHERE id = 1`).Scan(&enc); err != nil {
+		return "", time.Time{}, false, err
+	}
+	if enc == "" {
+		return "", time.Time{}, false, nil
+	}
+	plain, derr := s.box.Decrypt(enc)
+	if derr != nil {
+		return "", time.Time{}, false, nil
+	}
+	return plain, exp, true, nil
 }
 
 // load 读取设置码记录；无记录或已过期时 ok=false。

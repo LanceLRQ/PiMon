@@ -14,12 +14,12 @@ interface PageHeaderProps {
 export function PageHeader({ no, title, sub, actions }: PageHeaderProps) {
   return (
     <header className="flex h-14 shrink-0 items-center gap-3.5 border-b border-border bg-card px-6 mobile:h-[52px] mobile:px-3.5">
-      <div className="flex items-baseline gap-2.5">
+      <div className="flex min-w-0 items-baseline gap-2.5">
         {no && (
           <span className="rounded-[2px] border border-foreground px-[5px] font-mono text-xs leading-[18px]">{no}</span>
         )}
-        <h1 className="text-lg font-medium mobile:text-[17px]">{title}</h1>
-        {sub && <span className="text-[13px] text-muted-foreground mobile:hidden">{sub}</span>}
+        <h1 className="text-lg font-medium whitespace-nowrap mobile:text-[17px]">{title}</h1>
+        {sub && <span className="min-w-0 truncate text-[13px] text-muted-foreground mobile:hidden">{sub}</span>}
       </div>
       <div className="flex-1" />
       {actions}

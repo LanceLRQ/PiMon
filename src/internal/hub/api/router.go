@@ -2,6 +2,7 @@ package api
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
@@ -11,6 +12,8 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/screens"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/screenstate"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/system"
 	"github.com/LanceLRQ/PiMon/src/pkg/version"
@@ -37,7 +40,15 @@ type Deps struct {
 	Plugins      *plugins.Registry
 	Instances    *instances.Service
 	History      *history.Service
+	Screens      *screens.Service
+	ScreenState  *screenstate.Service
 	System       *system.Service
+	// DataDir 是数据目录，品牌标识从其 logos 子目录读取；为空时标识接口一律 404。
+	DataDir string
+	// ListenAddr 返回实际监听地址（host:port），用来拼设置码页的手机访问地址；nil 时退回请求的 Host。
+	ListenAddr func() string
+	// LocalIPs 枚举本机可用于局域网访问的 IPv4 地址；nil 时枚举网卡，测试里注入。
+	LocalIPs func() []net.IP
 	// Web 是前端 SPA 处理器，挂在 "/" 兜底；为 nil 时不提供前端（测试用）。
 	Web http.Handler
 	// WS 是 UI WebSocket 的握手处理器，挂在 GET /ws；为 nil 时不提供（测试用）。
@@ -64,12 +75,15 @@ func New(d Deps) http.Handler {
 	s.registerAuth(mux)
 	s.registerSettings(mux)
 	s.registerScreen(mux)
+	s.registerScreens(mux)
+	s.registerScreenCtl(mux)
 	s.registerBackup(mux)
 	s.registerProxies(mux)
 	s.registerPlugins(mux)
 	s.registerInstances(mux)
 	s.registerHistory(mux)
 	s.registerSystem(mux)
+	s.registerLogos(mux)
 	if d.WS != nil {
 		mux.Handle("GET /ws", d.WS)
 	}

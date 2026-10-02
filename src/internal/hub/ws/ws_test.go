@@ -129,6 +129,12 @@ func newHarness(t *testing.T, queue int, list ...model.Instance) *harness {
 // newHarnessWith 可以换用真实的会话服务（mkSessions 非 nil 时，以测试的假时钟构造）。
 func newHarnessWith(t *testing.T, queue int, mkSessions func(clock.Clock) SessionLookup, list ...model.Instance) *harness {
 	t.Helper()
+	return newHarnessFull(t, queue, mkSessions, nil, list...)
+}
+
+// newHarnessFull 在 newHarnessWith 之上允许改写 Hub 的配置（接入屏幕相关来源等）。
+func newHarnessFull(t *testing.T, queue int, mkSessions func(clock.Clock) SessionLookup, tweak func(*Config), list ...model.Instance) *harness {
+	t.Helper()
 	h := &harness{
 		sess: &fakeSessions{m: map[string]auth.SessionKind{adminToken: auth.KindAdmin, screenToken: auth.KindScreen}},
 		t:    t,
@@ -140,10 +146,14 @@ func newHarnessWith(t *testing.T, queue int, mkSessions func(clock.Clock) Sessio
 	if mkSessions != nil {
 		sessions = mkSessions(h.clk)
 	}
-	h.hub = New(Config{
+	cfg := Config{
 		Clock: h.clk, Build: "test-build", Instances: h.inst, Settings: h.set,
 		Sessions: sessions, QueueSize: queue,
-	})
+	}
+	if tweak != nil {
+		tweak(&cfg)
+	}
+	h.hub = New(cfg)
 	mw := httpx.WithRequestInfo(func() []netip.Prefix { return nil })
 	h.srv = httptest.NewServer(mw(h.hub.Handler()))
 	t.Cleanup(func() {

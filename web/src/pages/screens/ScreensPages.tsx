@@ -1,18 +1,20 @@
-import { PlaceholderPage } from '@/ui/placeholder-page'
+import { LayoutEditor } from '@/editor/LayoutEditor'
+import { RemotePage as RemoteView } from '@/pages/remote/RemotePage'
+import { SchedulePage as ScheduleView } from '@/pages/schedule/SchedulePage'
+import { ScreenManager } from './ScreenManager'
 
-// 屏幕分组的四个页面在 M1d 实现，本期仅占位
 export function ScreensPage() {
-  return <PlaceholderPage no="02" titleKey="pages.screens" milestone="M1d" />
+  return <ScreenManager />
 }
 
 export function LayoutEditorPage() {
-  return <PlaceholderPage no="02" titleKey="pages.layoutEditor" milestone="M1d" />
+  return <LayoutEditor />
 }
 
 export function SchedulePage() {
-  return <PlaceholderPage no="02" titleKey="pages.schedule" milestone="M1d" />
+  return <ScheduleView />
 }
 
 export function RemotePage() {
-  return <PlaceholderPage no="02" titleKey="pages.remote" milestone="M1d" />
+  return <RemoteView />
 }

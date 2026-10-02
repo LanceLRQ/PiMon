@@ -7,13 +7,26 @@
     <meta name="pimon-build" content="__PIMON_BUILD__" />
     <title>PiMon</title>
     <script>
-      // 防止主题闪烁：渲染前按 localStorage 的选择设置 dark 类；读取失败、值缺失或非法保持浅色
-      // （完整逻辑在 src/admin-theme/theme.ts，两处规则须一致）
-      try {
-        var t = localStorage.getItem('pimon.admin.theme')
-        var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
-        if (dark) document.documentElement.classList.add('dark')
-      } catch (e) {}
+      // 防止主题闪烁，渲染前按路径分支（规则须与 src/admin-theme/theme.ts、src/screen/theme-apply.ts 一致）：
+      // /screen 下只设屏幕主题 data-theme（读 localStorage 的 pimon.screen.theme，缺失或非法为 ambient），不加 .dark；
+      // 其余页面按 pimon.admin.theme 设置 dark 类，读取失败、值缺失或非法保持浅色。
+      ;(function () {
+        var p = location.pathname
+        var root = document.documentElement
+        if (p === '/screen' || p.indexOf('/screen/') === 0) {
+          var s = null
+          try {
+            s = localStorage.getItem('pimon.screen.theme')
+          } catch (e) {}
+          root.setAttribute('data-theme', s === 'mission-control' || s === 'industrial' ? s : 'ambient')
+          return
+        }
+        try {
+          var t = localStorage.getItem('pimon.admin.theme')
+          var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) root.classList.add('dark')
+        } catch (e) {}
+      })()
     </script>
   </head>
   <body>

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/api"
@@ -18,8 +19,11 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/proxies"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/screens"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/screenstate"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/sdnotify"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/seed"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/system"
@@ -41,20 +45,24 @@ type App struct {
 	cfg  config.Config
 	opts options
 
-	db         *store.DB
-	box        *secret.Box
-	settings   *settings.Service
-	admins     *auth.Admins
-	setupCodes *auth.SetupCodes
-	sessions   *auth.Sessions
-	screen     *auth.ScreenTokens
-	backups    *backup.Service
-	plugins    *plugins.Registry
-	instances  *instances.Service
-	history    *history.Service
-	ws         *ws.Hub
-	notifier   *sdnotify.Notifier
-	handler    http.Handler
+	db          *store.DB
+	box         *secret.Box
+	settings    *settings.Service
+	admins      *auth.Admins
+	setupCodes  *auth.SetupCodes
+	sessions    *auth.Sessions
+	screen      *auth.ScreenTokens
+	backups     *backup.Service
+	plugins     *plugins.Registry
+	instances   *instances.Service
+	screens     *screens.Service
+	screenState *screenstate.Service
+	history     *history.Service
+	ws          *ws.Hub
+	notifier    *sdnotify.Notifier
+	handler     http.Handler
+	// listenAddr 是 Serve 实际监听的地址（host:port），设置码页据此拼手机访问地址。
+	listenAddr atomic.Value
 	closed     bool
 }
 
@@ -124,7 +132,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	}
 	a.settings = st
 	a.admins = auth.NewAdmins(a.db, o.clk)
-	a.setupCodes = auth.NewSetupCodes(a.db, o.clk)
+	a.setupCodes = auth.NewSetupCodes(a.db, o.clk, a.box)
 	a.sessions = auth.NewSessions(a.db, o.clk)
 	a.screen = auth.NewScreenTokens(a.db, o.clk, a.cfg.ScreenTokenPath())
 	a.backups = backups(st.Get)
@@ -150,22 +158,66 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		OnChange: a.instances.Refresh,
 	})
 	a.instances.UseProxies(proxyStore)
+	a.screens = screens.New(screens.Config{DB: a.db, Clock: o.clk, Plugins: a.plugins, Instances: a.instances})
+	a.instances.UseScreenRefs(a.screens)
+	a.screenState = screenstate.New(screenstate.Config{
+		DB: a.db, Clock: o.clk,
+		// 时区在运行时可改，每次计算时现取。
+		Timezone: func() string { return st.Get().Timezone },
+	})
+	if err := a.screenState.Load(ctx); err != nil {
+		return fmt.Errorf("加载屏幕时段计划: %w", err)
+	}
 	// hub-self 的统计来源在 instances 与 history 就绪后才能绑定，先于 Load 以便首次采集就有数据。
-	hubself.Bind(hubStats{inst: a.instances, hist: a.history, started: o.clk.Now(), dataDir: a.cfg.DataDir})
+	hubself.Bind(hubStats{
+		inst: a.instances, hist: a.history, started: o.clk.Now(), dataDir: a.cfg.DataDir,
+		// 有屏幕会话的 WebSocket 连着即在线；来源已接入，未连过也是离线而非未知。
+		screenOnline: func() (bool, bool) {
+			online, _ := a.screenState.Online()
+			return online, true
+		},
+	})
 	if err := a.instances.Load(ctx); err != nil {
 		return fmt.Errorf("恢复实例状态: %w", err)
+	}
+	// 种子数据：布局从无到有时创建默认实例与默认首页；三份种子布局同时供自动选择网格取用。
+	seeder := seed.New(seed.Config{
+		Instances: a.instances, Layouts: a.screens,
+		Language: func() string { return st.Get().Language },
+	})
+	a.screens.UseSeedLayouts(seeder.Layout)
+	// 种子只是辅助数据且幂等：失败不阻止启动（管理端仍可进入修复），下次启动会重试。
+	if err := seeder.Run(ctx); err != nil {
+		slog.Warn("写入种子数据失败，已跳过，下次启动重试", "err", err)
 	}
 	// 实例与设置的变化经广播中心合并后推给 UI WebSocket 的订阅者。
 	a.ws = ws.New(ws.Config{
 		Clock: o.clk, Build: o.version, Instances: a.instances, Settings: st, Sessions: a.sessions,
+		Layouts: a.screens, ScreenState: a.screenState, ScreenData: a.instances, Sink: a.screenState,
 	})
 	a.instances.OnChange(a.ws.NotifyInstance)
+	// 屏幕布局、状态、一次性指令不进合并窗口，变化时立即推送。
+	a.screens.OnChange(a.ws.NotifyLayout)
+	a.screenState.OnChange(a.ws.NotifyScreenState)
+	a.screenState.OnCommand(a.deliverScreenCommand)
+	a.screenState.OnViewport(a.onViewportAdopted)
 	a.sessions.OnRevoke(a.ws.RecheckSessions)
-	st.OnChange(a.ws.NotifySettings)
+	st.OnChange(func() {
+		a.ws.NotifySettings()
+		// 时区变化后时段计划要按新时区重算。
+		a.screenState.Refresh()
+	})
 	a.handler = api.New(api.Deps{
-		Plugins:   a.plugins,
-		Instances: a.instances,
-		History:   a.history,
+		DataDir: a.cfg.DataDir,
+		ListenAddr: func() string {
+			v, _ := a.listenAddr.Load().(string)
+			return v
+		},
+		Plugins:     a.plugins,
+		Instances:   a.instances,
+		History:     a.history,
+		Screens:     a.screens,
+		ScreenState: a.screenState,
 		System: system.New(system.Config{
 			Clock: o.clk, Version: o.version, DataDir: a.cfg.DataDir, Plugins: a.plugins, Ring: o.logRing,
 		}),
@@ -182,6 +234,29 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		WS:           a.ws.Handler(),
 	})
 	return nil
+}
+
+// deliverScreenCommand 把一次性屏幕指令（refresh、switch）发给在线的屏幕会话；
+// 至少一个屏幕收到即记为已送达，没有屏幕在线则保持未送达。
+func (a *App) deliverScreenCommand(cmd screenstate.Command) {
+	if a.ws.SendScreenControl(cmd.OpID, cmd.Action, cmd.ScreenID) == 0 {
+		return
+	}
+	if err := a.screenState.MarkDelivered(context.Background(), cmd.OpID); err != nil {
+		slog.Warn("标记屏幕指令已送达失败", "op", cmd.OpID, "err", err)
+	}
+}
+
+// onViewportAdopted 在显示器 viewport 被采信后调用：布局仍是种子原版时按推荐网格自动换成对应的种子布局。
+func (a *App) onViewportAdopted(v model.Viewport) {
+	applied, err := a.screens.AutoSelectGrid(context.Background(), v)
+	if err != nil {
+		slog.Warn("按显示器自动选择网格失败", "err", err)
+		return
+	}
+	if applied {
+		slog.Info("已按显示器自动选择网格", "viewport", fmt.Sprintf("%dx%d", v.W, v.H))
+	}
 }
 
 // Handler 返回完整的 HTTP 处理器，测试用 httptest 直接挂载。

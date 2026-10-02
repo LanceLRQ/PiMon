@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Plus, Power, RefreshCw, Sun } from 'lucide-react'
+import { Plus, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
@@ -18,6 +18,7 @@ import { Button } from '@/ui/button'
 import { NumberTag } from '@/ui/numbered-label'
 import { PageHeader } from '@/ui/page-header'
 import { shapeStates, StatusShape } from '@/ui/status-shape'
+import { ScreenCard } from './ScreenCard'
 
 const selectSynced = (s: LiveState) => s.synced
 const selectBuild = (s: LiveState) => s.build
@@ -286,43 +287,6 @@ function Attention({ instances, now, onOpen, onRetry, synced }: { instances: Ins
   )
 }
 
-// 屏幕卡片：缩略图与远程按键等屏幕模块（M1d）接入后替换，本期只占位
-function ScreenCard() {
-  const { t } = useTranslation()
-  const keys = [
-    { icon: <RefreshCw size={15} />, label: t('overview.screen.keyRefresh'), k: 'k1' },
-    { icon: <ArrowLeftRight size={15} />, label: t('overview.screen.keySwitch'), k: 'k2' },
-    { icon: <Power size={15} />, label: t('overview.screen.keyOff'), k: 'k3' },
-    { icon: <Sun size={15} />, label: t('overview.screen.keyWake'), k: 'k4' },
-  ]
-  return (
-    <>
-      <div className="px-4 pt-4">
-        <div className="grid h-[120px] place-items-center rounded-[2px] border border-dashed border-line-strong bg-panel-2/50 text-[13px] text-muted-foreground">
-          {t('overview.screen.pending')}
-        </div>
-      </div>
-      <div className="grid grid-cols-4 gap-2 px-4 py-3 mobile:grid-cols-2">
-        {keys.map((k) => (
-          <button
-            key={k.k}
-            type="button"
-            disabled
-            title={t('overview.screen.pending')}
-            className="flex flex-col gap-1 rounded-[2px] border border-line-strong px-2.5 py-2 text-left text-[12px] opacity-50"
-          >
-            <span className="flex items-center justify-between">
-              {k.icon}
-              <NumberTag no={k.k} />
-            </span>
-            <span>{k.label}</span>
-          </button>
-        ))}
-      </div>
-    </>
-  )
-}
-
 function Readout() {
   const { t, i18n } = useTranslation()
   const now = useNow(10_000)
@@ -366,7 +330,7 @@ export function OverviewPage() {
           <Cell no="01.3" title={t('overview.attention.title')} meta={synced ? t('overview.attention.meta', { count: attentionCount }) : undefined}>
             <Attention instances={instances} now={now} synced={synced} onOpen={(i) => setOpenId(i.id)} onRetry={(i) => void manager.actions.run(i)} />
           </Cell>
-          <Cell no="01.4" title={t('overview.screen.title')} meta={t('overview.screen.meta')}>
+          <Cell no="01.4" title={t('overview.screen.title')}>
             <ScreenCard />
           </Cell>
         </div>

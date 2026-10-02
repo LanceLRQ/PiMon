@@ -55,9 +55,18 @@
     "reload": "刷新页面",
     "sessionError": "无法获取登录状态，请确认中枢是否在运行",
     "retry": "重试",
-    "screenPlaceholder": "屏幕端将在 M1d 提供",
     "notFound": "页面不存在",
     "versionUpdated": "中枢已升级，请手动刷新页面以加载新版本"
+  },
+  "plugin": {
+    "hub-self": {
+      "online": "在线",
+      "offline": "离线",
+      "unknown": "未知"
+    },
+    "weather": {
+      "city_required": "请选择城市"
+    }
   },
   "placeholder": {
     "pending": "页面内容将在后续任务中实现。",
@@ -127,6 +136,13 @@
     "instance": {
       "not_found": "实例不存在",
       "in_use": "实例正被屏幕引用，无法删除"
+    },
+    "layout": {
+      "conflict": "布局已被他人更新，请刷新后再保存",
+      "invalid": "布局不合法，存在重叠、越界或不被允许的尺寸"
+    },
+    "schedule": {
+      "invalid": "时段计划不合法：存在格式或主题错误、时段重叠或未覆盖全天"
     },
     "run": {
       "timeout": "采集超时",
@@ -283,6 +299,7 @@
     "inSeconds": "{{n}} 秒后",
     "inMinutes": "{{n}} 分钟后",
     "inHours": "{{n}} 小时后",
+    "inHoursMinutes": "{{h}} 小时 {{m}} 分后",
     "inDays": "{{n}} 天后",
     "uptimeDays": "{{d}} 天 {{h}} 小时",
     "uptimeHours": "{{h}} 小时 {{m}} 分",
@@ -497,12 +514,38 @@
     },
     "screen": {
       "title": "屏幕",
-      "meta": "M1d 接入",
-      "pending": "屏幕模块待接入",
       "keyRefresh": "刷新",
       "keySwitch": "切换 screen",
       "keyOff": "关屏",
-      "keyWake": "临时亮屏"
+      "keyWake": "临时亮屏",
+      "online": "显示器在线",
+      "offline": "显示器离线",
+      "never": "显示器从未连接",
+      "unavailable": "屏幕状态暂时无法读取",
+      "thumbLabel": "屏幕缩略图",
+      "thumbEmpty": "暂无布局",
+      "thumbOff": "屏幕已关闭",
+      "kvResolution": "分辨率",
+      "kvGrid": "网格",
+      "kvInput": "输入方式",
+      "kvCurrent": "当前 screen",
+      "kvTheme": "当前主题",
+      "kvNext": "下一次变化",
+      "touchYes": "有触摸",
+      "touchNo": "无触摸",
+      "unknown": "未知",
+      "keySwitchTo": "切到 {{name}}",
+      "keyOn": "开屏",
+      "wakeMinutes": "{{n}} 分钟",
+      "sent": "已发送：{{action}}",
+      "action": {
+        "refresh": "刷新",
+        "switch": "切换 screen",
+        "off": "关屏",
+        "on": "开屏",
+        "wake": "临时亮屏"
+      },
+      "nextAt": "{{time}}"
     },
     "table": "实例一览"
   },
@@ -964,8 +1007,23 @@
     },
     "screen": {
       "title": "屏幕",
-      "meta": "M1d",
-      "placeholder": "屏幕在线状态、分辨率与 kiosk 守护进程信息，在 M1d 接入屏幕会话后显示。"
+      "meta": "显示器",
+      "online": "在线",
+      "offline": "离线",
+      "never": "从未连接",
+      "resolution": "分辨率",
+      "grid": "网格",
+      "input": "输入方式",
+      "scale": "界面缩放",
+      "current": "当前 screen",
+      "lastSeen": "最近在线",
+      "unknown": "未知",
+      "manage": "在屏幕管理里调整",
+      "touchYes": "有触摸",
+      "touchNo": "无触摸",
+      "touchAuto": "自动",
+      "unavailable": "屏幕状态暂时无法读取。",
+      "inputAuto": "自动（检测：{{kind}}）"
     },
     "idle": {
       "title": "系统空闲息屏检查",
@@ -1025,6 +1083,643 @@
       "backingUp": "备份中…",
       "created": "已生成备份「{{name}}」",
       "loadFailed": "无法加载备份列表"
+    }
+  },
+  "screenThemes": {
+    "ambient": "氛围",
+    "mission-control": "任务控制",
+    "industrial": "工业面板"
+  },
+  "screenWidget": {
+    "unknown": "未知",
+    "unconfigured": "未配置",
+    "broken": "引用失效",
+    "stale": "过期",
+    "offline": "离线",
+    "maintenance": "维护中",
+    "templatePending": "模板将在后续版本提供",
+    "never": "从未",
+    "textEmpty": "未设置文本",
+    "more": "+{{n}}",
+    "chart": {
+      "loading": "加载中",
+      "empty": "暂无历史数据",
+      "unsupported": "该数据项没有历史曲线"
+    },
+    "weather": {
+      "attribution": "Weather data by Open-Meteo.com",
+      "humidity": "湿度",
+      "wind": "风",
+      "tomorrow": "明日"
+    },
+    "level": {
+      "ok": "正常",
+      "warning": "警告",
+      "critical": "严重",
+      "unknown": "未知",
+      "error": "采集失败"
+    },
+    "noItems": "暂无数据项"
+  },
+  "screenApp": {
+    "detail": {
+      "close": "关闭",
+      "items": "全部数据项",
+      "history": "历史曲线",
+      "noItems": "暂无数据",
+      "updated": "更新于"
+    },
+    "disconnected": "连接中断，显示 {{time}} 的数据",
+    "tokenInvalid": {
+      "title": "屏幕令牌失效",
+      "body": "请在树莓派上重启 kiosk（或重新用屏幕令牌链接打开本页），以获取新的会话。"
+    },
+    "hubDown": {
+      "title": "hub 未运行",
+      "body": "无法连接中枢，请确认树莓派上的 pimon-hub 正在运行，恢复后会自动重连。"
+    },
+    "adminPreview": {
+      "back": "返回管理界面",
+      "badge": "管理员预览",
+      "hint": "不上报显示器尺寸，不影响屏幕在线状态",
+      "loading": "正在加载预览…",
+      "failed": "预览加载失败"
+    },
+    "setup": {
+      "title": "首次设置",
+      "codeLabel": "设置码",
+      "openOnPhone": "用手机打开 {{url}} 完成设置",
+      "unavailable": "设置码暂不可用，请稍候…",
+      "hint": "在手机上输入设置码并设置管理员密码，本屏幕会自动进入面板。",
+      "raspberryHost": "树莓派地址",
+      "alsoTry": "也可以试试：{{urls}}"
+    }
+  },
+  "layoutEd": {
+    "mobile": {
+      "title": "请用电脑编辑布局",
+      "body": "手机上可以查看屏幕状态、切换 screen、开关屏。",
+      "remote": "去远程操作"
+    },
+    "loading": "正在载入布局…",
+    "loadFailed": "布局载入失败：{{error}}",
+    "retry": "重试",
+    "tabs": "screen 标签",
+    "baseVersion": "基于 v{{version}}",
+    "grid": {
+      "label": "网格",
+      "oob": "{{n}} 个越界"
+    },
+    "screen": {
+      "online": "在线",
+      "offline": "离线"
+    },
+    "template": {
+      "value": "通用 · 数值",
+      "gauge": "通用 · 仪表",
+      "state": "通用 · 状态",
+      "chart": "通用 · 趋势图",
+      "list": "通用 · 列表",
+      "table": "通用 · 表格",
+      "status-grid": "聚合 · 状态格",
+      "clock": "时钟",
+      "text": "文本",
+      "weather": "天气"
+    },
+    "lib": {
+      "title": "小组件库",
+      "search": "搜索小组件 / 插件 id",
+      "tab": {
+        "plugin": "插件声明",
+        "generic": "通用",
+        "aggregate": "聚合"
+      },
+      "none": "没有匹配的小组件",
+      "add": "添加「{{name}}」到画布",
+      "hint": "拖到画布 · 按网格吸附"
+    },
+    "stage": {
+      "occupied": "占用 {{used}}/{{total}}",
+      "preview": "预览主题",
+      "previewState": "预览状态",
+      "state": {
+        "real": "实际",
+        "ok": "ok",
+        "warning": "warning",
+        "critical": "critical"
+      },
+      "stateTitle": {
+        "real": "按真实数据显示",
+        "ok": "全部按 ok 显示（仅画布）",
+        "warning": "全部按 warning 显示（仅画布）",
+        "critical": "全部按 critical 显示（仅画布）"
+      }
+    },
+    "canvas": {
+      "label": "屏幕画布",
+      "widget": "{{title}}，第 {{col}} 列第 {{row}} 行，{{size}}",
+      "noRoom": "放不下"
+    },
+    "keys": {
+      "dragKey": "拖拽",
+      "drag": "移动",
+      "move": "按格微调",
+      "delete": "删除",
+      "esc": "取消选中",
+      "undo": "撤销"
+    },
+    "reject": {
+      "overlap": "放不下：与其他小组件重叠",
+      "out_of_bounds": "放不下：超出网格",
+      "size_not_allowed": "该尺寸不在声明的尺寸之内",
+      "no_space": "画布上没有放得下它的空位",
+      "gridShrink": "缩小到这个网格会让 {{n}} 个小组件越界，请先移走或删除它们"
+    },
+    "insp": {
+      "title": "检查器",
+      "metaWidget": "小组件",
+      "metaScreen": "screen",
+      "screenHint": "screen 属性 · 未选中小组件",
+      "summary": "概要",
+      "grid": "网格",
+      "widgets": "小组件",
+      "occupied": "占用",
+      "source": "来源",
+      "binding": "数据绑定",
+      "instance": "实例",
+      "item": "数据项",
+      "pickInstance": "选择实例",
+      "pickItem": "选择数据项",
+      "autoInstance": "自动（该插件最早的实例）",
+      "missingInstance": "（实例已不存在）",
+      "addRef": "添加数据项",
+      "removeRef": "移除第 {{n}} 项",
+      "size": "尺寸",
+      "sizeFrom": {
+        "plugin": "插件声明",
+        "catalog": "目录允许"
+      },
+      "position": "位置",
+      "positionHint": "对应画布标尺高亮",
+      "col": "列",
+      "row": "行",
+      "left": "左移",
+      "right": "右移",
+      "up": "上移",
+      "down": "下移",
+      "display": "显示选项",
+      "titleLabel": "标题",
+      "titlePlaceholder": "留空使用默认标题",
+      "icon": "图标",
+      "iconNone": "不显示图标",
+      "text": "正文",
+      "threshold": "手动阈值配色",
+      "thresholdOff": "关闭时按数据项自身的状态着色，数值项保持中性色。",
+      "direction": "触发方向",
+      "above": "高于",
+      "aboveTitle": "值达到或超过阈值时升级",
+      "below": "低于",
+      "belowTitle": "值达到或低于阈值时升级",
+      "warning": "警告阈值",
+      "critical": "严重阈值",
+      "remove": "删除小组件"
+    },
+    "saved": "已保存为 v{{version}}，已推送到显示器",
+    "saveInvalid": "布局未通过校验（{{n}} 处问题），请检查重叠、越界或尺寸",
+    "undo": {
+      "label": "撤销",
+      "title": "撤销最近一条改动（⌘Z）",
+      "conflict": "无法撤销：恢复后会与当前草稿重叠，已在画布上标出冲突的小组件，请先处理它们。",
+      "outOfBounds": "无法撤销：恢复后会超出当前网格。若网格被缩小过，请先撤销网格改动。"
+    },
+    "bar": {
+      "history": "版本历史",
+      "discard": "放弃",
+      "save": "保存并推送",
+      "saving": "正在保存…"
+    },
+    "chg": {
+      "title": "未保存的改动",
+      "dirty": "未保存 {{n}} 处",
+      "clean": "已与 v{{version}} 一致",
+      "meta": "基于 v{{base}} · 保存后生成 v{{next}} 并推送到显示器",
+      "none": "没有未保存的改动",
+      "undoOne": "撤销此条",
+      "kind": {
+        "grid": "网格",
+        "add": "新增",
+        "remove": "删除",
+        "move": "移动",
+        "resize": "尺寸",
+        "config": "设置",
+        "screenAdd": "新增 screen",
+        "screenRename": "重命名"
+      }
+    },
+    "discardDlg": {
+      "title": "放弃全部未保存的改动？",
+      "body": "草稿会恢复为 v{{version}}，{{n}} 处改动将丢失。",
+      "cancel": "继续编辑",
+      "confirm": "放弃改动"
+    },
+    "leave": {
+      "title": "离开布局编辑器？",
+      "body": "有未保存的布局改动，离开后会丢失。",
+      "stay": "留在此页",
+      "leave": "放弃改动并离开"
+    },
+    "conflict": {
+      "title": "布局已被他人更新",
+      "body": "你基于 v{{base}} 编辑，服务端当前已是 v{{latest}}。",
+      "overwriteHint": "以我的为准会用你的草稿覆盖对方的改动；对方的版本仍保留在版本历史里，可随时回滚。",
+      "view": "查看对方改动",
+      "overwrite": "以我的为准，基于最新版本重新提交",
+      "close": "稍后处理",
+      "theirsTitle": "对方的改动（v{{base}} → v{{latest}}）",
+      "theirsNone": "与你的基线相比没有可列出的差异",
+      "again": "最新版本又变了（v{{latest}}），请重新查看对方改动后再提交"
+    },
+    "history": {
+      "title": "版本历史",
+      "sub": "最近 {{n}} 个版本",
+      "current": "当前",
+      "preview": "预览",
+      "rollback": "回滚到此版本",
+      "back": "返回列表",
+      "empty": "还没有任何版本",
+      "source": {
+        "seed": "初始布局",
+        "edit": "手动编辑",
+        "rollback": "回滚",
+        "auto": "自动调整"
+      },
+      "summary": "新增 {{a}} · 删除 {{r}} · 修改 {{c}}",
+      "gridChanged": "网格变化",
+      "rolledFrom": "回滚自 v{{v}}",
+      "brokenTag": "含失效引用",
+      "brokenTitle": "此版本含引用失效的小组件",
+      "diffTitle": "与当前 v{{v}} 相比的差异",
+      "noDiff": "与当前版本相同",
+      "confirmTitle": "回滚到 v{{v}}？",
+      "confirmGo": "回滚到 v{{v}}",
+      "confirmBody": "会生成新版本 v{{next}}，内容等于 v{{v}}；中间的版本不会被删除。",
+      "confirmDirty": "你有 {{n}} 处未保存的改动，回滚后会丢失。",
+      "confirmBroken": "该版本有 {{n}} 个小组件的引用已失效，回滚后它们会显示为占位卡：",
+      "done": "已回滚，生成 v{{version}}",
+      "reordered": "顺序调整"
+    },
+    "broken": {
+      "instance_missing": "绑定的实例已不存在",
+      "instance_plugin_mismatch": "实例不属于该小组件的插件",
+      "plugin_missing": "插件已不可用",
+      "widget_missing": "插件不再提供该小组件",
+      "size_unsupported": "插件不再提供该尺寸"
+    },
+    "screenTab": {
+      "nameLabel": "screen 名称",
+      "rename": "重命名 screen",
+      "add": "新增 screen",
+      "full": "screen 数已达上限 {{max}}",
+      "defaultName": "屏幕 {{n}}"
+    }
+  },
+  "outOfBounds": {
+    "title": "缩小到 {{cols}}×{{rows}} 会让 {{n}} 个小组件越界",
+    "body": "下面的小组件放不进新网格，继续会把它们从布局里移除。",
+    "cancel": "保持现有网格",
+    "confirm": "移除 {{n}} 个并缩小"
+  },
+  "screens": {
+    "sub": "index 首页 + 任意多个 screen，按网格一屏显示",
+    "add": "新增 screen",
+    "editLayout": "编辑布局",
+    "loading": "正在加载屏幕配置…",
+    "loadFailed": "无法加载屏幕配置：{{error}}",
+    "retry": "重试",
+    "save": "保存",
+    "saving": "保存中…",
+    "discard": "放弃改动",
+    "saved": "已保存",
+    "saveInvalid": "布局不合法（{{n}} 处），请检查后重试",
+    "dirty": "未保存 {{n}} 处改动",
+    "dirtyHint": "基于 v{{base}} · 保存布局改动后生成 v{{next}} 并推送到显示器",
+    "conflict": "布局已被修改：你基于 v{{base}}，最新是 v{{latest}}。重新加载会丢弃本页未保存的改动。",
+    "conflictReload": "重新加载最新布局",
+    "leave": {
+      "title": "离开 screen 管理？",
+      "body": "有未保存的改动，离开后会丢失。",
+      "stay": "留在此页",
+      "leave": "放弃改动并离开"
+    },
+    "chg": {
+      "grid": "网格 {{from}} → {{to}}",
+      "add": "新增 screen {{id}}「{{name}}」",
+      "rename": "重命名 {{id}}：「{{from}}」→「{{to}}」",
+      "dwell": "{{id}} 停留：{{from}} → {{to}}",
+      "default": "默认",
+      "rotationOn": "{{id}} 加入轮播",
+      "rotationOff": "{{id}} 退出轮播",
+      "remove": "删除 screen {{id}}「{{name}}」",
+      "order": "调整了 screen 的轮播顺序",
+      "display": "屏幕显示参数（轮播、输入方式或界面缩放）"
+    },
+    "rotation": {
+      "title": "轮播",
+      "homeOnly": "只显示首页",
+      "homeOnlyDesc": "其他 screen 只能远程切换。",
+      "auto": "自动轮播",
+      "autoDesc": "按下方列表顺序轮播参与的 screen。",
+      "noTouchWarn": "当前屏幕无触摸：选择「只显示首页」后，其他 screen 只能在「远程操作」里切换，屏幕上没有办法手动翻页。",
+      "dwell": "默认停留",
+      "dwellHelp": "单个 screen 可以覆盖。",
+      "idle": "空闲回首页",
+      "idleHelp": "远程切到其他 screen 后，无操作多久回到 index。",
+      "secondsUnit": "秒",
+      "dec": "减",
+      "inc": "加"
+    },
+    "grid": {
+      "title": "网格",
+      "meta": "显示器上报 {{w}}×{{h}}",
+      "metaNone": "尚无显示器上报",
+      "recommend": "推荐 {{cols}}×{{rows}}",
+      "label": "列 × 行",
+      "cols": "列",
+      "rows": "行",
+      "colsLabel": "列数",
+      "rowsLabel": "行数",
+      "lessCol": "减列",
+      "moreCol": "加列",
+      "lessRow": "减行",
+      "moreRow": "加行",
+      "presets": "预设",
+      "help": "预设对应 800×480 · 1024×600 · 1280×720，★ 是按显示器推荐的。改小网格时，越界的小组件会在确认后被移除。",
+      "cell": "每格尺寸",
+      "cellInfo": "每格 {{w}}×{{h}} px",
+      "cells": "共 {{n}} 格"
+    },
+    "list": {
+      "title": "screen 列表",
+      "meta": "拖拽手柄调整轮播顺序 · index 置顶",
+      "col": {
+        "thumb": "缩略图",
+        "screen": "screen",
+        "widgets": "小组件",
+        "dwell": "停留",
+        "rotation": "参与轮播",
+        "modified": "上次修改"
+      },
+      "homeTag": "首页 · 不可删",
+      "homePinned": "index 固定置顶",
+      "dragHint": "拖拽排序；在手柄上按上下方向键也可移动",
+      "grip": "{{id}} 排序手柄",
+      "thumbLabel": "{{id}} 的缩略图",
+      "widgets": "{{n}} 个",
+      "dwellLabel": "{{id}} 停留秒数",
+      "dwellPlaceholder": "默认 {{n}}",
+      "dwellInvalid": "停留须为 {{min}}–{{max}} 的整数秒，留空用默认值",
+      "rotationLabel": "{{id}} 参与轮播",
+      "unsaved": "未保存",
+      "modifiedNone": "—",
+      "editLayout": "编辑布局",
+      "delete": "删除 {{id}}",
+      "rename": "点击重命名",
+      "renameLabel": "{{id}} 的名称"
+    },
+    "delete": {
+      "title": "删除 screen {{id}}？",
+      "body": "screen「{{name}}」及其中的 {{n}} 个小组件会从布局里去掉，保存后生效；版本历史里仍可回滚找回。",
+      "cancel": "取消",
+      "confirm": "删除"
+    },
+    "input": {
+      "title": "屏幕输入方式",
+      "label": "输入方式",
+      "auto": "自动检测",
+      "touch": "有触摸",
+      "none": "无触摸",
+      "detected": "当前检测为「{{kind}}」。",
+      "detectedNone": "屏幕还没有上报触摸能力。",
+      "hasTouch": "有触摸",
+      "noTouch": "无触摸",
+      "help": "无触摸时屏幕不显示翻页提示，轮播与远程切换不受影响。"
+    },
+    "scale": {
+      "title": "界面缩放",
+      "label": "缩放",
+      "help": "高分屏放大文字与间距；网格列 × 行不变。",
+      "restart": "保存只写入设置，需由 kiosk 重启 Chromium 后生效。"
+    },
+    "settingsFailedAfterLayout": "布局已保存（v{{version}}），但设置保存失败：{{error}}"
+  },
+  "remote": {
+    "sub": "不用碰屏幕：刷新、切换、开关屏",
+    "offlineHint": "显示器离线：刷新与切换 screen 暂时不可用，开屏、关屏、临时亮屏会在显示器重新连上后生效。",
+    "nextNone": "之后不再变化",
+    "next": "下一次变化 {{at}}（{{in}}）",
+    "status": {
+      "title": "屏幕当前状态",
+      "meta": "每 10 秒刷新",
+      "detail": "屏幕画面与参数"
+    },
+    "state": {
+      "on": "显示中",
+      "off": "已关屏",
+      "offline": "显示器离线"
+    },
+    "reason": {
+      "schedule": "按时段计划运行。",
+      "remote_on": "远程开屏中，持续到 {{until}}（下一个时段边界），之后回到时段计划。",
+      "remote_off": "远程关屏中，持续到 {{until}}（下一个时段边界），之后回到时段计划。",
+      "wake": "临时亮屏中，{{until}} 到期后回到时段计划。",
+      "remote_on_open": "远程开屏中，持续到下一个时段边界，之后回到时段计划。",
+      "remote_off_open": "远程关屏中，持续到下一个时段边界，之后回到时段计划。",
+      "wake_open": "临时亮屏中，到期后回到时段计划。"
+    },
+    "kv": {
+      "display": "显示器",
+      "screen": "当前 screen",
+      "theme": "主题",
+      "next": "下一次变化",
+      "wake": "临时亮屏",
+      "input": "输入方式",
+      "online": "在线",
+      "onlineVp": "在线 · {{w}}×{{h}}",
+      "offline": "离线",
+      "never": "从未连接",
+      "wakeUntil": "至 {{time}}"
+    },
+    "keys": {
+      "title": "操作按键",
+      "meta": "k1–k6 · 立即下发到 kiosk",
+      "refresh": {
+        "label": "刷新",
+        "desc": "重新加载屏幕页面，布局与数据立即更新。"
+      },
+      "switch": {
+        "label": "切换 screen",
+        "desc": "切到目标 screen；空闲 {{n}} 秒后回首页。",
+        "target": "目标 screen",
+        "go": "切换"
+      },
+      "on": {
+        "label": "开屏",
+        "desc": "点亮屏幕，直到时段计划的下一个边界，之后回到计划。"
+      },
+      "off": {
+        "label": "关屏",
+        "desc": "关闭显示，直到时段计划的下一个边界，之后回到计划。"
+      },
+      "wake": {
+        "label": "临时亮屏",
+        "desc": "关屏时段里临时点亮，到点后自动回到时段计划。",
+        "minutes": "亮屏时长",
+        "unit": "分钟",
+        "go": "亮屏"
+      },
+      "token": {
+        "label": "重置屏幕令牌",
+        "desc": "旧令牌立即失效，kiosk 需用新令牌链接重新登录。"
+      }
+    },
+    "ops": {
+      "title": "操作记录",
+      "meta": "最近 {{n}} 条",
+      "empty": "暂无操作记录",
+      "from": "来自 {{ip}}",
+      "toScreen": "→ {{id}}",
+      "minutes": "{{n}} 分钟",
+      "delivered": "已下发",
+      "undelivered": "当时未送达",
+      "action": {
+        "refresh": "刷新",
+        "switch": "切换 screen",
+        "on": "开屏",
+        "off": "关屏",
+        "wake": "临时亮屏",
+        "token_reset": "重置屏幕令牌"
+      }
+    },
+    "token": {
+      "title": "重置屏幕令牌？",
+      "warn": "旧令牌立即失效，屏幕会被断开并显示「屏幕令牌失效」。",
+      "consequence": "kiosk 需要用新令牌链接重新登录；重新登录之前屏幕停在最后一帧，不再更新。",
+      "cancel": "取消",
+      "confirm": "重置令牌",
+      "close": "完成",
+      "doneTitle": "令牌已重置",
+      "doneBody": "新令牌已写入中枢数据目录下的 screen.token 文件。在 kiosk 的浏览器里打开下面的链接即可重新登录：",
+      "doneHint": "把 <token> 换成 screen.token 文件里的内容（一行文本）。"
+    }
+  },
+  "schedule": {
+    "sub": "屏幕按时段换主题或关屏，按全局时区执行",
+    "loading": "正在读取时段计划…",
+    "loadFailed": "无法加载时段计划：{{error}}",
+    "retry": "重试",
+    "readoutTz": "时区 {{tz}}",
+    "readoutNow": "现在 {{time}}",
+    "save": "保存并推送",
+    "saving": "保存中…",
+    "discard": "放弃修改",
+    "saved": "时段计划已保存并推送",
+    "dirty": "{{n}} 项未保存的修改",
+    "leave": {
+      "title": "离开时段计划？",
+      "body": "时段计划或「降低特效」有未保存的修改，离开后会丢失。",
+      "stay": "继续编辑",
+      "leave": "放弃并离开"
+    },
+    "override": "屏幕当前由远程操作接管，计划到时才会重新生效。",
+    "overrideLink": "去远程操作",
+    "tl": {
+      "title": "24 小时时间轴",
+      "meta": "点色段选中 · 拖动或用方向键调整边界 · 下方主题卡片改主题",
+      "now": "现在 {{time}}",
+      "seg": "{{from}}–{{to}} {{theme}}",
+      "off": "关屏",
+      "handle": "调整 {{time}} 处的边界（方向键 ±5 分钟，Shift 加方向键 ±1 小时）",
+      "current": "当前 {{theme}} · {{from}}–{{to}}",
+      "next": "下一次变化 {{at}} {{theme}}（{{in}}）",
+      "none": "之后不再变化",
+      "tz": "按全局时区 {{tz}}"
+    },
+    "list": {
+      "title": "时段",
+      "meta": "覆盖 24 小时 · 无重叠",
+      "colNo": "#",
+      "colRange": "起止",
+      "colLen": "时长",
+      "colTheme": "主题 / 关屏",
+      "overnight": "跨日",
+      "current": "当前",
+      "edit": "编辑",
+      "delete": "删除时段 {{n}}",
+      "deleted": "已删除时段，前一段延长到 {{time}}",
+      "hours": "{{h}} 小时",
+      "hoursMinutes": "{{h}} 小时 {{m}} 分",
+      "minutes": "{{m}} 分钟",
+      "add": "添加时段",
+      "addHint": "新时段会从所在段里切出，时间轴始终覆盖 24 小时。",
+      "tooShort": "时段太短，无法再切分",
+      "full": "时段数已达 {{max}} 个上限"
+    },
+    "edit": {
+      "title": "编辑时段 {{n}}",
+      "start": "开始",
+      "end": "结束",
+      "startAria": "开始时间 HH:MM",
+      "endAria": "结束时间 HH:MM",
+      "kind": "时段类型",
+      "kindTheme": "主题",
+      "kindOff": "关屏",
+      "hintTheme": "在下方 02.3 选主题",
+      "hintOff": "关屏时段不选主题；唤醒规则见 02.5",
+      "invalidTime": "时间格式应为 HH:MM",
+      "linked": "改起止时间时，相邻时段的边界会一起移动，保持首尾相接。"
+    },
+    "problems": {
+      "title": "时段计划不合法，保存前需要修正",
+      "backend": "服务端校验未通过",
+      "format": "时间格式不对",
+      "theme": "主题不在内置主题或关屏之内",
+      "empty": "至少需要一个时段",
+      "gap": "{{from}}–{{to}} 没有被任何时段覆盖",
+      "overlap": "{{from}}–{{to}} 被多个时段重叠",
+      "period": "第 {{n}} 个时段：{{msg}}"
+    },
+    "themes": {
+      "title": "主题",
+      "metaOff": "所选时段为关屏",
+      "metaPick": "正在为 {{from}}–{{to}} 选主题",
+      "dark": "深色",
+      "light": "浅色",
+      "default": "默认",
+      "picked": "已选",
+      "usedBy": "用于 {{ranges}}",
+      "unused": "未使用",
+      "card": "{{name}}（{{id}}）",
+      "preview": "{{name}} 主题预览"
+    },
+    "reduce": {
+      "title": "降低特效",
+      "help": "关闭光晕与动效，适合长时间常亮或性能不足。与「设置 · 显示」是同一开关。",
+      "settingsFailedAfterPlan": "时段计划已保存，但「降低特效」未能保存：{{error}}"
+    },
+    "wake": {
+      "title": "唤醒规则",
+      "meta": "只读 · 关屏时段内",
+      "crit": "严重告警唤醒",
+      "critTag": "M4 起",
+      "critSub": "亮屏 10 分钟后恢复关屏",
+      "remote": "远程开屏",
+      "remoteTag": "可用",
+      "remoteSub": "「远程操作」k3 / k5",
+      "touch": "触摸唤醒",
+      "touchNo": "当前无触摸",
+      "touchYes": "有触摸",
+      "touchUnknown": "尚未上报",
+      "touchSub": "有触摸时点屏幕即亮"
     }
   }
 }
