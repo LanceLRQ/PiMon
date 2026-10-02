@@ -3,11 +3,13 @@ export const WAKE_TOUCH_WINDOW_MS = 10_000
 
 /**
  * 关屏后唤醒的第一次触摸只负责点亮屏幕，不触发小组件点击（设计 5.5a）。
- * 屏幕由关转开时上膛，10 秒内的第一次触摸被吞掉；超过 10 秒自动解除（例如计划亮屏后几小时才有人点击）。
+ * 只有关屏期间页面确实吞掉过一次触摸（即这次唤醒由触摸引起）才在转亮时上膛，10 秒内的第一次触摸被吞掉；
+ * 计划切换、远程开屏等没有触摸的亮屏不上膛。超过 10 秒自动解除。
  */
 export class WakeTouchGuard {
   private mode: 'on' | 'off' | null = null
   private armedUntil: number | null = null
+  private touchedWhileOff = false
   private readonly now: () => number
 
   constructor(now: () => number = () => Date.now()) {
@@ -15,9 +17,15 @@ export class WakeTouchGuard {
   }
 
   setMode(mode: 'on' | 'off') {
-    if (mode === 'on' && this.mode === 'off') this.armedUntil = this.now() + WAKE_TOUCH_WINDOW_MS
+    if (mode === 'on' && this.mode === 'off' && this.touchedWhileOff) this.armedUntil = this.now() + WAKE_TOUCH_WINDOW_MS
     if (mode === 'off') this.armedUntil = null
+    if (mode !== this.mode) this.touchedWhileOff = false
     this.mode = mode
+  }
+
+  /** 关屏期间页面吞掉了一次触摸（pointerdown）；亮屏时调用无效 */
+  noteTouchWhileOff() {
+    if (this.mode === 'off') this.touchedWhileOff = true
   }
 
   /** 收到一次触摸：返回 true 表示这次要被吞掉 */

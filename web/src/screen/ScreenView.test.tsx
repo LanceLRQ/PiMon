@@ -181,6 +181,12 @@ describe('屏幕根：轮播与 current_screen 上报', () => {
   })
 })
 
+/** 关屏期间在黑屏层上按一下：页面吞掉这次 pointerdown */
+function touchOffOverlay(container: HTMLElement) {
+  const overlay = container.querySelector<HTMLElement>('[data-screen-off]')!
+  fireEvent.pointerDown(overlay, { clientX: 10, clientY: 10, pointerId: 1, pointerType: 'touch' })
+}
+
 describe('屏幕根：触摸与详情层', () => {
   const touchStore = () => storeWith({ screen_settings: touchSettings() })
 
@@ -287,10 +293,20 @@ describe('屏幕根：触摸与详情层', () => {
     expect(container.querySelector('[data-detail-layer]')).toBeNull()
   })
 
-  it('关屏后唤醒的第一次触摸只点亮不点击，第二次才点击（Ruling 33）', async () => {
+  it('关屏期间无人触摸（计划切换或远程开屏）转亮后，首次触摸直接点击', async () => {
     const store = touchStore()
     const { container } = await renderScreen(store)
     act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'off', theme_id: 'ambient', reason: 'schedule' } })))
+    act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'on', theme_id: 'ambient', reason: 'schedule' } })))
+    tap(widgetEl(container, 'w2'))
+    expect(container.querySelector('[data-detail-layer]')).not.toBeNull()
+  })
+
+  it('关屏期间触摸过，唤醒后的第一次触摸只点亮不点击，第二次才点击（Ruling 33）', async () => {
+    const store = touchStore()
+    const { container } = await renderScreen(store)
+    act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'off', theme_id: 'ambient', reason: 'schedule' } })))
+    touchOffOverlay(container)
     act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'on', theme_id: 'ambient', reason: 'wake' } })))
     tap(widgetEl(container, 'w2'))
     expect(container.querySelector('[data-detail-layer]')).toBeNull()
@@ -329,15 +345,16 @@ describe('屏幕根：数据更新', () => {
 
 describe('屏幕根：唤醒保护只在 10 秒内有效（Ruling 51）', () => {
   const touchStore = () => storeWith({ screen_settings: touchSettings() })
-  const offOn = (store: ReturnType<typeof touchStore>) => {
+  const offOn = (store: ReturnType<typeof touchStore>, container: HTMLElement) => {
     act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'off', theme_id: 'ambient', reason: 'schedule' } })))
+    touchOffOverlay(container)
     act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'on', theme_id: 'ambient', reason: 'schedule' } })))
   }
 
   it('亮屏很久之后的第一次触摸正常点击', async () => {
     const store = touchStore()
     const { container } = await renderScreen(store)
-    offOn(store)
+    offOn(store, container)
     act(() => void vi.advanceTimersByTime(10_000))
     tap(widgetEl(container, 'w2'))
     expect(container.querySelector('[data-detail-layer]')).not.toBeNull()
@@ -346,7 +363,7 @@ describe('屏幕根：唤醒保护只在 10 秒内有效（Ruling 51）', () => 
   it('10 秒内的第一次触摸只点亮', async () => {
     const store = touchStore()
     const { container } = await renderScreen(store)
-    offOn(store)
+    offOn(store, container)
     act(() => void vi.advanceTimersByTime(9_000))
     tap(widgetEl(container, 'w2'))
     expect(container.querySelector('[data-detail-layer]')).toBeNull()

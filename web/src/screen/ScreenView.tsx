@@ -168,6 +168,7 @@ export function ScreenView({ store, nav, reporter, topInset = 0 }: ScreenViewPro
     const gesture = gestureRef.current
     // 关屏时触摸只负责唤醒（由 kiosk 旁听触摸设备后请求 hub），不传给页面内容
     if (mode === 'off') {
+      wakeGuard.noteTouchWhileOff()
       e.preventDefault()
       e.stopPropagation()
       return
