@@ -15,6 +15,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/devices"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/history"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
@@ -57,6 +58,8 @@ type App struct {
 	instances   *instances.Service
 	screens     *screens.Service
 	screenState *screenstate.Service
+	devices     *devices.Store
+	presence    *devices.Presence
 	history     *history.Service
 	ws          *ws.Hub
 	notifier    *sdnotify.Notifier
@@ -87,6 +90,9 @@ func Open(ctx context.Context, cfg config.Config, opt ...Option) (*App, error) {
 	}
 	a := &App{cfg: cfg, opts: o, db: db, box: box}
 	if err := a.assemble(ctx, dbExisted); err != nil {
+		if a.presence != nil {
+			a.presence.Close()
+		}
 		_ = db.Close()
 		return nil, err
 	}
@@ -176,6 +182,17 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	if err := a.screenState.Load(ctx); err != nil {
 		return fmt.Errorf("加载屏幕时段计划: %w", err)
 	}
+	a.devices = devices.New(devices.Config{DB: a.db, Box: a.box, Clock: o.clk})
+	known, err := a.devices.List(ctx)
+	if err != nil {
+		return fmt.Errorf("读取设备列表: %w", err)
+	}
+	knownIDs := make([]string, len(known))
+	for i, d := range known {
+		knownIDs[i] = d.ID
+	}
+	// 已知设备在 hub 启动后的宽限期内为 pending，之后仍未连上才算 offline。
+	a.presence = devices.NewPresence(o.clk, o.clk.Now(), knownIDs)
 	// hub-self 的统计来源在 instances 与 history 就绪后才能绑定，先于 Load 以便首次采集就有数据。
 	hubself.Bind(hubStats{
 		inst: a.instances, hist: a.history, started: o.clk.Now(), dataDir: a.cfg.DataDir,
@@ -185,6 +202,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 			return online, true
 		},
 		screenStatus: a.screenState.Status,
+		onlineAgents: a.presence.Online,
 	})
 	if err := a.instances.Load(ctx); err != nil {
 		return fmt.Errorf("恢复实例状态: %w", err)
@@ -278,12 +296,15 @@ func (a *App) Handler() http.Handler { return a.handler }
 // hub-self 把它与实例当前状态落盘失败数（instances.Service.WriteErrors）相加作为「写库错误」。
 func (a *App) HistoryWriteErrors() int64 { return a.history.WriteErrors() }
 
-// Close 关闭数据库；可重复调用。
+// Close 先停在线状态计时协程，再关闭数据库；可重复调用。
 func (a *App) Close() error {
 	if a.closed {
 		return nil
 	}
 	a.closed = true
+	if a.presence != nil {
+		a.presence.Close()
+	}
 	return a.db.Close()
 }
 

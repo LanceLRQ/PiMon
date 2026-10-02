@@ -18,13 +18,20 @@ type hubStats struct {
 	screenOnline func() (online, known bool)
 	// screenStatus 返回当前屏幕与 kiosk 状态；为空表示来源未接入。
 	screenStatus func() model.ScreenStatus
+	// onlineAgents 返回在线 agent 数；为空表示来源未接入，按 0 计。
+	onlineAgents func() int
 }
 
 // WriteErrors 是当前状态落盘与历史写盘失败次数之和。
 func (s hubStats) WriteErrors() int64 { return s.inst.WriteErrors() + s.hist.WriteErrors() }
 
-// OnlineAgents 在 M2 接入 agent 之前恒为 0。
-func (hubStats) OnlineAgents() int { return 0 }
+// OnlineAgents 取自设备在线状态；来源未接入时为 0。
+func (s hubStats) OnlineAgents() int {
+	if s.onlineAgents == nil {
+		return 0
+	}
+	return s.onlineAgents()
+}
 
 // ScreenOnline 取自屏幕会话的在线状态；来源未接入时为未知（known=false），不当作离线（Ruling 50）。
 func (s hubStats) ScreenOnline() (online, known bool) {
