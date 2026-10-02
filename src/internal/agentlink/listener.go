@@ -33,7 +33,7 @@ const (
 	AuthMaxFailures  = 10
 	AuthLockDuration = 15 * time.Minute
 
-	// limitKeyPrefix 是限流 key 前缀，后面拼来源 IP。
+	// limitKeyPrefix 是限流 key 前缀，后面依次拼首帧类型（auth: 或 pair:）与来源 IP。
 	limitKeyPrefix = "agent:"
 	maxHeaderBytes = 16 << 10
 )
@@ -383,18 +383,19 @@ func (l *Listener) doHandshake(ctx context.Context, fc frameConn, remoteAddr, ke
 		return Peer{}, false
 	}
 
-	var role string
+	// 凭据认证与配对分开计数：合法 agent 凭据重连不会清零配对码的猜测次数，配对被锁也不影响凭据认证。
+	var role, kind string
 	switch m := msg.(type) {
 	case *agent.Auth:
-		role = m.Role
+		role, kind = m.Role, "auth:"
 	case *agent.Pair:
-		role = m.Role
+		role, kind = m.Role, "pair:"
 	default:
 		log.Info("agent 通道首帧不是认证或配对，断开连接", "type", string(msg.MsgType()))
 		return Peer{}, false
 	}
 
-	key = limitKeyPrefix + key
+	key = limitKeyPrefix + kind + key
 	if l.limiter.Locked(key) > 0 {
 		log.Warn("agent 通道来源 IP 认证失败次数过多，已锁定")
 		l.writeFrame(ctx, fc, &agent.AuthFail{Reason: agent.ReasonRateLimited})

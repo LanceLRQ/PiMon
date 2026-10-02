@@ -753,3 +753,61 @@ func TestUnknownType_截断到64字节且保持UTF8(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// 发件字节预算：条数远未满，但积压字节超出预算即按 queue_full 断开。
+func TestSession_发件超出字节预算即断开(t *testing.T) {
+	f := newFixture(t, func(o *SessionOptions, c *fakeConn) {
+		o.MaxQueuedBytes = 1000
+		c.blockWrite = true
+	})
+	big := &agent.Ack{IDs: []string{strings.Repeat("x", 400)}}
+	var err error
+	for i := 0; i < 10 && err == nil; i++ {
+		err = f.s.Send(big)
+	}
+	if !errors.Is(err, ErrSendQueueFull) {
+		t.Fatalf("err = %v", err)
+	}
+	r := waitDone(t, f.s)
+	if r.Kind != CloseQueueFull || !errors.Is(r.Err, ErrSendQueueFull) {
+		t.Fatalf("CloseReason = %+v", r)
+	}
+}
+
+// 收件字节预算：Handler 卡住时积压字节超出预算即按 queue_full 断开。
+func TestSession_收件超出字节预算即断开(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	f := newFixture(t, func(o *SessionOptions, _ *fakeConn) {
+		o.MaxQueuedBytes = 1000
+		o.Handler = func(*Session, agent.Message) { <-release }
+	})
+	big := mustEncode(t, &agent.Ack{IDs: []string{strings.Repeat("x", 400)}})
+	for i := 0; i < 10 && !isDone(f.s); i++ {
+		select {
+		case f.peer.c.out <- big:
+		case <-f.s.Done():
+		}
+	}
+	r := waitDone(t, f.s)
+	if r.Kind != CloseQueueFull || !errors.Is(r.Err, ErrRecvQueueFull) {
+		t.Fatalf("CloseReason = %+v", r)
+	}
+}
+
+// 预算内的大帧（接近单帧上限的一半）能正常收发，且写出、取出后预算归还。
+func TestSession_预算内大帧正常收发(t *testing.T) {
+	f := newFixture(t, nil)
+	big := strings.Repeat("x", 4<<20)
+	for i := 0; i < 3; i++ {
+		if err := f.s.Send(&agent.Ack{IDs: []string{big}}); err != nil {
+			t.Fatalf("第 %d 次 Send: %v", i, err)
+		}
+		if a, ok := f.peer.recv().(*agent.Ack); !ok || len(a.IDs[0]) != len(big) {
+			t.Fatalf("对端收到 %#v", a)
+		}
+		f.peer.send(&agent.Ack{IDs: []string{big}})
+	}
+	waitFor(t, "Handler 收到 3 个大帧", func() bool { return len(f.rec.snapshot()) == 3 })
+	waitFor(t, "预算归还", func() bool { return f.s.sendBytes.Load() == 0 && f.s.recvBytes.Load() == 0 })
+}

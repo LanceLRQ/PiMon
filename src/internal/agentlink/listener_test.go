@@ -720,3 +720,47 @@ func TestListener_认证后可收超过4KiB的业务帧(t *testing.T) {
 		t.Fatal("Handler 收到的大帧内容不符")
 	}
 }
+
+func agentPair(code string) *agent.Pair {
+	return &agent.Pair{Code: code, Role: agent.RoleAgent}
+}
+
+func TestListener_认证成功不清零配对失败计数(t *testing.T) {
+	f := newListenerFixture(t, nil)
+	badPair := func() *websocket.Conn {
+		c := f.mustDial()
+		send(t, c, agentPair("WRONG"))
+		return c
+	}
+	for i := 0; i < 9; i++ {
+		expectAuthFail(t, badPair(), agent.ReasonBadCode)
+	}
+	c := f.mustDial()
+	send(t, c, agentAuth(goodCredential))
+	if _, ok := mustRecv(t, c).(*agent.AuthOK); !ok {
+		t.Fatal("期望 auth_ok")
+	}
+	expectAuthFail(t, badPair(), agent.ReasonBadCode) // 第 10 次，触发锁定
+
+	c = f.mustDial()
+	send(t, c, agentPair(goodPairCode))
+	expectAuthFail(t, c, agent.ReasonRateLimited)
+}
+
+func TestListener_配对被锁时凭据认证仍可成功(t *testing.T) {
+	f := newListenerFixture(t, nil)
+	for i := 0; i < 10; i++ {
+		c := f.mustDial()
+		send(t, c, agentPair("WRONG"))
+		expectAuthFail(t, c, agent.ReasonBadCode)
+	}
+	c := f.mustDial()
+	send(t, c, agentPair(goodPairCode))
+	expectAuthFail(t, c, agent.ReasonRateLimited)
+
+	c = f.mustDial()
+	send(t, c, agentAuth(goodCredential))
+	if _, ok := mustRecv(t, c).(*agent.AuthOK); !ok {
+		t.Fatal("配对被锁不应影响凭据认证")
+	}
+}

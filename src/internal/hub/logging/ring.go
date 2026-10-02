@@ -118,7 +118,7 @@ func (h *ringHandler) WithGroup(name string) slog.Handler {
 }
 
 // sensitiveKeys 命中（不区分大小写、子串匹配）的属性键，其值不进入缓冲。
-var sensitiveKeys = []string{"password", "passwd", "secret", "token", "setup_code", "authorization", "cookie", "credential", "api_key", "apikey"}
+var sensitiveKeys = []string{"password", "passwd", "secret", "token", "setup_code", "authorization", "cookie", "credential", "pair_code", "api_key", "apikey"}
 
 // maxTextLen 是单条日志消息或属性文本进入缓冲的长度上限（字节）。
 const maxTextLen = 2048

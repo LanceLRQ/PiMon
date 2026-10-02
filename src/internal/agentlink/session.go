@@ -27,6 +27,8 @@ const (
 	HeartbeatTimeout = 35 * time.Second
 	// SendQueueSize 是发送队列与收件队列的默认容量。
 	SendQueueSize = 256
+	// MaxQueuedBytes 是发送队列与收件队列各自允许积压的总字节数默认值，超出按 queue_full 断开。
+	MaxQueuedBytes int64 = 32 << 20
 	// ByeFlushTimeout 是发送 bye 后等待写出的上限。
 	ByeFlushTimeout = time.Second
 	// writeTimeout 是单帧写出的上限（网络操作，用真实时间）。
@@ -109,12 +111,22 @@ type SessionOptions struct {
 	// SendQueueSize 与 RecvQueueSize 默认 SendQueueSize（256）。
 	SendQueueSize int
 	RecvQueueSize int
+	// MaxQueuedBytes 是发件与收件各自在队列中积压的总字节上限（分开计数），默认 MaxQueuedBytes（32 MiB）。
+	MaxQueuedBytes int64
 }
 
 type outFrame struct {
 	data []byte
 	// flushed 非空时在该帧写出后关闭（bye 用）。
 	flushed chan struct{}
+	// counted 是已计入发件字节预算的字节数，写出后扣减；bye 等不计预算的帧为 0。
+	counted int64
+}
+
+// inFrame 是收件队列中的一条消息及其计入预算的原始帧长度。
+type inFrame struct {
+	msg agent.Message
+	n   int64
 }
 
 // Session 是认证完成后的一条 hub↔agent 连接，不关心消息的业务含义。
@@ -133,7 +145,11 @@ type Session struct {
 	done   chan struct{}
 
 	sendQ chan outFrame
-	inbox chan agent.Message
+	inbox chan inFrame
+	// maxBytes 是发件、收件各自的字节预算；sendBytes、recvBytes 是当前在队列中的字节数。
+	maxBytes  int64
+	sendBytes atomic.Int64
+	recvBytes atomic.Int64
 	// lastSeen 是最近一次读到帧的时刻（Clock 的 UnixNano），心跳协程据此判活。
 	lastSeen atomic.Int64
 
@@ -162,19 +178,23 @@ func newSession(fc frameConn, peer Peer, opts SessionOptions) *Session {
 	if opts.RecvQueueSize <= 0 {
 		opts.RecvQueueSize = SendQueueSize
 	}
+	if opts.MaxQueuedBytes <= 0 {
+		opts.MaxQueuedBytes = MaxQueuedBytes
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Session{
-		fc:      fc,
-		clk:     opts.Clock,
-		log:     opts.Log.With("device_id", peer.DeviceID, "remote_addr", peer.RemoteAddr),
-		handler: opts.Handler,
-		ctx:     ctx,
-		cancel:  cancel,
-		done:    make(chan struct{}),
-		sendQ:   make(chan outFrame, opts.SendQueueSize),
-		inbox:   make(chan agent.Message, opts.RecvQueueSize),
-		peer:    peer,
-		waiters: make(map[string]chan agent.Message),
+		maxBytes: opts.MaxQueuedBytes,
+		fc:       fc,
+		clk:      opts.Clock,
+		log:      opts.Log.With("device_id", peer.DeviceID, "remote_addr", peer.RemoteAddr),
+		handler:  opts.Handler,
+		ctx:      ctx,
+		cancel:   cancel,
+		done:     make(chan struct{}),
+		sendQ:    make(chan outFrame, opts.SendQueueSize),
+		inbox:    make(chan inFrame, opts.RecvQueueSize),
+		peer:     peer,
+		waiters:  make(map[string]chan agent.Message),
 	}
 	fc.SetReadLimit(agent.MaxFrame)
 	s.lastSeen.Store(s.clk.Now().UnixNano())
@@ -246,14 +266,18 @@ func (s *Session) enqueue(b []byte) error {
 		s.mu.Unlock()
 		return ErrSessionClosed
 	}
-	select {
-	case s.sendQ <- outFrame{data: b}:
-		s.mu.Unlock()
-		return nil
-	default:
+	n := int64(len(b))
+	if s.sendBytes.Add(n) <= s.maxBytes {
+		select {
+		case s.sendQ <- outFrame{data: b, counted: n}:
+			s.mu.Unlock()
+			return nil
+		default:
+		}
 	}
+	s.sendBytes.Add(-n)
 	s.mu.Unlock()
-	s.log.Warn("agent 会话发送队列已满，断开连接")
+	s.log.Warn("agent 会话发送队列已满（条数或字节预算），断开连接")
 	s.finish(CloseReason{Kind: CloseQueueFull, Err: ErrSendQueueFull})
 	return ErrSendQueueFull
 }
@@ -441,12 +465,16 @@ func (s *Session) handleFrame(b []byte) bool {
 		}
 		return true
 	}
-	select {
-	case s.inbox <- msg:
-		return true
-	default:
+	n := int64(len(b))
+	if s.recvBytes.Add(n) <= s.maxBytes {
+		select {
+		case s.inbox <- inFrame{msg: msg, n: n}:
+			return true
+		default:
+		}
 	}
-	s.log.Warn("agent 会话收件队列已满，断开连接", "type", string(msg.MsgType()))
+	s.recvBytes.Add(-n)
+	s.log.Warn("agent 会话收件队列已满（条数或字节预算），断开连接", "type", string(msg.MsgType()))
 	s.finish(CloseReason{Kind: CloseQueueFull, Err: ErrRecvQueueFull})
 	return false
 }
@@ -487,6 +515,7 @@ func (s *Session) writeLoop() {
 			wctx, cancel := context.WithTimeout(s.ctx, writeTimeout)
 			err := s.fc.Write(wctx, f.data)
 			cancel()
+			s.sendBytes.Add(-f.counted)
 			if err != nil {
 				s.finish(CloseReason{Kind: CloseWriteError, Err: err})
 				return
@@ -504,8 +533,9 @@ func (s *Session) dispatchLoop() {
 	for {
 		select {
 		case m := <-s.inbox:
+			s.recvBytes.Add(-m.n)
 			if s.handler != nil {
-				s.handler(s, m)
+				s.handler(s, m.msg)
 			}
 		case <-s.ctx.Done():
 			return
