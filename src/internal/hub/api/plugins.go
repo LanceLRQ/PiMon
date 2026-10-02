@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/LanceLRQ/PiMon/src/internal/hub/devices"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/httpx"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
@@ -34,8 +35,33 @@ func (s *server) requestLang(r *http.Request) string {
 	return s.Settings.Get().Language
 }
 
+// listPlugins 返回插件列表；?machine=<设备 ID> 时返回该设备上报的可用插件（按最后一次上报，
+// 设备离线也照常返回），缺省或 machine=hub 时返回中枢注册表。
 func (s *server) listPlugins(w http.ResponseWriter, r *http.Request) {
-	httpx.WriteJSON(w, http.StatusOK, pluginList(s.Plugins.Snapshot(), s.Plugins.Dir(), s.requestLang(r)))
+	machine := r.URL.Query().Get("machine")
+	if machine == "" || machine == plugins.MachineHub {
+		httpx.WriteJSON(w, http.StatusOK, pluginList(s.Plugins.Snapshot(), s.Plugins.Dir(), s.requestLang(r)))
+		return
+	}
+	if s.Devices == nil {
+		httpx.WriteError(w, http.StatusNotFound, httpx.CodeDeviceNotFound, nil)
+		return
+	}
+	if _, err := s.Devices.Get(r.Context(), machine); err != nil {
+		if errors.Is(err, devices.ErrNotFound) {
+			httpx.WriteError(w, http.StatusNotFound, httpx.CodeDeviceNotFound, nil)
+			return
+		}
+		internalError(w, r, err)
+		return
+	}
+	ps, err := s.Plugins.MachinePlugins(r.Context(), machine)
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+	// 设备的插件没有本地目录与加载问题：errors、conflicts 为空数组，plugin_dir 为空。
+	httpx.WriteJSON(w, http.StatusOK, pluginList(plugins.Snapshot{Plugins: ps}, "", s.requestLang(r)))
 }
 
 func (s *server) rescanPlugins(w http.ResponseWriter, r *http.Request) {

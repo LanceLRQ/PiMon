@@ -24,8 +24,13 @@ package httpx
 //	                         插件目录的加载问题经 GET /api/plugins 的 errors[] 呈现）
 //	proxy.not_found          代理不存在                            404
 //	proxy.in_use             代理被实例引用，details.instances     409
+//	proxy.location_mismatch  所选代理不能在该运行位置使用，details.field 为代理字段的键、
+//	                         location 为代理的可用位置                                   422
 //	instance.not_found       实例不存在                            404
 //	instance.in_use          实例被 screen 引用，details.screens    409
+//	instance.machine_invalid 运行位置不合法，details.reason：device_not_found /
+//	                         runs_on_mismatch / plugin_unavailable                        422
+//	device.not_found         设备不存在                            404
 //	layout.conflict          布局版本冲突，details.latest_version 为服务端最新版本    409
 //	layout.invalid           布局不合法，details.problems 列出碰撞、越界、尺寸与结构问题  400
 //	schedule.invalid         时段计划不合法，details.problems 列出格式、主题、重叠与缺口（带区间）  400
@@ -59,8 +64,11 @@ const (
 	CodePluginInvalidManifest = "plugin.invalid_manifest"
 	CodeProxyNotFound         = "proxy.not_found"
 	CodeProxyInUse            = "proxy.in_use"
+	CodeProxyLocationMismatch = "proxy.location_mismatch"
 	CodeInstanceNotFound      = "instance.not_found"
 	CodeInstanceInUse         = "instance.in_use"
+	CodeMachineInvalid        = "instance.machine_invalid"
+	CodeDeviceNotFound        = "device.not_found"
 	CodeLayoutConflict        = "layout.conflict"
 	CodeLayoutInvalid         = "layout.invalid"
 	CodeScheduleInvalid       = "schedule.invalid"

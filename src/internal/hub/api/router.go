@@ -7,6 +7,7 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/devices"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/history"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/httpx"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
@@ -37,12 +38,14 @@ type Deps struct {
 	ScreenTokens *auth.ScreenTokens
 	Backups      *backup.Service
 	Proxies      *proxies.Store
-	Plugins      *plugins.Registry
-	Instances    *instances.Service
-	History      *history.Service
-	Screens      *screens.Service
-	ScreenState  *screenstate.Service
-	System       *system.Service
+	// Devices 是设备仓库，GET /api/plugins?machine= 据此判断设备是否存在；为 nil 时任何设备都视为不存在。
+	Devices     *devices.Store
+	Plugins     *plugins.Registry
+	Instances   *instances.Service
+	History     *history.Service
+	Screens     *screens.Service
+	ScreenState *screenstate.Service
+	System      *system.Service
 	// DataDir 是数据目录，品牌标识从其 logos 子目录读取；为空时标识接口一律 404。
 	DataDir string
 	// ListenAddr 返回实际监听地址（host:port），用来拼设置码页的手机访问地址；nil 时退回请求的 Host。

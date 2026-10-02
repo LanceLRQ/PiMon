@@ -17,6 +17,7 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/devices"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/history"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
@@ -75,6 +76,18 @@ type env struct {
 	tokenFn   string
 	ring      *logging.Ring
 	pairer    *fakePairer
+	devices   *devices.Store
+}
+
+// deviceFacts 把设备仓库适配为实例服务的 DeviceStates（与 app 中的适配器相同）。
+type deviceFacts struct{ s *devices.Store }
+
+func (d deviceFacts) Device(id string) (instances.DeviceFacts, bool) {
+	dev, err := d.s.Get(context.Background(), id)
+	if err != nil {
+		return instances.DeviceFacts{}, false
+	}
+	return instances.DeviceFacts{Role: dev.Role}, true
 }
 
 func newEnv(t *testing.T) *env { return newEnvWith(t) }
@@ -141,8 +154,10 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 		}),
 		Proxies: proxies.New(proxies.Config{DB: db, Box: box, Clock: clk, Referrers: refs}),
 		DialOut: &fakePairer{},
+		Devices: devices.New(devices.Config{DB: db, Box: box, Clock: clk}),
 	}
 	inst.UseProxies(deps.Proxies)
+	inst.UseDevices(deviceFacts{deps.Devices})
 	deps.Screens = screens.New(screens.Config{DB: db, Clock: clk, Plugins: reg, Instances: inst})
 	inst.UseScreenRefs(deps.Screens)
 	deps.ScreenState = screenstate.New(screenstate.Config{DB: db, Clock: clk, Timezone: func() string { return st.Get().Timezone }})
@@ -155,7 +170,7 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 	srv := httptest.NewServer(New(deps))
 	t.Cleanup(srv.Close)
 	e := &env{t: t, clk: clk, deps: deps, db: db, refs: refs, plugins: reg, pluginDir: pluginDir, hasher: hasher, srv: srv, tokenFn: tokenPath, ring: ring,
-		pairer: deps.DialOut.(*fakePairer)}
+		pairer: deps.DialOut.(*fakePairer), devices: deps.Devices}
 	e.client = e.newClient()
 	return e
 }

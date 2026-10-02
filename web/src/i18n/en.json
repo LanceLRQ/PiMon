@@ -131,11 +131,21 @@
     },
     "proxy": {
       "not_found": "Proxy not found",
-      "in_use": "The proxy is used by instances and cannot be deleted"
+      "in_use": "The proxy is used by instances and cannot be deleted",
+      "location_mismatch": "The selected proxy cannot be used at this location: \"hub\" proxies are for the hub only, and a VPS can only pick \"Any\""
     },
     "instance": {
       "not_found": "Instance not found",
-      "in_use": "The instance is used by screens and cannot be deleted"
+      "in_use": "The instance is used by screens and cannot be deleted",
+      "machine_invalid": "Invalid run location",
+      "machine_reason": {
+        "device_not_found": "The selected device does not exist or has been revoked",
+        "runs_on_mismatch": "This plugin cannot run at the selected location",
+        "plugin_unavailable": "The selected device has not reported this plugin. Install it on the device and try again."
+      }
+    },
+    "device": {
+      "not_found": "Device not found"
     },
     "layout": {
       "conflict": "The layout was updated elsewhere. Reload before saving.",

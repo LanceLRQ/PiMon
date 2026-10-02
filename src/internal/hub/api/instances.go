@@ -26,8 +26,17 @@ func (s *server) registerInstances(mux *http.ServeMux) {
 // writeInstanceError 把实例服务的错误映射为 HTTP 响应；无法识别的走 500。
 // 采集错误（run.*）的文字已由运行时脱敏，放进 details.message 供前端展示。
 func writeInstanceError(w http.ResponseWriter, r *http.Request, err error) {
-	var fe model.FieldErrors
+	var (
+		fe model.FieldErrors
+		mi *instances.MachineInvalidError
+		pl *instances.ProxyLocationError
+	)
 	switch {
+	case errors.As(err, &mi):
+		httpx.WriteError(w, http.StatusUnprocessableEntity, httpx.CodeMachineInvalid, map[string]any{"reason": mi.Reason})
+	case errors.As(err, &pl):
+		httpx.WriteError(w, http.StatusUnprocessableEntity, httpx.CodeProxyLocationMismatch,
+			map[string]any{"field": pl.Field, "location": pl.Location})
 	case errors.Is(err, instances.ErrNotFound):
 		httpx.WriteError(w, http.StatusNotFound, httpx.CodeInstanceNotFound, nil)
 	case errors.Is(err, instances.ErrPluginNotFound):

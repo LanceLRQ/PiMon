@@ -193,6 +193,8 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		return fmt.Errorf("加载屏幕时段计划: %w", err)
 	}
 	a.devices = devices.New(devices.Config{DB: a.db, Box: a.box, Clock: o.clk})
+	// 实例按运行位置校验时查设备角色；远程下发器（Remote）由 agentsrv 在 B6a 接入，未接入时远程实例只是不在本机调度。
+	a.instances.UseDevices(deviceStates{a.devices})
 	known, err := a.devices.List(ctx)
 	if err != nil {
 		return fmt.Errorf("读取设备列表: %w", err)
@@ -285,6 +287,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		ScreenTokens: a.screen,
 		Backups:      a.backups,
 		Proxies:      proxyStore,
+		Devices:      a.devices,
 		DialOut:      a.dialout,
 		Web:          webui.New(webui.Embedded(), o.version),
 		WS:           a.ws.Handler(),

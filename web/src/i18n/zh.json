@@ -131,11 +131,21 @@
     },
     "proxy": {
       "not_found": "代理不存在",
-      "in_use": "代理正被实例引用，无法删除"
+      "in_use": "代理正被实例引用，无法删除",
+      "location_mismatch": "所选代理不能在该运行位置使用：可用位置为「hub」的代理只能给中枢用，VPS 上只能选「任意」"
     },
     "instance": {
       "not_found": "实例不存在",
-      "in_use": "实例正被屏幕引用，无法删除"
+      "in_use": "实例正被屏幕引用，无法删除",
+      "machine_invalid": "运行位置不合法",
+      "machine_reason": {
+        "device_not_found": "所选设备不存在或已被吊销",
+        "runs_on_mismatch": "该插件不能在所选位置运行",
+        "plugin_unavailable": "所选设备没有上报该插件，请在设备上安装后重试"
+      }
+    },
+    "device": {
+      "not_found": "设备不存在"
     },
     "layout": {
       "conflict": "布局已被他人更新，请刷新后再保存",
