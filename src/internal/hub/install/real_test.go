@@ -1,6 +1,9 @@
 package install
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -117,5 +120,40 @@ func TestProcPortsListeners(t *testing.T) {
 func TestProcPortsMissingTCPIsError(t *testing.T) {
 	if _, err := (ProcPorts{Root: t.TempDir()}).Listeners(1); err == nil {
 		t.Fatal("缺少 /proc/net/tcp 应报错")
+	}
+}
+
+func healthHandler(code int) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(code) })
+}
+
+func TestHTTPHealthPlain(t *testing.T) {
+	srv := httptest.NewServer(healthHandler(http.StatusOK))
+	defer srv.Close()
+	if err := httpHealth(context.Background(), srv.URL+"/healthz"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// hub 开启直连 HTTPS 时，同一端口对明文请求回 400，需要用 https 再探一次。
+func TestHTTPHealthFallsBackToHTTPSWithSelfSignedCert(t *testing.T) {
+	srv := httptest.NewTLSServer(healthHandler(http.StatusOK))
+	defer srv.Close()
+	plain := "http" + srv.URL[len("https"):] + "/healthz"
+	if err := httpHealth(context.Background(), plain); err != nil {
+		t.Fatalf("HTTPS 模式应判为就绪: %v", err)
+	}
+}
+
+func TestHTTPHealthBothFail(t *testing.T) {
+	srv := httptest.NewServer(healthHandler(http.StatusServiceUnavailable))
+	defer srv.Close()
+	if err := httpHealth(context.Background(), srv.URL+"/healthz"); err == nil {
+		t.Fatal("明文 503 且 https 不可用应判为未就绪")
+	}
+	tlsSrv := httptest.NewTLSServer(healthHandler(http.StatusServiceUnavailable))
+	defer tlsSrv.Close()
+	if err := httpHealth(context.Background(), "http"+tlsSrv.URL[len("https"):]+"/healthz"); err == nil {
+		t.Fatal("https 返回 503 也应判为未就绪")
 	}
 }
