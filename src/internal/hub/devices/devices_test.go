@@ -348,6 +348,49 @@ func TestConfirm重新配对迁移引用(t *testing.T) {
 	if len(f.changes) != 2 {
 		t.Fatalf("changes=%v", f.changes)
 	}
+	if ok, err := f.s.TakeAutoHostMetrics(ctx, newID); err != nil || ok {
+		t.Fatalf("重新配对后不得再自动创建实例: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestRepair后拨出占位也清除自动创建标记(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	_, oldID := f.pairNew(t, PairingOptions{Name: "v", Role: model.DeviceRoleVPS}, "", "")
+	_, err := f.s.Confirm(ctx, oldID)
+	must(t, err)
+	cred, _ := agent.NewCredential()
+	d, err := f.s.CreateDialOut(ctx, DialOutDevice{Name: "v", Credential: cred, AutoHostMetrics: true, Replaces: oldID})
+	must(t, err)
+	if _, err := f.s.Confirm(ctx, d.ID); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := f.s.TakeAutoHostMetrics(ctx, d.ID); ok {
+		t.Fatal("拨出重新配对确认后应清除标记")
+	}
+}
+
+func TestCreate拒绝非法角色与dev默认允许离线(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	cred, _ := agent.NewCredential()
+	if _, err := f.s.CreateDialOut(ctx, DialOutDevice{Name: "x", Role: "bogus", Credential: cred}); !errors.Is(err, ErrInvalidRole) {
+		t.Fatalf("err=%v", err)
+	}
+	if err := f.s.CreatePaired(ctx, PairedDevice{CredentialHash: agent.CredentialHash(cred), Code: PairingCode{Role: "bogus"}}); !errors.Is(err, ErrInvalidRole) {
+		t.Fatalf("err=%v", err)
+	}
+	d, err := f.s.CreateDialOut(ctx, DialOutDevice{Name: "x", Role: model.DeviceRoleDev, Credential: cred})
+	must(t, err)
+	if !d.AllowOffline {
+		t.Fatal("dev 角色拨出设备应默认允许离线")
+	}
+}
+
+func TestHashPairingCode易混字符归一(t *testing.T) {
+	if HashPairingCode("o1il-0ABC") != HashPairingCode("0111 0abc") {
+		t.Fatal("O→0、I/L→1 归一失败")
+	}
 }
 
 func TestDelete吊销清理关联行(t *testing.T) {
@@ -583,10 +626,12 @@ func TestModel不含凭据类字段(t *testing.T) {
 	icred, id := f.pairNew(t, PairingOptions{Name: "in"}, "", "")
 	in, _ := f.s.Get(ctx, id)
 	list, _ := f.s.List(ctx)
+	var dbEnc string
+	must(t, f.db.QueryRow(`SELECT credential_enc FROM devices WHERE id=?`, d.ID).Scan(&dbEnc))
 	for _, v := range []any{d, in, list} {
 		raw, _ := json.Marshal(v)
 		s := string(raw)
-		for _, bad := range []string{cred, icred, agent.CredentialHash(cred), agent.CredentialHash(icred), "SHA256:pinvalue"} {
+		for _, bad := range []string{cred, icred, agent.CredentialHash(cred), agent.CredentialHash(icred), "SHA256:pinvalue", dbEnc} {
 			if strings.Contains(s, bad) {
 				t.Fatalf("JSON 泄露敏感值 %q: %s", bad, s)
 			}
@@ -597,7 +642,9 @@ func TestModel不含凭据类字段(t *testing.T) {
 			n := strings.ToLower(typ.Field(i).Name)
 			// DialOutRequest 与 PairingResult 的 Code 是一次性配对码，不是长期凭据。
 			for _, bad := range []string{"credential", "hash", "secret", "ciphertext", "pin", "enc"} {
-				if n == bad || strings.HasPrefix(n, bad) && bad != "pin" && bad != "enc" {
+				exact := n == bad
+				prefixed := bad != "pin" && bad != "enc" && strings.HasPrefix(n, bad)
+				if exact || prefixed {
 					t.Fatalf("%s.%s 不应出现在 model", typ.Name(), typ.Field(i).Name)
 				}
 			}

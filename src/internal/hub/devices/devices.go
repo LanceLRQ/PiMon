@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/base32"
 	"encoding/hex"
@@ -46,6 +47,8 @@ var (
 	ErrCodeNotFound = errors.New("配对码不存在")
 	// ErrCodeExpired 表示配对码已过期；过期的行在同一事务内删除。
 	ErrCodeExpired = errors.New("配对码已过期")
+	// ErrInvalidRole 表示设备角色不合法。
+	ErrInvalidRole = errors.New("设备角色不合法")
 )
 
 // Crockford base32 字母表（不含 I L O U）。
@@ -124,13 +127,14 @@ type PairedDevice struct {
 
 // DialOutDevice 是拨出配对成功后创建的设备（中枢为拨号方，保存凭据原文的密文）。
 type DialOutDevice struct {
-	Name            string
-	Role            string
-	Address         string
-	Pin             string
-	ProxyID         string
-	Credential      string
-	AllowOffline    bool
+	Name       string
+	Role       string
+	Address    string
+	Pin        string
+	ProxyID    string
+	Credential string
+	// AllowOffline 缺省时按角色决定（dev 默认开），规则与配对码一致。
+	AllowOffline    *bool
 	AutoHostMetrics bool
 	// Replaces 非空表示重新配对该设备，旧设备在首个 hello 确认时被替换。
 	Replaces string
@@ -157,6 +161,14 @@ type Detail struct {
 	Replaces        string
 	// Confirmed 为 false 表示已签发凭据但从未 hello。
 	Confirmed bool
+}
+
+// resolveAllowOffline 返回「允许离线」的最终值：显式给出者优先，缺省时角色为 dev 则开。
+func resolveAllowOffline(role string, v *bool) bool {
+	if v != nil {
+		return *v
+	}
+	return role == model.DeviceRoleDev
 }
 
 func validRole(r string) bool {
@@ -208,10 +220,7 @@ func (s *Store) NewPairingCode(ctx context.Context, o PairingOptions) (string, t
 	if !validRole(role) {
 		return "", time.Time{}, fmt.Errorf("角色 %q 不合法", role)
 	}
-	allow := role == model.DeviceRoleDev
-	if o.AllowOffline != nil {
-		allow = *o.AllowOffline
-	}
+	allow := resolveAllowOffline(role, o.AllowOffline)
 	auto := true
 	if o.AutoHostMetrics != nil {
 		auto = *o.AutoHostMetrics
@@ -240,7 +249,7 @@ func (s *Store) NewPairingCode(ctx context.Context, o PairingOptions) (string, t
 	// 为新码留出位置：淘汰最旧的，使插入后总数不超过上限。
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM pairing_codes WHERE code_hash IN (
-		   SELECT code_hash FROM pairing_codes ORDER BY created_at ASC, rowid ASC
+		   SELECT code_hash FROM pairing_codes ORDER BY rowid ASC
 		   LIMIT MAX(0, (SELECT COUNT(*) FROM pairing_codes) - ?))`, MaxActivePairingCodes-1); err != nil {
 		return "", time.Time{}, err
 	}
@@ -309,8 +318,12 @@ func (s *Store) ConsumePairingCode(ctx context.Context, codeHash string) (Pairin
 	if err != nil {
 		return PairingCode{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM pairing_codes WHERE code_hash = ?`, codeHash); err != nil {
+	res, err := tx.ExecContext(ctx, `DELETE FROM pairing_codes WHERE code_hash = ?`, codeHash)
+	if err != nil {
 		return PairingCode{}, err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return PairingCode{}, ErrCodeNotFound
 	}
 	if err := tx.Commit(); err != nil {
 		return PairingCode{}, err
@@ -342,21 +355,10 @@ func (s *Store) VerifyCredential(ctx context.Context, credential string) (string
 	if err != nil {
 		return "", err
 	}
-	if dir != model.DeviceDialIn || !constantTimeEqual(hash, agent.CredentialHash(credential)) {
+	if dir != model.DeviceDialIn || subtle.ConstantTimeCompare([]byte(hash), []byte(agent.CredentialHash(credential))) != 1 {
 		return "", ErrNotFound
 	}
 	return id, nil
-}
-
-func constantTimeEqual(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	var v byte
-	for i := 0; i < len(a); i++ {
-		v |= a[i] ^ b[i]
-	}
-	return v == 0
 }
 
 // uniqueName 在 tx 内返回不与现有设备重名的名称，重名时依次追加 " (2)"、" (3)"……
@@ -392,7 +394,7 @@ func (s *Store) CreatePaired(ctx context.Context, p PairedDevice) error {
 	id := agent.DeviceIDFromHash(p.CredentialHash)
 	role := p.Code.Role
 	if !validRole(role) {
-		role = model.DeviceRoleServer
+		return ErrInvalidRole
 	}
 	base := ""
 	for _, c := range []string{p.Code.Name, p.PairName, p.Hostname, id} {
@@ -432,8 +434,11 @@ func (s *Store) CreateDialOut(ctx context.Context, d DialOutDevice) (model.Devic
 		return model.Device{}, errors.New("缺少凭据")
 	}
 	role := d.Role
-	if !validRole(role) {
+	if role == "" {
 		role = model.DeviceRoleVPS
+	}
+	if !validRole(role) {
+		return model.Device{}, ErrInvalidRole
 	}
 	id := agent.DeviceID(d.Credential)
 	enc, err := s.box.Encrypt(d.Credential)
@@ -457,7 +462,7 @@ func (s *Store) CreateDialOut(ctx context.Context, d DialOutDevice) (model.Devic
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO devices (id, name, role, direction, address, proxy_id, allow_offline, credential_enc, pin, auto_host_metrics, replaces, created_at, updated_at)
 		 VALUES (?, ?, ?, 'dial_out', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, name, role, d.Address, d.ProxyID, boolInt(d.AllowOffline), enc, d.Pin, boolInt(d.AutoHostMetrics), d.Replaces, now, now)
+		id, name, role, d.Address, d.ProxyID, boolInt(resolveAllowOffline(role, d.AllowOffline)), enc, d.Pin, boolInt(d.AutoHostMetrics), d.Replaces, now, now)
 	if err != nil {
 		return model.Device{}, fmt.Errorf("创建设备: %w", err)
 	}
@@ -530,7 +535,7 @@ func (s *Store) Get(ctx context.Context, id string) (model.Device, error) {
 
 // List 按创建时间升序返回全部设备（不含中枢本机）。
 func (s *Store) List(ctx context.Context) ([]model.Device, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+selectCols+` FROM devices ORDER BY created_at ASC, rowid ASC`)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+selectCols+` FROM devices ORDER BY rowid ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -712,8 +717,11 @@ func (s *Store) Confirm(ctx context.Context, newID string) (string, error) {
 			}
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE devices SET name = ?, replaces = '', confirmed_at = ?, updated_at = ? WHERE id = ?`,
-		name, now, now, newID); err != nil {
+	// 重新配对时实例已随旧设备迁入，不再自动创建 host-metrics 实例。
+	autoOff := boolInt(oldID != "")
+	if _, err := tx.ExecContext(ctx, `UPDATE devices SET name = ?, replaces = '', confirmed_at = ?, updated_at = ?,
+		auto_host_metrics = CASE WHEN ? = 1 THEN 0 ELSE auto_host_metrics END WHERE id = ?`,
+		name, now, now, autoOff, newID); err != nil {
 		return "", err
 	}
 	if err := tx.Commit(); err != nil {
