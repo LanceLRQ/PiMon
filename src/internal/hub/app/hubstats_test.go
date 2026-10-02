@@ -73,6 +73,9 @@ func TestOpen装配在线状态并随Close停止(t *testing.T) {
 	if err := a.Close(); err != nil {
 		t.Fatal(err)
 	}
-	// Close 后计时协程已停止：断开后不再有状态迁移，也不 panic。
+	// Close 后不再起计时协程：断开只更新状态，不 panic，也不会再转为 offline。
 	a.presence.Disconnected("x", time.Now())
+	if st, _ := a.presence.State("x"); st != model.PresenceDisconnected {
+		t.Errorf("Close 后断开状态 = %q, 期望 disconnected", st)
+	}
 }

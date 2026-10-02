@@ -35,9 +35,10 @@ type Presence struct {
 	gen     uint64
 	cbs     []func(id string)
 
-	done      chan struct{}
-	closeOnce sync.Once
-	wg        sync.WaitGroup
+	// closed 由 mu 保护：置位后不再起计时协程，保证 wg.Add 不会与 Close 的 Wait 并发。
+	closed bool
+	done   chan struct{}
+	wg     sync.WaitGroup
 }
 
 // NewPresence 创建在线状态表。known 中的设备初始为 pending，
@@ -60,6 +61,7 @@ func NewPresence(clk clock.Clock, start time.Time, known []string) *Presence {
 }
 
 // OnChange 注册状态变化回调。回调在锁外同步调用，不得阻塞过久。
+// 并发的状态变化之间回调顺序不保证，回调应通过 State 读取最新状态，不依赖调用顺序。
 func (p *Presence) OnChange(fn func(id string)) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -81,19 +83,27 @@ func (p *Presence) Connected(id string) {
 }
 
 // Disconnected 标记会话在 at 时刻断开，满 OfflineAfter 仍未恢复则转为 offline。
-// 设备已处于 disconnected 或 offline 时不重复处理。
+// 未知设备（如已 Forget）、从未连上的 pending 设备，以及已处于 disconnected 或 offline 的设备一律忽略。
+// Presence 已 Close 时只更新状态，不再起计时协程。
 func (p *Presence) Disconnected(id string, at time.Time) {
 	p.mu.Lock()
-	if e := p.entries[id]; e != nil && (e.state == model.PresenceDisconnected || e.state == model.PresenceOffline) {
+	e := p.entries[id]
+	if e == nil || e.state != model.PresenceOnline {
 		p.mu.Unlock()
 		return
 	}
 	gen := p.set(id, model.PresenceDisconnected, at)
-	ch := p.clk.After(at.Add(OfflineAfter).Sub(p.clk.Now()))
-	p.wg.Add(1)
+	var ch <-chan time.Time
+	start := !p.closed
+	if start {
+		ch = p.clk.After(at.Add(OfflineAfter).Sub(p.clk.Now()))
+		p.wg.Add(1)
+	}
 	p.mu.Unlock()
 	p.notify(id)
-	go p.offlineLoop(id, gen, at, ch)
+	if start {
+		go p.offlineLoop(id, gen, at, ch)
+	}
 }
 
 // State 返回设备当前的原始状态与状态起点；设备未知时状态为空串。
@@ -132,9 +142,30 @@ func (p *Presence) Online() int {
 }
 
 // Close 停止全部计时协程并等待其退出，可重复调用。
+// 已经到期的计时会在退出前处理完，因此 Close 返回后，到期计时引起的状态变化已全部生效。
 func (p *Presence) Close() {
-	p.closeOnce.Do(func() { close(p.done) })
+	p.mu.Lock()
+	if !p.closed {
+		p.closed = true
+		close(p.done)
+	}
+	p.mu.Unlock()
 	p.wg.Wait()
+}
+
+// expired 等待计时通道到期；收到停止信号时，若计时恰好已到期仍视为到期，否则返回 false。
+func (p *Presence) expired(ch <-chan time.Time) bool {
+	select {
+	case <-ch:
+		return true
+	case <-p.done:
+		select {
+		case <-ch:
+			return true
+		default:
+			return false
+		}
+	}
 }
 
 // set 写入新状态并返回本次迁移的代数，调用方须持锁。
@@ -157,10 +188,8 @@ func (p *Presence) notify(id string) {
 // offlineLoop 等待断开计时到期；设备在此期间重连、再次断开或被 Forget 时，代数不再匹配，不做任何改动。
 func (p *Presence) offlineLoop(id string, gen uint64, at time.Time, ch <-chan time.Time) {
 	defer p.wg.Done()
-	select {
-	case <-p.done:
+	if !p.expired(ch) {
 		return
-	case <-ch:
 	}
 	p.mu.Lock()
 	e := p.entries[id]
@@ -176,10 +205,8 @@ func (p *Presence) offlineLoop(id string, gen uint64, at time.Time, ch <-chan ti
 // graceLoop 在启动宽限期结束时，把仍为 pending 的设备改为 offline。
 func (p *Presence) graceLoop(ch <-chan time.Time) {
 	defer p.wg.Done()
-	select {
-	case <-p.done:
+	if !p.expired(ch) {
 		return
-	case <-ch:
 	}
 	until := p.start.Add(StartupGrace)
 	var changed []string
