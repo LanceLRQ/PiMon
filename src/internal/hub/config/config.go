@@ -20,7 +20,7 @@ const (
 // Config 是中枢启动配置。
 type Config struct {
 	Addr      string // HTTP(S) 监听地址
-	AgentAddr string // agent 通道监听地址，空串表示不启用（Parse 总会给出默认值，仅测试字面量会留空）
+	AgentAddr string // agent 通道监听地址；空串表示不启用，只有显式 --agent-addr "" 才会得到空串（PIMON_AGENT_ADDR 为空按未设置处理，回落 :31418）
 	DataDir   string // 数据目录
 	LogLevel  string // debug | info | warn | error
 }

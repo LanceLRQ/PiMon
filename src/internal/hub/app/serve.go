@@ -28,7 +28,7 @@ func (a *App) Serve(ctx context.Context) error {
 	var cert *tls.Certificate
 	if a.settings.Get().HTTPSEnabled {
 		cert = &a.cert
-		slog.Info("HTTPS 已启用", "fingerprint", a.spki.String())
+		slog.Info("HTTPS 已启用")
 	}
 	// agent 通道的监听先于网页监听建立：端口被占用时尽早失败，且此时尚未启动任何后台协程。
 	var agentLn net.Listener
@@ -147,12 +147,14 @@ func (a *App) serveAgents(ctx context.Context, ln net.Listener, wg *sync.WaitGro
 	}
 	addr := ln.Addr().String()
 	a.agentAddr.Store(addr)
-	slog.Info("agent 通道已监听", "addr", addr, "fingerprint", a.spki.String())
+	slog.Info("agent 通道已监听", "addr", addr)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		if err := l.Serve(ctx, ln); err != nil && ctx.Err() == nil {
-			slog.Error("agent 通道监听异常退出", "err", err)
+			// 监听已失效：清空地址，避免 /api/agent/info 继续展示一个连不上的端口。
+			a.agentAddr.Store("")
+			slog.Error("agent 通道监听异常退出", "addr", addr, "err", err)
 		}
 	}()
 	if a.opts.onAgentListen != nil {

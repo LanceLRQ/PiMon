@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,7 +29,51 @@ func waitUntil(t *testing.T, what string, cond func() bool) {
 	}
 }
 
-func TestAgent通道配对后设备在线(t *testing.T) {
+// logCapture 收集日志记录，用于断言关停期间没有出现数据库已关闭之类的错误。
+type logCapture struct {
+	mu   sync.Mutex
+	msgs []string
+}
+
+func (c *logCapture) Enabled(context.Context, slog.Level) bool { return true }
+func (c *logCapture) Handle(_ context.Context, r slog.Record) error {
+	line := r.Level.String() + " " + r.Message
+	r.Attrs(func(a slog.Attr) bool { line += " " + a.Key + "=" + a.Value.String(); return true })
+	c.mu.Lock()
+	c.msgs = append(c.msgs, line)
+	c.mu.Unlock()
+	return nil
+}
+func (c *logCapture) WithAttrs([]slog.Attr) slog.Handler { return c }
+func (c *logCapture) WithGroup(string) slog.Handler      { return c }
+func (c *logCapture) lines() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.msgs...)
+}
+
+// settleGoroutines 等协程数不再下降（前序测试的遗留协程退出完毕）后返回当前数量，等待有上限。
+func settleGoroutines() int {
+	deadline := time.Now().Add(3 * time.Second)
+	last, stable := runtime.NumGoroutine(), 0
+	for stable < 5 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+		if n := runtime.NumGoroutine(); n < last {
+			last, stable = n, 0
+		} else {
+			stable++
+		}
+	}
+	return last
+}
+
+func TestAgent通道配对后设备在线且关停无泄漏(t *testing.T) {
+	logs := &logCapture{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(logs))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	baseline := settleGoroutines()
+
 	cfg := testConfig(t)
 	cfg.AgentAddr = "127.0.0.1:0"
 	addrCh := make(chan string, 1)
@@ -96,6 +142,9 @@ func TestAgent通道配对后设备在线(t *testing.T) {
 	if err := a.Close(); err != nil {
 		t.Fatal(err)
 	}
+	// 会话已被 Close 断开，拨号方应已结束；全部协程应回落到打开之前的水平。
+	sess.Close("")
+	waitUntil(t, "协程数回落到基线", func() bool { return runtime.NumGoroutine() <= baseline })
 }
 
 func TestAgent通道端口被占用时错误带地址(t *testing.T) {
@@ -137,31 +186,66 @@ func TestAgent通道空地址不启用(t *testing.T) {
 	}
 }
 
-func TestAgent通道关停后不泄漏协程(t *testing.T) {
-	before := runtime.NumGoroutine()
+// 会话仍在线时 App.Close：agents.Close 必须早于关库，会话断开善后才能写下最后在线时间。
+// 这里不经 Serve（Serve 返回时监听已先断开会话），而是挂一个独立监听，让会话在 Close 时仍然存活。
+func TestApp关停顺序会话善后先于关库(t *testing.T) {
+	logs := &logCapture{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(logs))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
 	cfg := testConfig(t)
-	cfg.AgentAddr = "127.0.0.1:0"
-	addrCh := make(chan string, 1)
-	a, err := Open(context.Background(), cfg, testOpts(WithOnAgentListen(func(addr string) { addrCh <- addr }))...)
+	a, err := Open(context.Background(), cfg, testOpts()...)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- a.Serve(ctx) }()
-	select {
-	case <-addrCh:
-	case err := <-done:
-		t.Fatalf("Serve 提前结束: %v", err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("等待监听超时")
-	}
-	cancel()
-	if err := <-done; err != nil {
+	t.Cleanup(func() { _ = a.Close() })
+	srv := agentlinktest.StartListener(t, agentlink.ListenerConfig{
+		Auth: a.agents, Handler: a.agents.HandlerFor, OnSession: a.agents.Attach, Clock: a.opts.clk,
+	})
+	code, _, err := a.devices.NewPairingCode(context.Background(), devices.PairingOptions{Name: "nas1", Role: model.DeviceRoleNAS})
+	if err != nil {
 		t.Fatal(err)
 	}
+	var deviceID string
+	sess, err := agentlink.Dial(context.Background(), agentlink.DialerConfig{
+		URL: srv.URL, Pin: srv.Pin, Role: agent.RoleAgent, Log: agentlinktest.QuietLog(), PairCode: code,
+		PairInfo:     agent.Pair{Name: "nas1", Hostname: "nas.local", OS: "linux", Arch: "amd64"},
+		OnCredential: func(ok agent.PairOK) error { deviceID = ok.DeviceID; return nil },
+	})
+	if err != nil {
+		t.Fatalf("配对: %v", err)
+	}
+	defer sess.Close("")
+	if err := sess.Send(&agent.Hello{
+		ProtocolVersion: agent.ProtocolVersion, MinCompatibleVersion: agent.MinCompatibleVersion,
+		AgentVersion: "0.2.0", OS: "linux", Arch: "amd64", Hostname: "nas.local",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, "设备 online", func() bool {
+		st, _ := a.presence.State(deviceID)
+		return st == model.PresenceOnline
+	})
+
 	if err := a.Close(); err != nil {
 		t.Fatal(err)
 	}
-	waitUntil(t, "协程数回落", func() bool { return runtime.NumGoroutine() <= before })
+	for _, l := range logs.lines() {
+		if strings.Contains(l, "closed") || strings.Contains(l, "记录设备最后在线时间失败") {
+			t.Fatalf("关停期间出现数据库已关闭类错误: %s", l)
+		}
+	}
+	re, err := Open(context.Background(), cfg, testOpts()...)
+	if err != nil {
+		t.Fatalf("重新打开数据库: %v", err)
+	}
+	d, err := re.devices.Get(context.Background(), deviceID)
+	_ = re.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.LastSeenAt == nil {
+		t.Fatal("关停后设备最后在线时间应已落库（agents.Close 应先于关库）")
+	}
 }
