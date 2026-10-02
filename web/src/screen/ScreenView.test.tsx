@@ -293,20 +293,20 @@ describe('屏幕根：触摸与详情层', () => {
     expect(container.querySelector('[data-detail-layer]')).toBeNull()
   })
 
-  it('关屏期间无人触摸（计划切换或远程开屏）转亮后，首次触摸直接点击', async () => {
-    const store = touchStore()
-    const { container } = await renderScreen(store)
-    act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'off', theme_id: 'ambient', reason: 'schedule' } })))
-    act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'on', theme_id: 'ambient', reason: 'schedule' } })))
-    tap(widgetEl(container, 'w2'))
-    expect(container.querySelector('[data-detail-layer]')).not.toBeNull()
-  })
-
-  it('关屏期间触摸过，唤醒后的第一次触摸只点亮不点击，第二次才点击（Ruling 33）', async () => {
+  it('关屏期间触摸过，唤醒后的第一次触摸直接点击', async () => {
     const store = touchStore()
     const { container } = await renderScreen(store)
     act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'off', theme_id: 'ambient', reason: 'schedule' } })))
     touchOffOverlay(container)
+    act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'on', theme_id: 'ambient', reason: 'wake' } })))
+    tap(widgetEl(container, 'w2'))
+    expect(container.querySelector('[data-detail-layer]')).not.toBeNull()
+  })
+
+  it('关屏期间无触摸，转亮后 1 秒内的首触被吞（竞态保护），之后的触摸点击', async () => {
+    const store = touchStore()
+    const { container } = await renderScreen(store)
+    act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'off', theme_id: 'ambient', reason: 'schedule' } })))
     act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'on', theme_id: 'ambient', reason: 'wake' } })))
     tap(widgetEl(container, 'w2'))
     expect(container.querySelector('[data-detail-layer]')).toBeNull()
@@ -343,28 +343,27 @@ describe('屏幕根：数据更新', () => {
   })
 })
 
-describe('屏幕根：唤醒保护只在 10 秒内有效（Ruling 51）', () => {
+describe('屏幕根：唤醒保护只在 1 秒内有效（Ruling 51）', () => {
   const touchStore = () => storeWith({ screen_settings: touchSettings() })
-  const offOn = (store: ReturnType<typeof touchStore>, container: HTMLElement) => {
+  const offOn = (store: ReturnType<typeof touchStore>) => {
     act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'off', theme_id: 'ambient', reason: 'schedule' } })))
-    touchOffOverlay(container)
     act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'on', theme_id: 'ambient', reason: 'schedule' } })))
   }
 
-  it('亮屏很久之后的第一次触摸正常点击', async () => {
+  it('亮屏满 1 秒后的第一次触摸正常点击', async () => {
     const store = touchStore()
     const { container } = await renderScreen(store)
-    offOn(store, container)
-    act(() => void vi.advanceTimersByTime(10_000))
+    offOn(store)
+    act(() => void vi.advanceTimersByTime(1_000))
     tap(widgetEl(container, 'w2'))
     expect(container.querySelector('[data-detail-layer]')).not.toBeNull()
   })
 
-  it('10 秒内的第一次触摸只点亮', async () => {
+  it('1 秒内的第一次触摸只点亮', async () => {
     const store = touchStore()
     const { container } = await renderScreen(store)
-    offOn(store, container)
-    act(() => void vi.advanceTimersByTime(9_000))
+    offOn(store)
+    act(() => void vi.advanceTimersByTime(900))
     tap(widgetEl(container, 'w2'))
     expect(container.querySelector('[data-detail-layer]')).toBeNull()
   })
