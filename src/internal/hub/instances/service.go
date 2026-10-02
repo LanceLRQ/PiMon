@@ -102,8 +102,12 @@ type Service struct {
 	states     map[string]*instState
 	tasks      map[string]taskInfo
 	syncIssues map[string]*issue
-	dropWarned map[string]string
-	badWarned  map[string]bool
+	// assignIssues 是设备对下发的回执问题（实例 id → 设备 ID → 文字），与 syncIssues 分开：syncRow 会清掉后者。
+	assignIssues map[string]map[string]string
+	// proxyFailed 记录代理已删除的远程实例最近一次记失败时的下发摘要，避免每次下发都累加失败。
+	proxyFailed map[string]string
+	dropWarned  map[string]string
+	badWarned   map[string]bool
 	// runLocks 是每实例的运行锁（容量 1 的 channel）：定时采集与保存并测试都先取锁，
 	// 保证同一实例不重入（Ruling 48）。
 	runLocks map[string]chan struct{}
@@ -118,6 +122,7 @@ func New(c Config) *Service {
 		db: c.DB, box: c.Box, clk: c.Clock, reg: c.Plugins, machines: c.Machines, hist: c.History, log: c.Logger,
 		jitter: c.Jitter, maxConc: c.MaxConcurrent, flushEvery: c.FlushInterval,
 		states: map[string]*instState{}, tasks: map[string]taskInfo{}, syncIssues: map[string]*issue{}, dropWarned: map[string]string{},
+		assignIssues: map[string]map[string]string{}, proxyFailed: map[string]string{},
 		badWarned: map[string]bool{}, runLocks: map[string]chan struct{}{},
 	}
 	if s.machines == nil {

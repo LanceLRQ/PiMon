@@ -9,14 +9,17 @@ import (
 )
 
 // currentIssue 返回实例当前无法运行的原因：先看插件与配置（实时计算，插件消失立即可见），
-// 再看排程时发现的代理问题。
+// 再看排程时发现的代理问题，最后看设备对下发的回执问题（与 broken 同级）。
 func (s *Service) currentIssue(r row) *issue {
 	if _, iss := s.resolve(r); iss != nil {
 		return iss
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.syncIssues[r.ID]
+	if iss := s.syncIssues[r.ID]; iss != nil {
+		return iss
+	}
+	return s.assignIssueFor(r)
 }
 
 // toInstance 组装实例的 API 视图。展示状态由 report.ComputeDisplayState 计算；
