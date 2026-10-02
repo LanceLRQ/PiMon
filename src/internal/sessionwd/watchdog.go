@@ -178,17 +178,22 @@ func (w *Watchdog) check(ctx context.Context) (alive, ok bool) {
 		w.d.Log.Warn("loginctl list-sessions 失败，本次检查无结论", "err", err)
 		return false, false
 	}
-	found := false
+	found, showFailed := false, false
 	for _, id := range sessionIDsOf(out, w.cfg.User) {
 		show, err := w.d.Loginctl(ctx, "show-session", id, "-p", "Name", "-p", "Type", "-p", "Service", "-p", "State")
 		if err != nil {
 			w.d.Log.Warn("loginctl show-session 失败", "session", id, "err", err)
+			showFailed = true
 			continue
 		}
 		if matchSession(show, w.cfg.User) {
 			found = true
 			break
 		}
+	}
+	if !found && showFailed {
+		w.d.Log.Warn("部分会话 show-session 失败且无匹配会话，本次检查无结论", "user", w.cfg.User)
+		return false, false
 	}
 	if !found {
 		w.d.Log.Warn("没有找到符合条件的图形会话", "user", w.cfg.User)

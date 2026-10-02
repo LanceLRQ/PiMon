@@ -53,6 +53,7 @@ type harness struct {
 	sessions string // list-sessions 输出
 	show     map[string]string
 	listErr  error
+	showErr  error
 	dialErr  error
 	restarts int
 	restartE error
@@ -82,7 +83,7 @@ func newHarness(t *testing.T) *harness {
 			case "list-sessions":
 				return h.sessions, h.listErr
 			case "show-session":
-				return h.show[args[1]], nil
+				return h.show[args[1]], h.showErr
 			}
 			return "", errors.New("unexpected")
 		},
@@ -305,6 +306,25 @@ func TestLoginctlErrorIsInconclusive(t *testing.T) {
 	h.tick(Interval) // 失败 2，计数不应被无结论的检查清零
 	if h.restarts != 1 {
 		t.Fatalf("无结论不清零计数, got %d", h.restarts)
+	}
+}
+
+func TestShowSessionErrorIsInconclusive(t *testing.T) {
+	h := newHarness(t)
+	h.pastGrace()
+	h.showErr = errors.New("show-session 超时")
+	for i := 0; i < 6; i++ {
+		h.tick(Interval)
+	}
+	if h.restarts != 0 {
+		t.Fatalf("show-session 持续出错且无匹配会话时不应重启 lightdm: %d", h.restarts)
+	}
+	h.showErr = nil
+	h.show["c1"] = "Name=other\n"
+	h.tick(Interval)
+	h.tick(Interval)
+	if h.restarts != 1 {
+		t.Fatalf("show-session 正常返回但不匹配仍应计失败, got %d", h.restarts)
 	}
 }
 
