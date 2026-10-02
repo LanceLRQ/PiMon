@@ -1,7 +1,7 @@
 // Package tcpcheck 是内置的 TCP 端口检测插件：连接 host:port 并立即关闭，输出是否可达与连接延迟。
 //
-// 端口不可达是正常的检查结果，以 critical 状态的报告呈现；配置不合法，或选了无法转发
-// 原始 TCP 的 http 代理时，Collect 返回错误（否则会绕过代理直连，暴露出口 IP）。
+// 端口不可达是正常的检查结果，以 critical 状态的报告呈现；配置不合法时 Collect 返回错误。
+// 选了代理则一律经代理建连（socks 或 http/https CONNECT），不会绕过代理直连。
 package tcpcheck
 
 import (
@@ -13,7 +13,6 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/manifest"
-	"github.com/LanceLRQ/PiMon/src/pkg/plugin/proxy"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
 	"github.com/LanceLRQ/PiMon/src/plugins/internal/cfg"
@@ -60,8 +59,6 @@ func (p *plugin) Collect(ctx context.Context, in runtime.Input) (*report.Report,
 	rep := &report.Report{Status: report.StatusOK, CollectedAt: clk.Now().UnixMilli()}
 	latency, err := probe.TCP(ctx, probe.JoinHostPort(host, port), in.Proxy, cfg.Duration(in.Config, "timeout", defaultTimeout), clk)
 	switch {
-	case errors.Is(err, proxy.ErrRawTCPUnsupported):
-		return nil, errors.New("tcp-check 只能选 socks5 或 socks5h 代理，http 代理无法转发原始 TCP")
 	case ctx.Err() != nil:
 		return nil, ctx.Err()
 	case err != nil:

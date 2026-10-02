@@ -1,12 +1,16 @@
 // Package proxy 把代理 URL 转成内置插件用的 http.Transport / 拨号器，以及 exec 插件用的环境变量。
 //
-// 支持 scheme：http、https（走 Transport.Proxy）、socks5（本地解析域名后把 IP 交给代理）、
+// 支持 scheme：http、https（HTTP 请求走 Transport.Proxy，原始 TCP 走 CONNECT 隧道）、socks5（本地解析域名后把 IP 交给代理）、
 // socks5h（把域名交给代理端解析）。"直连"是特殊值：空串或 "direct"，对应的 *Proxy 为 nil
 // 或 Direct()，所有方法对 nil 安全。本包不依赖 hub 内部包，agent 也可复用。
 package proxy
 
 import (
+	"bufio"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -22,16 +26,13 @@ import (
 // DirectValue 是表示直连的特殊取值（空串同样表示直连）。
 const DirectValue = "direct"
 
-// ErrRawTCPUnsupported 表示所选代理不支持原始 TCP 拨号。
-// HTTP/HTTPS 代理只能转发 HTTP 请求（本项目不实现 CONNECT），
-// 原始 TCP 探测必须选 socks 代理，否则会绕过代理直连、暴露出口 IP。
-var ErrRawTCPUnsupported = errors.New("http 代理不支持原始 TCP，请选 socks 代理")
-
 const dialTimeout = 10 * time.Second
 
 // Proxy 是解析后的代理；nil 表示直连。
 type Proxy struct {
 	u *url.URL
+	// rootCAs 仅测试注入：校验 https 代理证书用的根池，nil 用系统根。
+	rootCAs *x509.CertPool
 }
 
 // Direct 返回直连（nil）。
@@ -96,7 +97,8 @@ func (p *Proxy) Redacted() string {
 }
 
 // Transport 返回一个新的 http.Transport：直连时不设代理；
-// http/https 代理用 Transport.Proxy；socks5/socks5h 用 DialContext。
+// http/https 代理用 Transport.Proxy（请求经代理转发，https 目标由 Transport 自行发 CONNECT）；
+// socks5/socks5h 用 DialContext。
 func (p *Proxy) Transport() *http.Transport {
 	tr := &http.Transport{
 		// 显式置空，避免被进程环境里的 HTTP_PROXY 悄悄带偏。
@@ -117,17 +119,16 @@ func (p *Proxy) Transport() *http.Transport {
 }
 
 // DialContext 返回原始 TCP 拨号函数。直连为普通拨号；socks5 先本地解析域名再拨 IP，
-// socks5h 把域名交给代理；http/https 代理不支持原始 TCP，拨号直接返回
-// ErrRawTCPUnsupported 且不发起任何连接。HTTP 请求请用 Transport()。
+// socks5h 把域名交给代理；http/https 代理先连代理（https 先做 TLS），再发 CONNECT 建隧道，
+// 目标域名交给代理解析。代理返回非 2xx 时错误带状态行但不含代理地址与认证信息。
+// HTTP 请求请用 Transport()。
 func (p *Proxy) DialContext() func(ctx context.Context, network, addr string) (net.Conn, error) {
 	base := &net.Dialer{Timeout: dialTimeout}
 	if p.IsDirect() {
 		return base.DialContext
 	}
 	if p.u.Scheme == "http" || p.u.Scheme == "https" {
-		return func(context.Context, string, string) (net.Conn, error) {
-			return nil, ErrRawTCPUnsupported
-		}
+		return p.dialConnect
 	}
 	var auth *xproxy.Auth
 	if p.u.User != nil {
@@ -152,6 +153,85 @@ func (p *Proxy) DialContext() func(ctx context.Context, network, addr string) (n
 		return d.Dial(network, addr)
 	}
 }
+
+// dialConnect 经 http/https 代理对 addr 建立 CONNECT 隧道，返回隧道连接。
+func (p *Proxy) dialConnect(ctx context.Context, network, addr string) (net.Conn, error) {
+	conn, err := (&net.Dialer{Timeout: dialTimeout}).DialContext(ctx, network, p.u.Host)
+	if err != nil {
+		return nil, fmt.Errorf("连接代理失败: %w", stripURLError(err))
+	}
+	if dl, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(dl)
+	} else {
+		_ = conn.SetDeadline(time.Now().Add(dialTimeout))
+	}
+	// ctx 取消时立刻打断握手读写。
+	stop := context.AfterFunc(ctx, func() { _ = conn.SetDeadline(time.Unix(1, 0)) })
+	defer stop()
+
+	if p.u.Scheme == "https" {
+		tc := tls.Client(conn, &tls.Config{
+			ServerName: p.u.Hostname(),
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    p.rootCAs,
+		})
+		if err := tc.HandshakeContext(ctx); err != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("与代理的 TLS 握手失败: %w", err)
+		}
+		conn = tc
+	}
+
+	req := &http.Request{
+		Method: http.MethodConnect,
+		URL:    &url.URL{Opaque: addr},
+		Host:   addr,
+		Header: make(http.Header),
+	}
+	if p.u.User != nil {
+		pw, _ := p.u.User.Password()
+		cred := base64.StdEncoding.EncodeToString([]byte(p.u.User.Username() + ":" + pw))
+		req.Header.Set("Proxy-Authorization", "Basic "+cred)
+	}
+	if err := req.Write(conn); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("向代理发送 CONNECT 失败: %w", stripURLError(err))
+	}
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, req)
+	if err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("读取代理应答失败: %w", stripURLError(err))
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		_ = conn.Close()
+		return nil, fmt.Errorf("代理拒绝连接: %s", resp.Status)
+	}
+	stop()
+	_ = conn.SetDeadline(time.Time{})
+	if br.Buffered() > 0 {
+		return &bufferedConn{Conn: conn, r: br}, nil
+	}
+	return conn, nil
+}
+
+// stripURLError 去掉 *url.Error 外壳，避免错误文本带出 URL。
+func stripURLError(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return ue.Err
+	}
+	return err
+}
+
+// bufferedConn 先吐出读应答时多读进缓冲的隧道字节，再读底层连接。
+type bufferedConn struct {
+	net.Conn
+	r *bufio.Reader
+}
+
+func (c *bufferedConn) Read(b []byte) (int, error) { return c.r.Read(b) }
 
 // resolveLocally 把 host:port 里的域名解析为 IP:port；已是 IP 则原样返回。
 func resolveLocally(ctx context.Context, addr string) (string, error) {

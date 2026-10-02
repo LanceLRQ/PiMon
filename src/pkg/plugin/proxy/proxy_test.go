@@ -1,8 +1,9 @@
 package proxy_test
 
 import (
+	"bufio"
 	"context"
-	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -166,35 +167,224 @@ func TestEnvAndRedaction(t *testing.T) {
 	}
 }
 
-func TestDialContextRejectsHTTPProxies(t *testing.T) {
+// echoServer 启动本地 TCP 回显服务；连接建立后先发 hello，随后原样回显。
+func echoServer(t *testing.T, hello string) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer func() { _ = c.Close() }()
+				if hello != "" {
+					_, _ = c.Write([]byte(hello))
+				}
+				_, _ = io.Copy(c, c)
+			}()
+		}
+	}()
+	return ln.Addr().String()
+}
+
+func roundTrip(t *testing.T, conn net.Conn, msg string) {
+	t.Helper()
+	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+	if _, err := conn.Write([]byte(msg)); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, len(msg))
+	if _, err := io.ReadFull(conn, buf); err != nil {
+		t.Fatal(err)
+	}
+	if string(buf) != msg {
+		t.Fatalf("回显不一致: %q", buf)
+	}
+}
+
+func connectProxies(t *testing.T, user, pass string, creds string) map[string]*proxy.Proxy {
+	t.Helper()
+	hpx := proxytest.NewHTTPConnect(t, user, pass)
+	spx := proxytest.NewHTTPSConnect(t, user, pass)
+	hp, err := proxy.Parse("http://" + creds + hpx.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sp, err := proxy.Parse("https://" + creds + spx.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return map[string]*proxy.Proxy{"http": hp, "https": proxy.WithRootCAs(sp, spx.CertPool)}
+}
+
+func TestDialContext_经HTTP与HTTPS代理CONNECT双向收发(t *testing.T) {
+	target := echoServer(t, "")
+	for name, p := range connectProxies(t, "", "", "") {
+		conn, err := p.DialContext()(context.Background(), "tcp", target)
+		if err != nil {
+			t.Fatalf("%s 代理 CONNECT 失败: %v", name, err)
+		}
+		roundTrip(t, conn, "ping-"+name)
+		roundTrip(t, conn, "again")
+		_ = conn.Close()
+	}
+}
+
+func TestDialContext_代理认证(t *testing.T) {
+	target := echoServer(t, "")
+	good := connectProxies(t, "u@x", "p:w", "u%40x:p%3Aw@")
+	for name, p := range good {
+		conn, err := p.DialContext()(context.Background(), "tcp", target)
+		if err != nil {
+			t.Fatalf("%s 认证正确应成功: %v", name, err)
+		}
+		roundTrip(t, conn, "hi")
+		_ = conn.Close()
+	}
+	bad := connectProxies(t, "u", "secret-pw", "u:wrong-pw@")
+	for name, p := range bad {
+		conn, err := p.DialContext()(context.Background(), "tcp", target)
+		if err == nil {
+			_ = conn.Close()
+			t.Fatalf("%s 认证错误应失败", name)
+		}
+		if !strings.Contains(err.Error(), "407") {
+			t.Errorf("%s 错误应带状态行: %v", name, err)
+		}
+		if strings.Contains(err.Error(), "wrong-pw") || strings.Contains(err.Error(), "secret-pw") {
+			t.Errorf("%s 错误泄露密码: %v", name, err)
+		}
+	}
+}
+
+func TestDialContext_代理返回403报错且不含密码(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = ln.Close() }()
-	accepted := make(chan struct{}, 1)
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = c.Close() }()
+		_, _ = http.ReadRequest(bufio.NewReader(c))
+		_, _ = io.WriteString(c, "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
+	}()
+	p, err := proxy.Parse("http://user:topsecret@" + ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := p.DialContext()(context.Background(), "tcp", "127.0.0.1:9")
+	if err == nil {
+		_ = conn.Close()
+		t.Fatal("403 应报错")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "403") {
+		t.Errorf("错误应带状态行: %v", err)
+	}
+	for _, bad := range []string{"topsecret", "user", ln.Addr().String()} {
+		if strings.Contains(msg, bad) {
+			t.Errorf("错误文本不应含 %q: %v", bad, err)
+		}
+	}
+}
+
+func TestDialContext_CONNECT应答后紧跟的隧道字节不丢(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = c.Close() }()
+		_, _ = http.ReadRequest(bufio.NewReader(c))
+		// 应答与隧道首包同一次写出，客户端读应答时必然多读到隧道字节。
+		_, _ = io.WriteString(c, "HTTP/1.1 200 OK\r\n\r\nSERVER-HELLO")
+		_, _ = io.Copy(c, c)
+	}()
+	p, err := proxy.Parse("http://" + ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := p.DialContext()(context.Background(), "tcp", "127.0.0.1:9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+	buf := make([]byte, len("SERVER-HELLO"))
+	if _, err := io.ReadFull(conn, buf); err != nil || string(buf) != "SERVER-HELLO" {
+		t.Fatalf("应先吐出缓冲字节: %q %v", buf, err)
+	}
+	roundTrip(t, conn, "next")
+}
+
+func TestDialContext_握手阶段按ctx截止超时(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
 	go func() {
 		if c, err := ln.Accept(); err == nil {
-			accepted <- struct{}{}
-			_ = c.Close()
+			defer func() { _ = c.Close() }()
+			_, _ = io.Copy(io.Discard, c) // 只读不应答
 		}
 	}()
-	for _, scheme := range []string{"http", "https"} {
-		p, err := proxy.Parse(scheme + "://" + ln.Addr().String())
-		if err != nil {
-			t.Fatal(err)
-		}
-		conn, err := p.DialContext()(context.Background(), "tcp", ln.Addr().String())
-		if conn != nil {
-			_ = conn.Close()
-		}
-		if !errors.Is(err, proxy.ErrRawTCPUnsupported) {
-			t.Errorf("%s 代理拨号应返回 ErrRawTCPUnsupported，得到 %v", scheme, err)
-		}
+	p, err := proxy.Parse("http://" + ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
 	}
-	select {
-	case <-accepted:
-		t.Error("拒绝时不应发起任何连接")
-	case <-time.After(200 * time.Millisecond):
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	conn, err := p.DialContext()(ctx, "tcp", "127.0.0.1:9")
+	if err == nil {
+		_ = conn.Close()
+		t.Fatal("代理不应答应超时")
 	}
+	if time.Since(start) > 3*time.Second {
+		t.Errorf("超时过久: %v", time.Since(start))
+	}
+}
+
+func TestDialContext_HTTPS代理证书不受信时失败(t *testing.T) {
+	spx := proxytest.NewHTTPSConnect(t, "", "")
+	p, err := proxy.Parse("https://" + spx.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := p.DialContext()(context.Background(), "tcp", "127.0.0.1:9")
+	if err == nil {
+		_ = conn.Close()
+		t.Fatal("未注入根证书应校验失败")
+	}
+}
+
+func TestDialContext_经Socks5Forward双向收发(t *testing.T) {
+	target := echoServer(t, "")
+	px := proxytest.NewSocks5Forward(t, "", "")
+	p, err := proxy.Parse("socks5://" + px.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := p.DialContext()(context.Background(), "tcp", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	roundTrip(t, conn, "via-socks")
 }

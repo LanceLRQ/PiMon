@@ -29,7 +29,7 @@ config_schema:
   - key: proxy
     type: proxy
     title: {zh: 代理, en: Proxy}
-    help: {zh: "只能选 socks5 或 socks5h 代理，http 代理无法转发原始 TCP。", en: "Only socks5 or socks5h proxies work; http proxies cannot forward raw TCP."}
+    help: {zh: "可选 socks5、socks5h 或 http/https 代理（http 代理经 CONNECT 隧道转发）。", en: "socks5, socks5h and http/https proxies are supported (http proxies tunnel via CONNECT)."}
 outputs:
   - {key: status,  type: state,  title: {zh: 端口状态, en: Port state}}
   - {key: latency, type: number, title: {zh: 连接延迟, en: Connect latency}}
