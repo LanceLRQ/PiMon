@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -346,8 +347,8 @@ func TestDial_经HTTP_CONNECT代理连通(t *testing.T) {
 	cfg.Proxy = p
 	s := dialOK(t, cfg)
 	exchange(t, d, s, inbox)
-	if len(px.Seen()) != 1 {
-		t.Fatalf("代理记录 = %+v", px.Seen())
+	if seen := px.Seen(); len(seen) != 1 || seen[0].Target != d.addr {
+		t.Fatalf("代理记录 = %+v", seen)
 	}
 }
 
@@ -465,7 +466,7 @@ func dialURLPath(t *testing.T, cfg DialerConfig, path string) error {
 }
 
 func TestDial_配置错误(t *testing.T) {
-	base := DialerConfig{URL: "wss://127.0.0.1:31418", Role: agent.RoleAgent, Credential: "c"}
+	base := DialerConfig{URL: "wss://127.0.0.1:31418", Pin: certs.SPKI{1}, Role: agent.RoleAgent, Credential: "c"}
 	cases := []struct {
 		name   string
 		mutate func(*DialerConfig)
@@ -474,7 +475,9 @@ func TestDial_配置错误(t *testing.T) {
 		{"凭据与配对码都不给", func(c *DialerConfig) { c.Credential = "" }},
 		{"scheme 不是 wss", func(c *DialerConfig) { c.URL = "ws://127.0.0.1:31418" }},
 		{"https scheme", func(c *DialerConfig) { c.URL = "https://127.0.0.1:31418" }},
-		{"缺端口", func(c *DialerConfig) { c.URL = "wss://127.0.0.1" }},
+		{"缺主机", func(c *DialerConfig) { c.URL = "wss://:31418" }},
+		{"指纹为零值", func(c *DialerConfig) { c.Pin = certs.SPKI{} }},
+		{"配对模式缺 OnCredential", func(c *DialerConfig) { c.Credential = ""; c.PairCode = "X" }},
 		{"其他路径", func(c *DialerConfig) { c.URL = "wss://127.0.0.1:31418/other" }},
 		{"带查询", func(c *DialerConfig) { c.URL = "wss://127.0.0.1:31418/agent?x=1" }},
 		{"角色非法", func(c *DialerConfig) { c.Role = "x" }},
@@ -488,5 +491,193 @@ func TestDial_配置错误(t *testing.T) {
 				t.Fatalf("期望 ErrDialConfig，得 %v", err)
 			}
 		})
+	}
+}
+
+func TestParseDialURL_缺端口补默认端口(t *testing.T) {
+	cases := map[string]string{
+		"wss://pimon.local":       "pimon.local:" + DefaultPort,
+		"wss://pimon.local/agent": "pimon.local:" + DefaultPort,
+		"wss://[::1]":             "[::1]:" + DefaultPort,
+		"wss://10.0.0.2:4000":     "10.0.0.2:4000",
+	}
+	for raw, want := range cases {
+		u, err := parseDialURL(raw)
+		if err != nil {
+			t.Fatalf("%s: %v", raw, err)
+		}
+		if u.hostport != want || u.path != AgentPath {
+			t.Fatalf("%s: 得 %+v，期望 %s", raw, u, want)
+		}
+	}
+}
+
+// listenSamePortV6 在 [::1] 上占用与 addr 相同的端口，环境不支持时跳过。
+func listenSamePortV6(t *testing.T, addr string) net.Listener {
+	t.Helper()
+	_, port, _ := net.SplitHostPort(addr)
+	ln, err := net.Listen("tcp", net.JoinHostPort("::1", port))
+	if err != nil {
+		t.Skipf("无法在 [::1]:%s 监听: %v", port, err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	return ln
+}
+
+// serveConns 接受连接并交给 fn 处理，测试结束时关闭全部连接。
+func serveConns(t *testing.T, ln net.Listener, fn func(net.Conn)) {
+	t.Helper()
+	var mu sync.Mutex
+	var conns []net.Conn
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			conns = append(conns, c)
+			mu.Unlock()
+			go fn(c)
+		}
+	}()
+	t.Cleanup(func() {
+		_ = ln.Close()
+		<-done
+		mu.Lock()
+		defer mu.Unlock()
+		for _, c := range conns {
+			_ = c.Close()
+		}
+	})
+}
+
+func fallbackToLoopback(calls *atomic.Int64) func(context.Context) ([]netip.Addr, error) {
+	return func(context.Context) ([]netip.Addr, error) {
+		calls.Add(1)
+		return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
+	}
+}
+
+func TestDial_直拨TLS无响应超时后触发Fallback(t *testing.T) {
+	setVar(t, &dialTimeout, 500*time.Millisecond)
+	d := newDialTarget(t, false)
+	// 只 accept TCP、不说 TLS 也不关闭：直拨卡在 TLS 握手直到 dialTimeout 到期。
+	serveConns(t, listenSamePortV6(t, d.addr), func(net.Conn) {})
+	inbox := &recorder{}
+	cfg := d.config(inbox)
+	cfg.URL = unreachableURL(d.addr)
+	var calls atomic.Int64
+	cfg.Fallback = fallbackToLoopback(&calls)
+	s := dialOK(t, cfg)
+	if calls.Load() != 1 || s.Peer().RemoteAddr != d.addr {
+		t.Fatalf("Fallback 调用 %d 次，RemoteAddr = %q", calls.Load(), s.Peer().RemoteAddr)
+	}
+	exchange(t, d, s, inbox)
+}
+
+func TestDial_对端说明文TCP归为连接阶段失败并触发Fallback(t *testing.T) {
+	d := newDialTarget(t, false)
+	serveConns(t, listenSamePortV6(t, d.addr), func(c net.Conn) {
+		_, _ = c.Write([]byte("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n"))
+		_ = c.Close()
+	})
+	cfg := d.config(&recorder{})
+	cfg.URL = unreachableURL(d.addr)
+
+	// 先不配 Fallback，确认分类：*DialError、连接阶段、非钉扎。
+	err := dialErr(t, cfg)
+	var de *DialError
+	var pm *certs.PinMismatchError
+	if !errors.As(err, &de) || !isConnectStageError(err) || errors.As(err, &pm) {
+		t.Fatalf("期望连接阶段的 *DialError，得 %v", err)
+	}
+
+	var calls atomic.Int64
+	cfg.Fallback = fallbackToLoopback(&calls)
+	s := dialOK(t, cfg)
+	if calls.Load() != 1 || s.Peer().RemoteAddr != d.addr {
+		t.Fatalf("Fallback 调用 %d 次，RemoteAddr = %q", calls.Load(), s.Peer().RemoteAddr)
+	}
+}
+
+func TestDial_ctx已取消直接返回ctxErr(t *testing.T) {
+	d := newDialTarget(t, false)
+	cfg := d.config(&recorder{})
+	var calls atomic.Int64
+	cfg.Fallback = fallbackToLoopback(&calls)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := Dial(ctx, cfg)
+	if err != context.Canceled {
+		t.Fatalf("期望 context.Canceled，得 %v", err)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("ctx 已取消却调用了 Fallback %d 次", calls.Load())
+	}
+}
+
+func TestDial_握手中ctx取消直接返回ctxErr(t *testing.T) {
+	sl := newSilentListener(t)
+	clk := clock.NewFake(t0)
+	cfg := DialerConfig{URL: "wss://" + sl.addr, Pin: sl.pin, Role: agent.RoleAgent, Credential: goodCredential, Clock: clk, Log: quietLog()}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errc := make(chan error, 1)
+	go func() {
+		s, err := Dial(ctx, cfg)
+		if s != nil {
+			s.Close("")
+		}
+		errc <- err
+	}()
+	waitFor(t, "握手计时器登记", func() bool { return clk.Waiters() == 1 })
+	cancel()
+	select {
+	case err := <-errc:
+		if err != context.Canceled {
+			t.Fatalf("期望 context.Canceled，得 %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("ctx 取消后 Dial 未返回")
+	}
+}
+
+func TestDial_TCP阶段ctx取消直接返回ctxErr(t *testing.T) {
+	d := newDialTarget(t, false)
+	accepted := make(chan struct{}, 1)
+	serveConns(t, listenSamePortV6(t, d.addr), func(net.Conn) { accepted <- struct{}{} })
+	cfg := d.config(&recorder{})
+	cfg.URL = unreachableURL(d.addr)
+	var calls atomic.Int64
+	cfg.Fallback = fallbackToLoopback(&calls)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errc := make(chan error, 1)
+	go func() {
+		s, err := Dial(ctx, cfg)
+		if s != nil {
+			s.Close("")
+		}
+		errc <- err
+	}()
+	select {
+	case <-accepted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("直拨未到达")
+	}
+	cancel()
+	select {
+	case err := <-errc:
+		if err != context.Canceled {
+			t.Fatalf("期望 context.Canceled，得 %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("ctx 取消后 Dial 未返回")
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("ctx 取消后仍调用了 Fallback %d 次", calls.Load())
 	}
 }
