@@ -107,10 +107,13 @@ func Run(ctx context.Context, d Deps, opts Options) error {
 		{"创建服务用户与数据目录", r.ensureUserAndDir},
 		{"安装二进制", r.installBinary},
 		{"检查端口", r.checkPort},
-		{"生成首次设置码", r.ensureSetupCode},
+		// 服务已在运行时取码要等重启并就绪之后，否则新二进制会在旧 hub 仍运行时对同一数据库做迁移或备份；
+		// 全新安装则必须在服务启动前取码，避免服务启动时生成的码被作废。
+		{"生成首次设置码", r.setupCodeBeforeStart},
 		{"写入 systemd 单元", r.writeUnit},
 		{"启动服务", r.startService},
 		{"等待服务就绪", r.waitReady},
+		{"生成首次设置码", r.setupCodeAfterStart},
 		{"桌面用户加组", r.addDesktopUser},
 		{"校验 ping_group_range", r.ensureSysctl},
 	}
@@ -251,8 +254,12 @@ func (r *run) checkPort(ctx context.Context) error {
 	self := r.activeBefore
 	for _, l := range ls {
 		// 二进制被替换后，运行中进程的 exe 链接带 " (deleted)" 后缀。
-		if strings.TrimSuffix(l.Exe, " (deleted)") != binPath {
+		exe, deleted := strings.CutSuffix(l.Exe, " (deleted)")
+		if exe != binPath {
 			self = false
+		} else if deleted {
+			// 上一次升级可能中途失败：二进制已换但旧进程还在跑，重跑时仍要重启。
+			r.upgraded = true
 		}
 	}
 	if self {
@@ -277,8 +284,23 @@ func describeListeners(ls []Listener) string {
 	return strings.Join(parts, "、")
 }
 
+func (r *run) setupCodeBeforeStart(ctx context.Context) error {
+	if r.activeBefore {
+		return nil
+	}
+	return r.ensureSetupCode(ctx)
+}
+
+func (r *run) setupCodeAfterStart(ctx context.Context) error {
+	if !r.activeBefore {
+		return nil
+	}
+	return r.ensureSetupCode(ctx)
+}
+
+// ensureSetupCode 以服务用户身份取设置码；环境里继承的 PIMON_* 全部清掉，数据目录与 unit 保持一致。
 func (r *run) ensureSetupCode(ctx context.Context) error {
-	out, err := r.Runner.Run(ctx, cmdRunuser, "-u", serviceUser, "--", binPath, "setup-code", "--if-needed")
+	out, err := r.Runner.RunEnv(ctx, []string{"PIMON_DATA_DIR=" + dataDir}, cmdRunuser, "-u", serviceUser, "--", binPath, "setup-code", "--if-needed")
 	var ee *ExitError
 	if errors.As(err, &ee) && ee.Code == 3 {
 		r.adminExists = true
@@ -329,7 +351,9 @@ func (r *run) startService(ctx context.Context) error {
 	}
 	r.rep.done("启用并启动 "+serviceName, "")
 	// 服务原本没在运行时 enable --now 已经用新二进制与新 unit 启动，无需再重启。
-	if r.activeBefore && (r.upgraded || r.unitChanged) {
+	// unit 已写入但上次 reload/restart 失败的情况，靠「服务启动早于 unit 文件修改时间」识别。
+	stale := r.activeBefore && !r.upgraded && !r.unitChanged && r.serviceOlderThanUnit(ctx)
+	if r.activeBefore && (r.upgraded || r.unitChanged || stale) {
 		if _, err := r.systemctl(ctx, "restart", serviceName); err != nil {
 			return fmt.Errorf("restart: %w", err)
 		}
@@ -415,4 +439,31 @@ func (r *run) localIPs() []net.IP {
 		return nil
 	}
 	return r.LocalIPs()
+}
+
+// serviceOlderThanUnit 判断运行中的服务是否早于 unit 文件的最后修改（取不到任何一项数据时按「否」处理）。
+// 服务启动时刻 = 现在 - /proc/uptime + systemd 报告的单调时钟时间戳；留 1 秒容差吸收 uptime 的精度。
+func (r *run) serviceOlderThanUnit(ctx context.Context) bool {
+	out, err := r.systemctl(ctx, "show", "-p", "ActiveEnterTimestampMonotonic", "--value", serviceName)
+	if err != nil {
+		return false
+	}
+	var mono int64
+	if _, err := fmt.Sscan(strings.TrimSpace(out), &mono); err != nil || mono <= 0 {
+		return false
+	}
+	b, err := r.FS.ReadFile("/proc/uptime")
+	if err != nil {
+		return false
+	}
+	var up float64
+	if _, err := fmt.Sscan(string(b), &up); err != nil {
+		return false
+	}
+	fi, err := r.FS.Stat(unitPath)
+	if err != nil {
+		return false
+	}
+	started := r.Clock.Now().Add(-time.Duration(up * float64(time.Second))).Add(time.Duration(mono) * time.Microsecond)
+	return fi.ModTime.After(started.Add(time.Second))
 }

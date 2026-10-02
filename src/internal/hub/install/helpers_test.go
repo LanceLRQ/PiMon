@@ -31,6 +31,7 @@ type fakeFile struct {
 	mode     fs.FileMode
 	uid, gid int
 	dir      bool
+	mtime    time.Time
 }
 
 type writeRec struct {
@@ -40,12 +41,16 @@ type writeRec struct {
 }
 
 type fakeFS struct {
+	now    func() time.Time
 	files  map[string]*fakeFile
 	writes []writeRec
 	fixes  []string // SetOwnerMode / Mkdir 的记录
 }
 
 func (f *fakeFS) ReadFile(name string) ([]byte, error) {
+	if name == "/proc/uptime" {
+		return []byte(fmt.Sprintf("%.2f 0.00\n", f.now().Sub(bootTime).Seconds())), nil
+	}
 	e, ok := f.files[name]
 	if !ok || e.dir {
 		return nil, fmt.Errorf("open %s: %w", name, fs.ErrNotExist)
@@ -73,12 +78,12 @@ func (f *fakeFS) Stat(name string) (FileInfo, error) {
 	if !ok {
 		return FileInfo{}, fmt.Errorf("stat %s: %w", name, fs.ErrNotExist)
 	}
-	return FileInfo{IsDir: e.dir, Mode: e.mode, UID: e.uid, GID: e.gid}, nil
+	return FileInfo{IsDir: e.dir, Mode: e.mode, ModTime: e.mtime, UID: e.uid, GID: e.gid}, nil
 }
 
 func (f *fakeFS) WriteFile(name string, data []byte, perm fs.FileMode, own *Owner) error {
 	f.writes = append(f.writes, writeRec{name, perm, own})
-	f.files[name] = &fakeFile{data: string(data), mode: perm}
+	f.files[name] = &fakeFile{data: string(data), mode: perm, mtime: f.now()}
 	return nil
 }
 
@@ -127,11 +132,24 @@ type fakeRunner struct {
 	setupOut     string // setup-code 的标准输出
 	setupExit    int    // 非 0 时以该退出码失败
 	setupCodeRun int
+	startedAt    time.Time           // 服务当前这次启动的时刻
+	envs         map[string][]string // 命令行 -> RunEnv 收到的 setEnv
+	healthAt     int                 // 首次健康检查成功时 log 的长度，-1 表示尚未成功
 }
 
-func (r *fakeRunner) Run(_ context.Context, argv ...string) (string, error) {
+func (r *fakeRunner) Run(ctx context.Context, argv ...string) (string, error) {
+	return r.RunEnv(ctx, nil, argv...)
+}
+
+func (r *fakeRunner) RunEnv(_ context.Context, setEnv []string, argv ...string) (string, error) {
 	line := strings.Join(argv, " ")
 	r.log = append(r.log, line)
+	if setEnv != nil {
+		if r.envs == nil {
+			r.envs = map[string][]string{}
+		}
+		r.envs[line] = setEnv
+	}
 	for prefix, err := range r.failOn {
 		if strings.HasPrefix(line, prefix) {
 			return "", err
@@ -147,7 +165,14 @@ func (r *fakeRunner) Run(_ context.Context, argv ...string) (string, error) {
 			return "active\n", nil
 		}
 		return "inactive\n", &ExitError{Argv: argv, Code: 3}
+	case line == cmdSystemctl+" show -p ActiveEnterTimestampMonotonic --value "+serviceName:
+		return fmt.Sprintf("%d\n", r.startedAt.Sub(bootTime).Microseconds()), nil
+	case line == cmdSystemctl+" restart "+serviceName:
+		r.startedAt = r.env.deps.Clock.Now()
 	case line == cmdSystemctl+" enable --now "+serviceName:
+		if !r.active {
+			r.startedAt = r.env.deps.Clock.Now()
+		}
 		r.active = true
 		r.env.fs.files[tokenPath] = &fakeFile{data: "tok", mode: 0o640}
 	case strings.Contains(line, "setup-code"):
@@ -171,6 +196,9 @@ type testEnv struct {
 	opts   Options
 }
 
+// bootTime 是假系统的开机时刻，/proc/uptime 与 systemd 单调时间戳都据此推算。
+var bootTime = time.Date(2026, 10, 2, 11, 0, 0, 0, time.UTC)
+
 const setupOutput = "首次设置码: ABCD-2345\n有效期至: 2026-10-03 10:00:00\n"
 
 // newTestEnv 构造一台「全新的树莓派」：有 systemd、有桌面用户 lancelrq 与 lightdm 自动登录配置。
@@ -184,14 +212,17 @@ func newTestEnv(t *testing.T) *testEnv {
 		"/tmp/new/pimon-hub":  {data: "BIN-V1", mode: 0o755},
 		pingRange:             {data: "0\t2147483647\n"},
 	}}
+	clk := &autoClock{now: time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)}
+	e.fs.now = clk.Now
+	e.fs.files["/proc/uptime"] = &fakeFile{}
 	e.users = &fakeUsers{users: map[string]User{"lancelrq": {UID: 1000, GID: 1000}}, groups: map[string][]string{"lancelrq": {"lancelrq", "sudo"}}}
-	e.run = &fakeRunner{env: e, setupOut: setupOutput}
+	e.run = &fakeRunner{env: e, setupOut: setupOutput, healthAt: -1}
 	e.ports = &fakePorts{}
 	failures := 0
 	e.health = &failures
 	e.deps = Deps{
 		Out:    e.out,
-		Clock:  &autoClock{now: time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)},
+		Clock:  clk,
 		Runner: e.run,
 		FS:     e.fs,
 		Users:  e.users,
@@ -200,6 +231,9 @@ func newTestEnv(t *testing.T) *testEnv {
 			if failures > 0 {
 				failures--
 				return errors.New("连接被拒绝")
+			}
+			if e.run.healthAt < 0 {
+				e.run.healthAt = len(e.run.log)
 			}
 			return nil
 		},

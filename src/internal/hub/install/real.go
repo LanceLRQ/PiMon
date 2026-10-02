@@ -12,14 +12,26 @@ import (
 	"os/user"
 	"path/filepath"
 	"slices"
+	"strings"
 	"syscall"
 	"time"
 )
 
 type execRunner struct{}
 
-func (execRunner) Run(ctx context.Context, argv ...string) (string, error) {
+func (r execRunner) Run(ctx context.Context, argv ...string) (string, error) {
+	return r.run(ctx, nil, false, argv)
+}
+
+func (r execRunner) RunEnv(ctx context.Context, setEnv []string, argv ...string) (string, error) {
+	return r.run(ctx, setEnv, true, argv)
+}
+
+func (execRunner) run(ctx context.Context, setEnv []string, own bool, argv []string) (string, error) {
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	if own {
+		cmd.Env = buildEnv(os.Environ(), setEnv)
+	}
 	var out, errBuf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errBuf
 	if err := cmd.Run(); err != nil {
@@ -53,7 +65,7 @@ func (osFS) Stat(name string) (FileInfo, error) {
 	if err != nil {
 		return FileInfo{}, err
 	}
-	out := FileInfo{IsDir: fi.IsDir(), Mode: fi.Mode().Perm(), UID: -1, GID: -1}
+	out := FileInfo{IsDir: fi.IsDir(), Mode: fi.Mode().Perm(), ModTime: fi.ModTime(), UID: -1, GID: -1}
 	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
 		out.UID, out.GID = int(st.Uid), int(st.Gid)
 	}
@@ -163,4 +175,15 @@ func httpHealth(ctx context.Context, url string) error {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// buildEnv 返回子进程环境：去掉 base 里全部 PIMON_* 再追加 set。
+func buildEnv(base, set []string) []string {
+	out := make([]string, 0, len(base)+len(set))
+	for _, kv := range base {
+		if !strings.HasPrefix(kv, "PIMON_") {
+			out = append(out, kv)
+		}
+	}
+	return append(out, set...)
 }

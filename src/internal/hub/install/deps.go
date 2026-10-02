@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 )
@@ -15,6 +16,8 @@ import (
 // Runner 执行外部命令，返回标准输出。命令以非零状态退出时返回 *ExitError。
 type Runner interface {
 	Run(ctx context.Context, argv ...string) (string, error)
+	// RunEnv 与 Run 相同，但子进程环境 = 继承环境去掉全部 PIMON_* 再追加 setEnv（KEY=VALUE 形式）。
+	RunEnv(ctx context.Context, setEnv []string, argv ...string) (string, error)
 }
 
 // ExitError 表示外部命令以非零状态退出。
@@ -37,10 +40,11 @@ type Owner struct{ UID, GID int }
 
 // FileInfo 是 Stat 的结果；Mode 只含权限位。
 type FileInfo struct {
-	IsDir bool
-	Mode  fs.FileMode
-	UID   int
-	GID   int
+	IsDir   bool
+	Mode    fs.FileMode
+	ModTime time.Time
+	UID     int
+	GID     int
 }
 
 // FS 是 install 用到的文件系统操作。WriteFile 必须原子（同目录临时文件再 rename），

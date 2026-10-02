@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFreshInstallCommandSequence(t *testing.T) {
@@ -67,9 +68,10 @@ func TestSecondRunIsIdempotent(t *testing.T) {
 	}
 	want := []string{
 		"/usr/bin/systemctl is-active pimon-hub.service",
-		"/usr/sbin/runuser -u pimon -- /usr/local/bin/pimon-hub setup-code --if-needed",
 		"/usr/bin/systemctl daemon-reload",
 		"/usr/bin/systemctl enable --now pimon-hub.service",
+		"/usr/bin/systemctl show -p ActiveEnterTimestampMonotonic --value pimon-hub.service",
+		"/usr/sbin/runuser -u pimon -- /usr/local/bin/pimon-hub setup-code --if-needed",
 	}
 	if !slices.Equal(e.run.log, want) {
 		t.Fatalf("二次运行命令序列:\n got %q\nwant %q", e.run.log, want)
@@ -109,8 +111,7 @@ func TestUpgradeReplacesBinaryAndRestarts(t *testing.T) {
 	if e.wrote(unitPath) != nil {
 		t.Fatal("unit 没变不应重写")
 	}
-	last := e.run.log[len(e.run.log)-1]
-	if last != "/usr/bin/systemctl restart pimon-hub.service" {
+	if indexOfCmd(e.run.log, " restart ") < 0 {
 		t.Fatalf("升级后应重启服务，命令序列 %q", e.run.log)
 	}
 	if !strings.Contains(e.out.String(), "[完成] 升级二进制") || !strings.Contains(e.out.String(), "重启 pimon-hub.service（二进制已升级）") {
@@ -133,7 +134,7 @@ func TestUnitChangeRestartsRunningService(t *testing.T) {
 	if e.fs.files[unitPath].data != unitContent {
 		t.Fatal("unit 应被更新")
 	}
-	if e.run.log[len(e.run.log)-1] != "/usr/bin/systemctl restart pimon-hub.service" {
+	if indexOfCmd(e.run.log, " restart ") < 0 {
 		t.Fatalf("unit 变化应重启: %q", e.run.log)
 	}
 }
@@ -373,5 +374,112 @@ func TestCommandRejectsBadArgs(t *testing.T) {
 	}
 	if err := Command(context.Background(), []string{"--bogus"}, &strings.Builder{}); !errors.As(err, &ue) {
 		t.Fatalf("未知参数应是用法错误: %v", err)
+	}
+}
+
+func (f runnerFunc) RunEnv(ctx context.Context, _ []string, argv ...string) (string, error) {
+	return f(ctx, argv...)
+}
+
+func indexOfCmd(log []string, sub string) int {
+	return slices.IndexFunc(log, func(s string) bool { return strings.Contains(s, sub) })
+}
+
+func TestRunningServiceSetupCodeAfterRestartAndReady(t *testing.T) {
+	e := newTestEnv(t)
+	if err := e.install(t); err != nil {
+		t.Fatal(err)
+	}
+	e.run.log, e.run.healthAt = nil, -1
+	e.fs.files["/tmp/new/pimon-hub"].data = "BIN-V2"
+	e.ports.ls = []Listener{{PID: 321, Exe: binPath + " (deleted)"}}
+	if err := e.install(t); err != nil {
+		t.Fatalf("%v\n%s", err, e.out)
+	}
+	restart, setup := indexOfCmd(e.run.log, " restart "), indexOfCmd(e.run.log, "setup-code")
+	if restart < 0 || setup < 0 || setup < restart || setup < e.run.healthAt {
+		t.Fatalf("服务已在运行时 setup-code 必须在 restart 与就绪之后: restart=%d health=%d setup=%d %q", restart, e.run.healthAt, setup, e.run.log)
+	}
+}
+
+func TestFreshInstallSetupCodeBeforeServiceStart(t *testing.T) {
+	e := newTestEnv(t)
+	if err := e.install(t); err != nil {
+		t.Fatal(err)
+	}
+	if setup, enable := indexOfCmd(e.run.log, "setup-code"), indexOfCmd(e.run.log, " enable "); setup < 0 || setup > enable {
+		t.Fatalf("全新安装必须先取码再启动服务: %q", e.run.log)
+	}
+}
+
+func TestSetupCodeRunsWithCleanEnvironment(t *testing.T) {
+	e := newTestEnv(t)
+	if err := e.install(t); err != nil {
+		t.Fatal(err)
+	}
+	got := e.run.envs["/usr/sbin/runuser -u pimon -- /usr/local/bin/pimon-hub setup-code --if-needed"]
+	if !slices.Equal(got, []string{"PIMON_DATA_DIR=/var/lib/pimon"}) {
+		t.Fatalf("setup-code 的环境覆盖 = %q", got)
+	}
+}
+
+func TestBuildEnvDropsInheritedPimonVars(t *testing.T) {
+	got := buildEnv([]string{"PATH=/usr/bin", "PIMON_ADDR=:1", "PIMON_DATA_DIR=/root/x", "PIMON_LOG_LEVEL=debug", "HOME=/root"}, []string{"PIMON_DATA_DIR=/var/lib/pimon"})
+	want := []string{"PATH=/usr/bin", "HOME=/root", "PIMON_DATA_DIR=/var/lib/pimon"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestRerunAfterFailedUpgradeStillRestarts(t *testing.T) {
+	e := newTestEnv(t)
+	if err := e.install(t); err != nil {
+		t.Fatal(err)
+	}
+	e.fs.files["/tmp/new/pimon-hub"].data = "BIN-V2"
+	e.run.setupExit = 3
+	e.ports.ls = []Listener{{PID: 321, Exe: binPath}}
+	e.run.failOn = map[string]error{cmdSystemctl + " daemon-reload": errors.New("boom")}
+	if err := e.install(t); err == nil {
+		t.Fatal("第一次升级应失败")
+	}
+	// 重跑：二进制已是新的，但旧进程仍在跑（exe 已是 deleted）。
+	e.run.failOn, e.run.log = nil, nil
+	e.ports.ls = []Listener{{PID: 321, Exe: binPath + " (deleted)"}}
+	if err := e.install(t); err != nil {
+		t.Fatalf("%v\n%s", err, e.out)
+	}
+	if indexOfCmd(e.run.log, " restart ") < 0 {
+		t.Fatalf("重跑应重启仍在运行旧代码的服务: %q", e.run.log)
+	}
+}
+
+func TestRerunAfterUnitWrittenButRestartFailedStillRestarts(t *testing.T) {
+	e := newTestEnv(t)
+	if err := e.install(t); err != nil {
+		t.Fatal(err)
+	}
+	e.run.setupExit = 3
+	e.ports.ls = []Listener{{PID: 1, Exe: binPath}}
+	e.run.startedAt = e.run.startedAt.Add(-30 * time.Minute) // 服务比 unit 文件旧
+	e.fs.files[unitPath].data = "旧版 unit"
+	e.run.failOn = map[string]error{cmdSystemctl + " restart": errors.New("boom")}
+	if err := e.install(t); err == nil {
+		t.Fatal("第一次应在 restart 失败")
+	}
+	e.run.failOn, e.run.log = nil, nil
+	if err := e.install(t); err != nil {
+		t.Fatal(err)
+	}
+	if e.wrote(unitPath) == nil || indexOfCmd(e.run.log, " restart ") < 0 {
+		t.Fatalf("unit 已写入但服务未重启，重跑应补重启: %q", e.run.log)
+	}
+	// 重启成功后再跑不应反复重启。
+	e.run.log = nil
+	if err := e.install(t); err != nil {
+		t.Fatal(err)
+	}
+	if indexOfCmd(e.run.log, " restart ") >= 0 {
+		t.Fatalf("服务已比 unit 新，不应再重启: %q", e.run.log)
 	}
 }
