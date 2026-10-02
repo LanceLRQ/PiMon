@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
@@ -27,6 +28,8 @@ type Config struct {
 	Clock clock.Clock
 	// Timezone 返回当前全局时区名；每次计算时现取，设置修改后调用 Refresh 立即生效。
 	Timezone func() string
+	// DailyRestart 返回 kiosk 每日重启设置，用于计算 KioskStatus.NextRestart；为空视为未开启。
+	DailyRestart func() model.DailyRestartSettings
 }
 
 // Command 是一次性屏幕指令（refresh、switch），由调用方转发给屏幕会话。
@@ -42,6 +45,7 @@ type Service struct {
 	db  *store.DB
 	clk clock.Clock
 	tz  func() string
+	dr  func() model.DailyRestartSettings
 
 	mu       sync.Mutex
 	sched    model.Schedule
@@ -55,6 +59,7 @@ type Service struct {
 	onChange func(model.ScreenState)
 	onCmd    func(Command)
 	onVP     func(model.Viewport)
+	kiosk    *model.KioskStatus
 
 	// emitMu 保证状态变化的通知按计算顺序发出。
 	emitMu sync.Mutex
@@ -68,7 +73,7 @@ func New(c Config) *Service {
 	if tz == nil {
 		tz = func() string { return "UTC" }
 	}
-	s := &Service{db: c.DB, clk: c.Clock, tz: tz, sched: DefaultSchedule(), kick: make(chan struct{}, 1)}
+	s := &Service{db: c.DB, clk: c.Clock, tz: tz, dr: c.DailyRestart, sched: DefaultSchedule(), kick: make(chan struct{}, 1)}
 	s.vp = NewViewportTracker(c.Clock, s.fireViewport)
 	return s
 }
@@ -213,6 +218,7 @@ func (s *Service) Status() model.ScreenStatus {
 		t := *s.lastSeen
 		st.LastSeen = &t
 	}
+	st.Kiosk = s.kioskStatusLocked()
 	s.mu.Unlock()
 	st.Viewport = s.vp.Current()
 	return st
@@ -374,4 +380,73 @@ func (s *Service) Control(ctx context.Context, req model.ScreenControlRequest, c
 		cb(Command{OpID: op.ID, Action: req.Action, ScreenID: req.ScreenID})
 	}
 	return model.ScreenControlResponse{Op: op, State: st}, nil
+}
+
+// kioskStatusLocked 返回 kiosk 状态的副本，并按当前设置现算下次每日重启时刻；从未连过返回 nil。调用方持 mu。
+func (s *Service) kioskStatusLocked() *model.KioskStatus {
+	if s.kiosk == nil {
+		return nil
+	}
+	k := *s.kiosk
+	k.ChromiumStartedAt = copyPtr(k.ChromiumStartedAt)
+	k.BackoffUntil = copyPtr(k.BackoffUntil)
+	k.Touchscreen = copyPtr(k.Touchscreen)
+	k.ChromiumRSSBytes = copyPtr(k.ChromiumRSSBytes)
+	k.IdleCheck = copyPtr(k.IdleCheck)
+	k.LastReportAt = copyPtr(k.LastReportAt)
+	k.NextRestart = nil
+	if s.dr != nil {
+		if dr := s.dr(); dr.Enabled {
+			if next, err := backup.NextRun(s.clk.Now(), s.location(), dr.At); err == nil {
+				k.NextRestart = &next
+			}
+		}
+	}
+	return &k
+}
+
+func copyPtr[T any](p *T) *T {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
+}
+
+// SetKioskOnline 记录 kiosk 的连接状态；断开时保留最后一次上报的内容。
+func (s *Service) SetKioskOnline(online bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.kiosk == nil {
+		s.kiosk = &model.KioskStatus{}
+	}
+	s.kiosk.Online = online
+}
+
+// ReportKiosk 保存 kiosk 的上报，整份覆盖上一次的内容。
+func (s *Service) ReportKiosk(r model.KioskReport) {
+	now := s.clk.Now().UTC()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.kiosk == nil {
+		s.kiosk = &model.KioskStatus{}
+	}
+	k := s.kiosk
+	k.LastReportAt = &now
+	k.Version = r.Version
+	k.ChromiumStartedAt = copyPtr(r.ChromiumStartedAt)
+	k.Restarts = r.Restarts
+	k.BackoffUntil = copyPtr(r.BackoffUntil)
+	k.Touchscreen = copyPtr(r.Touchscreen)
+	k.ChromiumRSSBytes = copyPtr(r.ChromiumRSSBytes)
+	k.IdleCheck = copyPtr(r.IdleCheck)
+}
+
+// kioskSource 是 kiosk 请求唤醒时记入操作记录的来源。
+const kioskSource = "kiosk"
+
+// Wake 执行 kiosk 请求的唤醒：minutes 为 0 取默认 30 分钟，来源记为 kiosk。
+func (s *Service) Wake(ctx context.Context, minutes int) error {
+	_, err := s.Control(ctx, model.ScreenControlRequest{Action: model.ScreenActionWake, Minutes: minutes}, kioskSource)
+	return err
 }

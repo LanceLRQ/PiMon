@@ -43,6 +43,15 @@ type ScreenDisplaySettings struct {
 	InputMode string `json:"input_mode"`
 	// UIScale 界面缩放：1、1.25、1.5 或 2。
 	UIScale float64 `json:"ui_scale"`
+	// DailyRestart 是 kiosk 的每日定时重启（重启 Chromium），默认关闭。
+	DailyRestart DailyRestartSettings `json:"daily_restart"`
+}
+
+// DailyRestartSettings 是 kiosk 每日重启设置，时刻按全局时区解释。
+type DailyRestartSettings struct {
+	Enabled bool `json:"enabled"`
+	// At 是每日重启时刻，HH:MM。
+	At string `json:"at"`
 }
 
 // RetentionSettings 历史数据保留期。

@@ -206,6 +206,89 @@ export interface InstanceDeleteResult {
 }
 
 //////////
+// source: kiosk.go
+
+/**
+ * KioskIdleCheck 是 kiosk 的息屏检查结果：任一为 true 都表示系统可能自行息屏，需要告警。
+ */
+export interface KioskIdleCheck {
+  /**
+   * User 为 true 表示用户 labwc autostart 里有 swayidle 行。
+   */
+  user: boolean;
+  /**
+   * Greeter 为 true 表示 greeter 的 labwc autostart 里有 swayidle 行。
+   */
+  greeter: boolean;
+  /**
+   * System 为 true 表示系统 labwc autostart 里有 swayidle 行。
+   */
+  system: boolean;
+  /**
+   * SwayidleRunning 为 true 表示 swayidle 进程正在运行。
+   */
+  swayidle_running: boolean;
+  checked_at: string;
+}
+/**
+ * KioskReport 是 kiosk 守护进程经 WebSocket 上报的自身状态，每次上报整份覆盖。
+ */
+export interface KioskReport {
+  /**
+   * Version 是 kiosk 所属二进制的构建版本。
+   */
+  version: string;
+  /**
+   * ChromiumStartedAt 是当前 Chromium 进程的启动时刻；未在运行为 null。
+   */
+  chromium_started_at?: string;
+  /**
+   * Restarts 是 kiosk 启动以来 Chromium 被重新拉起的次数。
+   */
+  restarts: number /* int */;
+  /**
+   * BackoffUntil 是退避中的下次拉起时刻；不在退避中为 null。
+   */
+  backoff_until?: string;
+  /**
+   * Touchscreen 是 udev 检测到触摸屏的结果；未检测为 null。
+   */
+  touchscreen?: boolean;
+  /**
+   * ChromiumRSSBytes 是 Chromium 进程组的 RSS 合计字节；未采集为 null。
+   */
+  chromium_rss_bytes?: number /* int64 */;
+  /**
+   * IdleCheck 是最近一次息屏检查的结果；未检查为 null。
+   */
+  idle_check?: KioskIdleCheck;
+}
+/**
+ * KioskStatus 是中枢保存的 kiosk 状态：最近一次上报的内容加中枢维护的字段。
+ */
+export interface KioskStatus {
+  /**
+   * Online 表示此刻有 kiosk 连接；断开后保留最后一次上报的内容。
+   */
+  online: boolean;
+  /**
+   * LastReportAt 是最近一次收到上报的时刻；连上后尚未上报时为 null。
+   */
+  last_report_at?: string;
+  /**
+   * NextRestart 是下一次每日重启的时刻；未开启每日重启时为 null。
+   */
+  next_restart?: string;
+  version: string;
+  chromium_started_at?: string;
+  restarts: number /* int */;
+  backoff_until?: string;
+  touchscreen?: boolean;
+  chromium_rss_bytes?: number /* int64 */;
+  idle_check?: KioskIdleCheck;
+}
+
+//////////
 // source: layout.go
 
 /**
@@ -1050,6 +1133,10 @@ export interface ScreenStatus {
    * RecommendedGrid 是按已采信 viewport 推算出的推荐网格；尚无 viewport 时缺省。
    */
   recommended_grid?: Grid;
+  /**
+   * Kiosk 是本机 kiosk 守护进程的状态；从未连过时为 null。
+   */
+  kiosk?: KioskStatus;
 }
 /**
  * ScreenControlRequest 是 POST /api/screen/control 的请求体。
@@ -1206,6 +1293,20 @@ export interface ScreenDisplaySettings {
    * UIScale 界面缩放：1、1.25、1.5 或 2。
    */
   ui_scale: number /* float64 */;
+  /**
+   * DailyRestart 是 kiosk 的每日定时重启（重启 Chromium），默认关闭。
+   */
+  daily_restart: DailyRestartSettings;
+}
+/**
+ * DailyRestartSettings 是 kiosk 每日重启设置，时刻按全局时区解释。
+ */
+export interface DailyRestartSettings {
+  enabled: boolean;
+  /**
+   * At 是每日重启时刻，HH:MM。
+   */
+  at: string;
 }
 /**
  * RetentionSettings 历史数据保留期。

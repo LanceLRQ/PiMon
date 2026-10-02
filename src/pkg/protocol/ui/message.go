@@ -13,7 +13,7 @@ import (
 var _ = `/** ServerMessageType 是服务端 → 客户端消息的 type 取值。 */
 export type ServerMessageType = "snapshot" | "patch" | "pong" | "error" | "screen_control";
 /** ClientMessageType 是客户端 → 服务端消息的 type 取值。 */
-export type ClientMessageType = "subscribe" | "ping" | "viewport_report";`
+export type ClientMessageType = "subscribe" | "ping" | "viewport_report" | "kiosk_report" | "kiosk_wake";`
 
 // 服务端 → 客户端的消息类型。
 const (
@@ -31,12 +31,18 @@ const (
 	TypePing      ClientMessageType = "ping"
 	// TypeViewportReport 是屏幕端的状态上报（viewport、触摸能力、当前 screen），仅屏幕会话有效。
 	TypeViewportReport ClientMessageType = "viewport_report"
+	// TypeKioskReport 是 kiosk 守护进程的状态上报，载荷在 ClientMessage.Kiosk，仅 kiosk 连接有效。
+	TypeKioskReport ClientMessageType = "kiosk_report"
+	// TypeKioskWake 是 kiosk 请求唤醒屏幕（如触摸唤醒），可带 ClientMessage.Minutes，仅 kiosk 连接有效。
+	TypeKioskWake ClientMessageType = "kiosk_wake"
 )
 
 // 会话角色。
 const (
 	RoleAdmin  = "admin"
 	RoleScreen = "screen"
+	// RoleKiosk 是本机 kiosk 守护进程的连接（Bearer 屏幕令牌握手，不是屏幕会话）。
+	RoleKiosk = "kiosk"
 )
 
 // 订阅主题。
@@ -92,7 +98,7 @@ type Snapshot struct {
 	Build string `json:"build"`
 	// ServerTime 是服务端当前时间，前端据此校正时钟偏差。
 	ServerTime time.Time `json:"server_time"`
-	// Role 是当前会话角色：admin 或 screen。
+	// Role 是当前会话角色：admin、screen 或 kiosk。
 	Role string `json:"role"`
 	// Topics 是当前生效的订阅主题。
 	Topics []string `json:"topics"`
@@ -171,4 +177,8 @@ type ClientMessage struct {
 	Viewport      *model.Viewport `json:"viewport,omitempty"`
 	CoarsePointer *bool           `json:"coarse_pointer,omitempty"`
 	CurrentScreen string          `json:"current_screen,omitempty"`
+	// Kiosk 用于 kiosk_report，是 kiosk 的完整状态，仅 kiosk 连接有效。
+	Kiosk *model.KioskReport `json:"kiosk,omitempty"`
+	// Minutes 用于 kiosk_wake：唤醒时长（分钟），缺省 30。
+	Minutes int `json:"minutes,omitempty"`
 }

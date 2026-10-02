@@ -136,3 +136,15 @@ func firstValue(s string) string {
 	}
 	return ""
 }
+
+// LimitKey 生成限流键：IPv4 用原地址；IPv6 去 zone 后取 /64 前缀，
+// 避免同一网段内靠更换后 64 位地址绕过限流。依赖前置的 WithRequestInfo。
+func LimitKey(prefix string, r *http.Request) string {
+	ip := Info(r).ClientIP
+	if ip.Is6() {
+		if p, err := ip.WithZone("").Prefix(64); err == nil {
+			return prefix + p.String()
+		}
+	}
+	return prefix + ip.String()
+}

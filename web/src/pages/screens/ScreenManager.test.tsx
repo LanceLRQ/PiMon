@@ -28,7 +28,7 @@ const layoutState = (version = 5): LayoutState => ({ version, source: 'edit', cr
 const settings = (): Settings =>
   ({
     language: 'zh', timezone: 'Asia/Shanghai', access_url: '', https_enabled: false, trusted_proxies: [], reduce_effects: false,
-    screen: { carousel_mode: 'auto', idle_home_seconds: 60, default_dwell_seconds: 15, input_mode: 'auto', ui_scale: 1 },
+    screen: { carousel_mode: 'auto', idle_home_seconds: 60, default_dwell_seconds: 15, input_mode: 'auto', ui_scale: 1, daily_restart: { enabled: false, at: '04:00' } },
     retention: { raw_hours: 24, five_min_days: 30, hour_days: 365 }, backup: { daily_at: '04:00', keep: 7 },
   }) as Settings
 const status = (over: Partial<ScreenStatus> = {}): ScreenStatus => ({

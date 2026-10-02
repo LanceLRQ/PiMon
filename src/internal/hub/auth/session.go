@@ -131,3 +131,19 @@ func (s *Sessions) DeleteKind(ctx context.Context, kind SessionKind) error {
 	}
 	return err
 }
+
+// PruneKind 只保留 kind 类型中最近创建的 keep 条会话，删除更早的；其他类型不受影响。
+// 会话表只增不改，rowid 的大小顺序就是创建顺序。有会话被删除时触发撤销回调，让它们的长连接立即复核。
+func (s *Sessions) PruneKind(ctx context.Context, kind SessionKind, keep int) error {
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM sessions WHERE kind = ? AND rowid NOT IN
+		 (SELECT rowid FROM sessions WHERE kind = ? ORDER BY rowid DESC LIMIT ?)`,
+		string(kind), string(kind), keep)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err == nil && n > 0 {
+		s.revoked()
+	}
+	return nil
+}

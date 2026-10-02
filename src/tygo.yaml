@@ -30,9 +30,11 @@ packages:
       model.ScreenState: ScreenState
       model.ScreenInstanceData: ScreenInstanceData
       model.Viewport: Viewport
+      model.KioskReport: KioskReport
     frontmatter: |
       import type {
         Instance,
+        KioskReport,
         LayoutState,
         ResolvedLayout,
         ScreenDisplaySettings,

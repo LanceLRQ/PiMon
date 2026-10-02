@@ -13,6 +13,7 @@ const settings = (over: Partial<ScreenSettings> = {}): ScreenSettings => ({
     default_dwell_seconds: 15,
     input_mode: 'auto',
     ui_scale: 1,
+    daily_restart: { enabled: false, at: '04:00' },
   },
   ...over,
 })

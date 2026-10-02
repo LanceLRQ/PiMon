@@ -170,6 +170,8 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		DB: a.db, Clock: o.clk,
 		// 时区在运行时可改，每次计算时现取。
 		Timezone: func() string { return st.Get().Timezone },
+		// 每日重启设置同样现取，KioskStatus.NextRestart 随设置变化即时重算。
+		DailyRestart: func() model.DailyRestartSettings { return st.Get().Screen.DailyRestart },
 	})
 	if err := a.screenState.Load(ctx); err != nil {
 		return fmt.Errorf("加载屏幕时段计划: %w", err)
@@ -196,10 +198,13 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	if err := seeder.Run(ctx); err != nil {
 		slog.Warn("写入种子数据失败，已跳过，下次启动重试", "err", err)
 	}
+	// 屏幕令牌的失败限流由 /screen/auth 与 kiosk 的 WebSocket 握手共用。
+	limiter := auth.NewLimiter(o.clk, loginMaxFailures, loginLockTime)
 	// 实例与设置的变化经广播中心合并后推给 UI WebSocket 的订阅者。
 	a.ws = ws.New(ws.Config{
 		Clock: o.clk, Build: o.version, Instances: a.instances, Settings: st, Sessions: a.sessions,
 		Layouts: a.screens, ScreenState: a.screenState, ScreenData: a.instances, Sink: a.screenState,
+		KioskAuth: &kioskGate{tokens: a.screen, limiter: limiter}, Kiosk: a.screenState,
 	})
 	a.instances.OnChange(a.ws.NotifyInstance)
 	// 屏幕布局、状态、一次性指令不进合并窗口，变化时立即推送。
@@ -229,7 +234,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		}),
 		Settings:     st,
 		Hasher:       auth.Hasher{Params: o.params},
-		Limiter:      auth.NewLimiter(o.clk, loginMaxFailures, loginLockTime),
+		Limiter:      limiter,
 		SetupCodes:   a.setupCodes,
 		Admins:       a.admins,
 		Sessions:     a.sessions,

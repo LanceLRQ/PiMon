@@ -19,6 +19,7 @@ func Defaults(timezone string) model.Settings {
 		Screen: model.ScreenDisplaySettings{
 			CarouselMode: model.CarouselAuto, IdleHomeSeconds: 60, DefaultDwellSeconds: 15,
 			InputMode: model.InputAuto, UIScale: 1,
+			DailyRestart: model.DailyRestartSettings{At: "04:00"},
 		},
 		Retention: model.RetentionSettings{RawHours: 24, FiveMinDays: 30, HourDays: 365},
 		Backup:    model.BackupSettings{DailyAt: "04:00", Keep: 7},
@@ -105,5 +106,8 @@ func validateScreen(fe model.FieldErrors, v model.ScreenDisplaySettings) {
 	}
 	if !slices.Contains([]float64{1, 1.25, 1.5, 2}, v.UIScale) {
 		fe["screen.ui_scale"] = model.FieldInvalid
+	}
+	if !validClock(v.DailyRestart.At) {
+		fe["screen.daily_restart.at"] = model.FieldInvalid
 	}
 }

@@ -113,3 +113,36 @@ func TestSessions_非法kind被拒绝(t *testing.T) {
 		t.Fatal("非法 kind 应报错")
 	}
 }
+
+func TestSessions_PruneKind只保留最新N条且不动其他类型(t *testing.T) {
+	ctx := context.Background()
+	clk := newClock()
+	s := NewSessions(openDB(t), clk)
+	admin, _ := s.Create(ctx, KindAdmin)
+	var screens []string
+	for i := 0; i < 5; i++ {
+		clk.Advance(time.Second)
+		tok, _ := s.Create(ctx, KindScreen)
+		screens = append(screens, tok)
+	}
+	revoked := 0
+	s.OnRevoke(func() { revoked++ })
+	if err := s.PruneKind(ctx, KindScreen, 3); err != nil {
+		t.Fatal(err)
+	}
+	for i, tok := range screens {
+		_, ok, _ := s.Lookup(ctx, tok)
+		if want := i >= 2; ok != want {
+			t.Fatalf("第 %d 条 ok=%v 期望 %v", i, ok, want)
+		}
+	}
+	if _, ok, _ := s.Lookup(ctx, admin); !ok {
+		t.Fatal("管理员会话不应被删")
+	}
+	if revoked != 1 {
+		t.Fatalf("删除了会话应触发一次撤销回调, 得到 %d", revoked)
+	}
+	if err := s.PruneKind(ctx, KindScreen, 3); err != nil || revoked != 1 {
+		t.Fatalf("没有删除时不应触发回调: err=%v revoked=%d", err, revoked)
+	}
+}
