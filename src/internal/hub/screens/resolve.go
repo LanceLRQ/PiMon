@@ -14,6 +14,7 @@ var severity = map[string]int{
 	string(report.DisplayOK):          0,
 	string(report.DisplayUnknown):     1,
 	string(report.DisplayMaintenance): 2,
+	string(report.DisplayDormant):     2,
 	string(report.DisplayOffline):     3,
 	string(report.DisplayStale):       4,
 	string(report.DisplayWarning):     5,

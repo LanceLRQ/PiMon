@@ -56,6 +56,15 @@ describe('状态形状', () => {
     expect(resolveShape('maintenance')).toBe('offline')
   })
 
+  it('休眠沿用离线形状并按「休眠」标注，同样属于弱化态', async () => {
+    const { container } = render(await withI18n(<StatusShape state="dormant" />))
+    const svg = container.querySelector('svg')!
+    expect(svg.getAttribute('data-shape')).toBe('offline')
+    expect(svg.getAttribute('aria-label')).toBe('休眠')
+    expect(resolveShape('dormant')).toBe('offline')
+    expect(isDimmedState('dormant')).toBe(true)
+  })
+
   it('过期与离线属于弱化态', () => {
     expect(isDimmedState('stale')).toBe(true)
     expect(isDimmedState('offline')).toBe(true)

@@ -95,6 +95,7 @@
     "error": "Collection failed",
     "stale": "Stale",
     "offline": "Offline",
+    "dormant": "Dormant",
     "maintenance": "Maintenance",
     "unconfigured": "Not configured",
     "broken": "Broken reference"

@@ -59,9 +59,9 @@ const colorClass: Record<ShapeState, string> = {
   broken: 'text-status-unknown',
 }
 
-// 把后端 display_state 归到某个形状：维护中沿用离线的形状（本期不会出现），未知取值回落「未知」
+// 把后端 display_state 归到某个形状：维护中、休眠沿用离线的形状（三套主题的完整映射在 M2f），未知取值回落「未知」
 export function resolveShape(state: string): ShapeState {
-  if (state === 'maintenance') return 'offline'
+  if (state === 'maintenance' || state === 'dormant') return 'offline'
   return (shapeStates as readonly string[]).includes(state) ? (state as ShapeState) : 'unknown'
 }
 
@@ -85,7 +85,7 @@ export function StatusShape({ state, size = 14, className }: StatusShapeProps) {
   return (
     <svg
       role="img"
-      aria-label={t(`status.${state === 'maintenance' ? 'maintenance' : shape}`)}
+      aria-label={t(`status.${state === 'maintenance' || state === 'dormant' ? state : shape}`)}
       data-shape={shape}
       data-weight={strong ? 'strong' : 'normal'}
       width={size}
@@ -110,7 +110,7 @@ export function StatusLabel({ state, className }: { state: string; className?: s
   return (
     <span className={cn('inline-flex items-center gap-1.5 text-[13px]', shape === 'critical' && 'font-semibold', className)}>
       <StatusShape state={state} />
-      <span aria-hidden="true">{t(`status.${state === 'maintenance' ? 'maintenance' : shape}`)}</span>
+      <span aria-hidden="true">{t(`status.${state === 'maintenance' || state === 'dormant' ? state : shape}`)}</span>
     </span>
   )
 }

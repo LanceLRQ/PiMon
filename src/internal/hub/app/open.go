@@ -64,7 +64,9 @@ type App struct {
 	screenState *screenstate.Service
 	devices     *devices.Store
 	presence    *devices.Presence
-	agents      *agentsrv.Server
+	// machineNotes 把设备状态变化转成其上实例的变化通知。
+	machineNotes *machineNotifier
+	agents       *agentsrv.Server
 	// dialout 是拨出管理器（hub 主动连公网 VPS 上的 agent），Serve 时启动。
 	dialout *agentsrv.DialOut
 	// dispatcher 是远程实例的下发器：既是实例服务的 Remote，也是 agent 通道的 Router。
@@ -195,8 +197,6 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		return fmt.Errorf("加载屏幕时段计划: %w", err)
 	}
 	a.devices = devices.New(devices.Config{DB: a.db, Box: a.box, Clock: o.clk})
-	// 实例按运行位置校验时查设备角色；远程下发器（Remote）在 agent 通道服务建好后接入。
-	a.instances.UseDevices(deviceStates{a.devices})
 	known, err := a.devices.List(ctx)
 	if err != nil {
 		return fmt.Errorf("读取设备列表: %w", err)
@@ -207,6 +207,12 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	}
 	// 已知设备在 hub 启动后的宽限期内为 pending，之后仍未连上才算 offline。
 	a.presence = devices.NewPresence(o.clk, o.clk.Now(), knownIDs)
+	// 实例按运行位置校验、展示时查设备属性与在线状态；远程下发器（Remote）在 agent 通道服务建好后接入。
+	a.instances.UseDevices(newDeviceStates(a.devices, a.presence))
+	// 设备在线状态或属性变化后，刷新其上全部实例的展示；回调只登记设备，不读库、不阻塞。
+	a.machineNotes = newMachineNotifier(a.instances.NotifyMachine)
+	a.presence.OnChange(a.machineNotes.Submit)
+	a.devices.OnChange(func(id string, _ bool) { a.machineNotes.Submit(id) })
 	// 证书总是加载：agent 通道无论网页是否启用 HTTPS 都要用它，指纹也供配对命令展示。
 	if a.cert, err = tlscert.LoadOrCreate(a.cfg.CertPath(), a.cfg.KeyPath(), o.clk.Now(), o.tlsEnv); err != nil {
 		return fmt.Errorf("准备中枢证书: %w", err)
@@ -374,6 +380,9 @@ func (a *App) stopAgents() {
 	}
 	if a.presence != nil {
 		a.presence.Close()
+	}
+	if a.machineNotes != nil {
+		a.machineNotes.Close()
 	}
 }
 

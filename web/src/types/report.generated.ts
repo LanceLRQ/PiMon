@@ -8,43 +8,47 @@
  */
 export type DisplayState = string;
 /**
- * 展示状态，共 10 个取值；前六个是覆盖 report.status 的状态，后四个对应 report.status。
+ * 展示状态，共 11 个取值；前七个是覆盖 report.status 的状态，后四个对应 report.status。
  */
 export const DisplayUnconfigured: DisplayState = "unconfigured"; // 占位，尚未绑定实例
 /**
- * 展示状态，共 10 个取值；前六个是覆盖 report.status 的状态，后四个对应 report.status。
+ * 展示状态，共 11 个取值；前七个是覆盖 report.status 的状态，后四个对应 report.status。
  */
 export const DisplayBroken: DisplayState = "broken"; // 引用失效
 /**
- * 展示状态，共 10 个取值；前六个是覆盖 report.status 的状态，后四个对应 report.status。
+ * 展示状态，共 11 个取值；前七个是覆盖 report.status 的状态，后四个对应 report.status。
  */
 export const DisplayOffline: DisplayState = "offline"; // 设备离线
 /**
- * 展示状态，共 10 个取值；前六个是覆盖 report.status 的状态，后四个对应 report.status。
+ * 展示状态，共 11 个取值；前七个是覆盖 report.status 的状态，后四个对应 report.status。
+ */
+export const DisplayDormant: DisplayState = "dormant"; // 设备离线且允许离线（休眠）
+/**
+ * 展示状态，共 11 个取值；前七个是覆盖 report.status 的状态，后四个对应 report.status。
  */
 export const DisplayMaintenance: DisplayState = "maintenance"; // 维护中
 /**
- * 展示状态，共 10 个取值；前六个是覆盖 report.status 的状态，后四个对应 report.status。
+ * 展示状态，共 11 个取值；前七个是覆盖 report.status 的状态，后四个对应 report.status。
  */
 export const DisplayError: DisplayState = "error"; // 采集失败：采集没做成
 /**
- * 展示状态，共 10 个取值；前六个是覆盖 report.status 的状态，后四个对应 report.status。
+ * 展示状态，共 11 个取值；前七个是覆盖 report.status 的状态，后四个对应 report.status。
  */
 export const DisplayStale: DisplayState = "stale"; // 过期
 /**
- * 展示状态，共 10 个取值；前六个是覆盖 report.status 的状态，后四个对应 report.status。
+ * 展示状态，共 11 个取值；前七个是覆盖 report.status 的状态，后四个对应 report.status。
  */
 export const DisplayOK: DisplayState = "ok";
 /**
- * 展示状态，共 10 个取值；前六个是覆盖 report.status 的状态，后四个对应 report.status。
+ * 展示状态，共 11 个取值；前七个是覆盖 report.status 的状态，后四个对应 report.status。
  */
 export const DisplayWarning: DisplayState = "warning";
 /**
- * 展示状态，共 10 个取值；前六个是覆盖 report.status 的状态，后四个对应 report.status。
+ * 展示状态，共 11 个取值；前七个是覆盖 report.status 的状态，后四个对应 report.status。
  */
 export const DisplayCritical: DisplayState = "critical";
 /**
- * 展示状态，共 10 个取值；前六个是覆盖 report.status 的状态，后四个对应 report.status。
+ * 展示状态，共 11 个取值；前七个是覆盖 report.status 的状态，后四个对应 report.status。
  */
 export const DisplayUnknown: DisplayState = "unknown"; // 插件判断不出，与 error 不同
 /**
@@ -57,8 +61,9 @@ export const StaleFactor = 3;
 export interface DisplayInput {
   Unconfigured: boolean; // 占位，尚未绑定实例
   Broken: boolean; // 引用失效（实例已删、设备已吊销、插件消失或尺寸不再支持）
-  Offline: boolean; // 设备离线（M1 不会出现）
-  Maintenance: boolean; // 设备维护模式（M1 不会出现）
+  Offline: boolean; // 设备离线且不允许离线
+  Dormant: boolean; // 设备离线且允许离线；与 Offline 互斥，由调用方保证
+  Maintenance: boolean; // 设备维护模式
   LastFailed: boolean; // 最近一次采集失败
   /**
    * LastSuccessAt 是最后一次成功采集（Streamer 为最后一次 emit）的 Unix 毫秒；0 表示从未成功。

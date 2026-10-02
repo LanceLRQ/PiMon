@@ -69,9 +69,15 @@ type Remote interface {
 type DeviceFacts struct {
 	// Role 是设备角色：server / nas / dev / vps。
 	Role string
+	// Offline 表示设备离线且不允许离线；Dormant 表示设备离线且允许离线（休眠），二者互斥。
+	// pending 与 disconnected 两种状态都不置位。
+	Offline, Dormant bool
+	// Maintenance 是设备的维护模式开关。
+	Maintenance bool
 }
 
-// DeviceStates 按 ID 查设备（由 app 用设备仓库适配）。设备不存在返回 false。
+// DeviceStates 按 ID 查设备（由 app 适配）。设备不存在返回 false。
+// 展示路径会对全部实例逐个调用，实现不得每次读库。
 type DeviceStates interface {
 	Device(id string) (DeviceFacts, bool)
 }
@@ -177,4 +183,33 @@ func (s *Service) machineChanged(machine string) {
 		return
 	}
 	s.remote.MachineChanged(machine)
+}
+
+// NotifyMachine 对运行在 machine 上的全部实例逐个触发变化通知，供设备在线状态、
+// 维护模式等变化后刷新其上实例的展示。会读库，调用方不得处于 agentsrv 的会话流程或数据库事务内。
+func (s *Service) NotifyMachine(ctx context.Context, machine string) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM plugin_instances WHERE machine = ?`, machine)
+	if err != nil {
+		return err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		s.notify(id)
+	}
+	return nil
 }

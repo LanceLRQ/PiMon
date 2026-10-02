@@ -95,6 +95,7 @@
     "error": "采集失败",
     "stale": "过期",
     "offline": "离线",
+    "dormant": "休眠",
     "maintenance": "维护中",
     "unconfigured": "未配置",
     "broken": "引用失效"

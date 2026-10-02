@@ -26,6 +26,14 @@ func (s *Service) currentIssue(r row) *issue {
 // 暂停的实例仍按最后报告计算，但不做过期判定（Ruling 27）。
 func (s *Service) toInstance(r row) model.Instance {
 	iss := s.currentIssue(r)
+	var dev DeviceFacts
+	if r.Machine != machineHub {
+		var ok bool
+		if dev, ok = s.device(r.Machine); !ok {
+			// 设备已吊销：优先于插件与配置问题。
+			iss = &issue{kind: issueBroken, msg: "设备已吊销或不存在"}
+		}
+	}
 	var interval time.Duration
 	if p, ok := s.pluginFor(r.Machine, r.PluginID); ok {
 		interval = effectiveInterval(r, p.Manifest)
@@ -48,6 +56,9 @@ func (s *Service) toInstance(r row) model.Instance {
 	in := report.DisplayInput{
 		Broken:        iss != nil && iss.kind == issueBroken,
 		Unconfigured:  iss != nil && iss.kind == issueUnconfigured,
+		Offline:       dev.Offline,
+		Dormant:       dev.Dormant,
+		Maintenance:   dev.Maintenance,
 		LastFailed:    fails > 0,
 		LastSuccessAt: lastOK,
 		Interval:      interval,

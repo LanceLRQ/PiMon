@@ -311,7 +311,7 @@ func TestDisplayStatePriority(t *testing.T) {
 	base := DisplayInput{LastSuccessAt: fresh, Interval: time.Minute, ReportStatus: StatusOK}
 	all := func() DisplayInput {
 		in := base
-		in.Unconfigured, in.Broken, in.Offline, in.Maintenance, in.LastFailed = true, true, true, true, true
+		in.Unconfigured, in.Broken, in.Offline, in.Dormant, in.Maintenance, in.LastFailed = true, true, true, true, true, true
 		in.LastSuccessAt = ms(now.Add(-time.Hour))
 		in.ReportStatus = StatusCritical
 		return in
@@ -324,7 +324,8 @@ func TestDisplayStatePriority(t *testing.T) {
 		{"全部成立取未配置", func(*DisplayInput) {}, DisplayUnconfigured},
 		{"去掉未配置取引用失效", func(in *DisplayInput) { in.Unconfigured = false }, DisplayBroken},
 		{"再去掉取离线", func(in *DisplayInput) { in.Broken = false }, DisplayOffline},
-		{"再去掉取维护", func(in *DisplayInput) { in.Offline = false }, DisplayMaintenance},
+		{"再去掉离线取休眠", func(in *DisplayInput) { in.Offline = false }, DisplayDormant},
+		{"再去掉休眠取维护", func(in *DisplayInput) { in.Dormant = false }, DisplayMaintenance},
 		{"再去掉取采集失败", func(in *DisplayInput) { in.Maintenance = false }, DisplayError},
 		{"再去掉取过期", func(in *DisplayInput) { in.LastFailed = false }, DisplayStale},
 		{"再去掉取报告状态", func(in *DisplayInput) { in.LastSuccessAt = fresh }, DisplayCritical},
