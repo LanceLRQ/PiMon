@@ -6,10 +6,13 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
@@ -41,6 +44,8 @@ var (
 	ErrRecvQueueFull = errors.New("收件队列已满")
 	// ErrNoRequestID 表示请求号为空且消息不能代为写入（值类型），需传指针或先填请求号。
 	ErrNoRequestID = errors.New("请求号为空且无法代为生成")
+	// ErrFrameTooLarge 表示编码后的帧超过 agent.MaxFrame，不入队也不断开会话。
+	ErrFrameTooLarge = errors.New("消息超过单帧上限")
 	// ErrDuplicateRequestID 表示同一请求号已有等待者。
 	ErrDuplicateRequestID = errors.New("请求号重复")
 )
@@ -88,8 +93,10 @@ type Peer struct {
 }
 
 // Handler 处理一条入站消息。它在会话的分发协程中串行调用，不得长时间阻塞：
-// 收件队列满会断开会话。ping、pong、bye 与匹配到等待者的响应不会交给 Handler；
-// 没有等待者的响应（例如超时后迟到的）照常交给 Handler，由上层决定忽略。
+// 收件队列满会断开会话。ping、pong、bye 与所有响应类消息（run_result、logs、upgrade_info）
+// 都不会交给 Handler：响应只按 request_id 交给等待者，没有等待者的（例如超时后迟到的）
+// 由会话层丢弃；请求类消息（run_now、logs_get、upgrade_info_get）一律交给 Handler。
+// Done 关闭时，正在执行的 Handler 可能仍在运行，会话不等待它返回。
 type Handler func(s *Session, msg agent.Message)
 
 // SessionOptions 是会话的可选参数，零值字段取默认值。
@@ -125,8 +132,8 @@ type Session struct {
 
 	sendQ chan outFrame
 	inbox chan agent.Message
-	// seen 在读到任何帧时被非阻塞写入，心跳协程据此重置判活计时。
-	seen chan struct{}
+	// lastSeen 是最近一次读到帧的时刻（Clock 的 UnixNano），心跳协程据此判活。
+	lastSeen atomic.Int64
 
 	mu       sync.Mutex
 	peer     Peer
@@ -164,11 +171,11 @@ func newSession(fc frameConn, peer Peer, opts SessionOptions) *Session {
 		done:    make(chan struct{}),
 		sendQ:   make(chan outFrame, opts.SendQueueSize),
 		inbox:   make(chan agent.Message, opts.RecvQueueSize),
-		seen:    make(chan struct{}, 1),
 		peer:    peer,
 		waiters: make(map[string]chan agent.Message),
 	}
 	fc.SetReadLimit(agent.MaxFrame)
+	s.lastSeen.Store(s.clk.Now().UnixNano())
 	// 计时器在启动协程前登记，测试据此用假时钟的 Waiters() 同步。
 	ping := s.clk.After(HeartbeatInterval)
 	alive := s.clk.After(HeartbeatTimeout)
@@ -218,11 +225,15 @@ func NewRequestID() string {
 }
 
 // Send 校验并编码消息后非阻塞入队；队列满即断开会话并返回 ErrSendQueueFull，
-// 会话关闭（或正在关闭）时返回 ErrSessionClosed，校验失败返回 *agent.InvalidMessageError。
+// 会话关闭（或正在关闭）时返回 ErrSessionClosed，校验失败返回 *agent.InvalidMessageError，
+// 编码后超过 agent.MaxFrame 返回 ErrFrameTooLarge（后两种不入队、不断开）。
 func (s *Session) Send(msg agent.Message) error {
 	b, err := agent.Encode(msg)
 	if err != nil {
 		return err
+	}
+	if len(b) > agent.MaxFrame {
+		return fmt.Errorf("%w：%s 编码后 %d 字节", ErrFrameTooLarge, msg.MsgType(), len(b))
 	}
 	return s.enqueue(b)
 }
@@ -350,6 +361,8 @@ func (s *Session) Close(reason string) {
 		}
 	}
 	s.finish(CloseReason{Kind: CloseLocal, Bye: reason})
+	// finish 可能已在别的协程中进行（如读错误），等它完成，保证返回时 Done 已关闭。
+	<-s.done
 }
 
 // finish 只生效一次：记录原因（已调用 Close 时以本端原因为准）、取消 ctx、关闭连接、关闭 done。
@@ -381,10 +394,7 @@ func (s *Session) readLoop() {
 			s.finish(CloseReason{Kind: CloseReadError, Err: err})
 			return
 		}
-		select {
-		case s.seen <- struct{}{}:
-		default:
-		}
+		s.lastSeen.Store(s.clk.Now().UnixNano())
 		if !s.handleFrame(b) {
 			return
 		}
@@ -395,7 +405,7 @@ func (s *Session) readLoop() {
 func (s *Session) handleFrame(b []byte) bool {
 	msg, err := agent.Decode(b)
 	if errors.Is(err, agent.ErrUnknownType) {
-		s.log.Warn("忽略未知类型的消息", "err", err)
+		s.log.Warn("忽略未知类型的消息", "type", unknownType(b))
 		return true
 	}
 	if err != nil {
@@ -421,7 +431,10 @@ func (s *Session) handleFrame(b []byte) bool {
 		s.finish(CloseReason{Kind: ClosePeerBye, Bye: m.Reason})
 		return false
 	}
-	if r, ok := msg.(agent.Requester); ok && s.deliver(r.GetRequestID(), msg) {
+	if r, ok := isResponse(msg); ok {
+		if !s.deliver(r.GetRequestID(), msg) {
+			s.log.Debug("丢弃没有等待者的响应", "type", string(msg.MsgType()))
+		}
 		return true
 	}
 	select {
@@ -432,6 +445,35 @@ func (s *Session) handleFrame(b []byte) bool {
 	s.log.Warn("agent 会话收件队列已满，断开连接", "type", string(msg.MsgType()))
 	s.finish(CloseReason{Kind: CloseQueueFull, Err: ErrRecvQueueFull})
 	return false
+}
+
+// isResponse 判断响应类消息：带 request_id 但不能被写入请求号（RequestIDSetter 只由请求类的指针实现；
+// Decode 得到的都是指针，判定可靠）。
+func isResponse(msg agent.Message) (agent.Requester, bool) {
+	r, ok := msg.(agent.Requester)
+	if !ok {
+		return nil, false
+	}
+	if _, isRequest := msg.(agent.RequestIDSetter); isRequest {
+		return nil, false
+	}
+	return r, true
+}
+
+// maxLoggedType 是日志里对端可控的 type 的最大字节数。
+const maxLoggedType = 64
+
+// unknownType 取出帧的 type 用于日志，截断到 maxLoggedType 字节且保持 UTF-8 合法。
+func unknownType(b []byte) string {
+	var head struct {
+		Type string `json:"type"`
+	}
+	_ = json.Unmarshal(b, &head) // Decode 已确认是合法 JSON 且有 type
+	t := head.Type
+	if len(t) > maxLoggedType {
+		t = strings.ToValidUTF8(t[:maxLoggedType], "") + "…"
+	}
+	return t
 }
 
 func (s *Session) writeLoop() {
@@ -467,19 +509,22 @@ func (s *Session) dispatchLoop() {
 	}
 }
 
-// heartbeatLoop 每 HeartbeatInterval 发一次 ping；收到任何帧即重置判活计时，
-// HeartbeatTimeout 内一帧都没收到则判心跳超时。
+// heartbeatLoop 每 HeartbeatInterval 发一次 ping。判活只用一个计时器：到期时若距最近一帧
+// 不足 HeartbeatTimeout，就按剩余时长重新登记，否则判心跳超时。
 func (s *Session) heartbeatLoop(ping, alive <-chan time.Time) {
 	for {
 		select {
-		case <-s.seen:
-			alive = s.clk.After(HeartbeatTimeout)
 		case <-ping:
 			ping = s.clk.After(HeartbeatInterval)
 			if b, err := agent.Encode(&agent.Ping{SentAt: s.clk.Now()}); err == nil {
 				_ = s.enqueue(b)
 			}
 		case <-alive:
+			idle := s.clk.Now().Sub(time.Unix(0, s.lastSeen.Load()))
+			if idle < HeartbeatTimeout {
+				alive = s.clk.After(HeartbeatTimeout - idle)
+				continue
+			}
 			s.log.Warn("agent 会话心跳超时，断开连接")
 			s.finish(CloseReason{Kind: CloseHeartbeat})
 			return

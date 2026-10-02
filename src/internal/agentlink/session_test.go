@@ -2,9 +2,11 @@ package agentlink
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -26,6 +28,8 @@ type fakeConn struct {
 	readLimit atomic.Int64
 	// blockWrite 为真时 Write 一直阻塞到连接关闭（模拟对端不读）。
 	blockWrite bool
+	// closeEntered 非空时 Close 先通知它，再等 closeRelease（模拟 finish 卡在关闭连接上）。
+	closeEntered, closeRelease chan struct{}
 }
 
 // Read 与 TCP 一致：关闭前已写入的帧先读完，再报连接关闭（select 同时就绪时是随机的，需显式排序）。
@@ -65,6 +69,13 @@ func (c *fakeConn) Write(ctx context.Context, b []byte) error {
 }
 
 func (c *fakeConn) Close() error {
+	if c.closeEntered != nil {
+		select {
+		case c.closeEntered <- struct{}{}:
+		default:
+		}
+		<-c.closeRelease
+	}
 	c.closeOnce.Do(func() { close(c.closed) })
 	return nil
 }
@@ -300,8 +311,10 @@ func TestSession_请求响应按请求号关联且不进Handler(t *testing.T) {
 	if len(got.RequestID) != 32 {
 		t.Fatalf("请求号 = %q, 期望 32 位十六进制", got.RequestID)
 	}
-	// 先回一个无关请求号的响应：不匹配等待者，应进入 Handler。
+	// 先回一个无关请求号的响应：没有等待者，会话层丢弃，不进 Handler。
 	f.peer.send(&agent.Logs{RequestID: "other"})
+	// 再发一条请求类消息，用来确认前面的帧都已处理过。
+	f.peer.send(&agent.RunNow{RequestID: "marker", InstanceID: "m"})
 	f.peer.send(&agent.RunResult{RequestID: got.RequestID, InstanceID: "i1",
 		RunOutcome: agent.RunOutcome{Error: "boom", ErrorKind: agent.ErrorKindFailed}})
 	r := <-done
@@ -314,9 +327,86 @@ func TestSession_请求响应按请求号关联且不进Handler(t *testing.T) {
 	if req.RequestID != got.RequestID {
 		t.Fatal("生成的请求号应写回调用方的消息")
 	}
-	waitFor(t, "无关响应进入 Handler", func() bool { return len(f.rec.snapshot()) == 1 })
-	if _, ok := f.rec.snapshot()[0].(*agent.Logs); !ok {
+	waitFor(t, "标记消息进入 Handler", func() bool { return len(f.rec.snapshot()) == 1 })
+	if m, ok := f.rec.snapshot()[0].(*agent.RunNow); !ok || m.RequestID != "marker" {
+		t.Fatalf("Handler 收到 %#v（无主响应不应进入 Handler）", f.rec.snapshot()[0])
+	}
+}
+
+func TestSession_入站请求即使请求号与等待者相同也进Handler(t *testing.T) {
+	f := newFixture(t, nil)
+	done := make(chan error, 1)
+	go func() {
+		_, err := f.s.Request(context.Background(), &agent.LogsGet{RequestID: "same"}, 5*time.Second)
+		done <- err
+	}()
+	f.peer.recv()
+	// 对端发来的请求恰好用了同一个请求号：它是请求不是响应，必须进 Handler，不能交给等待者。
+	f.peer.send(&agent.LogsGet{RequestID: "same"})
+	waitFor(t, "入站请求进入 Handler", func() bool { return len(f.rec.snapshot()) == 1 })
+	if _, ok := f.rec.snapshot()[0].(*agent.LogsGet); !ok {
 		t.Fatalf("Handler 收到 %#v", f.rec.snapshot()[0])
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("等待者不应被入站请求唤醒: %v", err)
+	default:
+	}
+	f.peer.send(&agent.Logs{RequestID: "same"})
+	if err := <-done; err != nil {
+		t.Fatalf("Request: %v", err)
+	}
+}
+
+func TestSession_出站帧超过上限返回错误且不断开(t *testing.T) {
+	f := newFixture(t, nil)
+	big := json.RawMessage(`"` + strings.Repeat("a", agent.MaxFrame) + `"`)
+	err := f.s.Send(&agent.Event{ID: "e", Kind: "k", Data: big, At: t0})
+	if !errors.Is(err, ErrFrameTooLarge) {
+		t.Fatalf("err = %v", err)
+	}
+	if isDone(f.s) {
+		t.Fatal("超长帧不应断开会话")
+	}
+	if err := f.s.Send(&agent.Ack{IDs: []string{"ok"}}); err != nil {
+		t.Fatalf("随后的 Send: %v", err)
+	}
+	if m, ok := f.peer.recv().(*agent.Ack); !ok || m.IDs[0] != "ok" {
+		t.Fatalf("对端收到 %#v（超长帧不应入队）", m)
+	}
+}
+
+func TestSession_Close返回时Done已关闭(t *testing.T) {
+	f := newFixture(t, func(_ *SessionOptions, c *fakeConn) {
+		c.closeEntered = make(chan struct{}, 1)
+		c.closeRelease = make(chan struct{})
+	})
+	// 对端关闭 → 读错误 → finish 卡在关闭连接上，done 尚未关闭。
+	_ = f.peer.c.Close()
+	select {
+	case <-f.conn.closeEntered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("finish 未进入关闭连接")
+	}
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(f.conn.closeRelease) }) }
+	t.Cleanup(release) // 测试失败时也要放行，否则清理阶段的 Close 会一直等
+	doneAtReturn := make(chan bool, 1)
+	go func() {
+		f.s.Close(agent.ReasonShutdown)
+		doneAtReturn <- isDone(f.s)
+	}()
+	select {
+	case <-doneAtReturn:
+		t.Fatal("finish 未完成时 Close 不应返回")
+	case <-time.After(20 * time.Millisecond):
+	}
+	release()
+	if !<-doneAtReturn {
+		t.Fatal("Close 返回时 Done 应已关闭")
+	}
+	if r := f.s.Err(); r.Kind != CloseReadError {
+		t.Fatalf("已因读错误关闭，原因应保留: %+v", r)
 	}
 }
 
@@ -520,10 +610,17 @@ func TestSession_任何入站帧重置判活计时(t *testing.T) {
 	f.clk.Advance(20 * time.Second)
 	f.peer.recv() // 15 秒的 ping
 	f.waitWaiters(2)
-	f.peer.send(&agent.Ack{IDs: []string{"alive"}})
-	// 新的判活计时器登记（旧的 35 秒计时器仍挂着，但已不再被监听）。
-	f.waitWaiters(3)
-	f.clk.Advance(34 * time.Second) // t=54
+	f.peer.send(&agent.Ack{IDs: []string{"alive"}}) // t=20 收到帧
+	waitFor(t, "帧已处理", func() bool { return len(f.rec.snapshot()) == 1 })
+	f.clk.Advance(15 * time.Second) // t=35：原判活计时器到期，应按剩余时长顺延到 55
+	f.peer.recv()                   // 35 秒的 ping
+	f.waitWaiters(2)                // ping@50 与 alive@55 都已重新登记，判活计时器始终只有一个
+	if isDone(f.s) {
+		t.Fatal("最后一帧后 15 秒不应断开")
+	}
+	f.clk.Advance(19 * time.Second) // t=54
+	f.peer.recv()                   // 50 秒的 ping，说明心跳协程已处理到此刻
+	f.waitWaiters(2)
 	if isDone(f.s) {
 		t.Fatal("最后一帧后 34 秒不应断开")
 	}
@@ -593,6 +690,11 @@ func TestSession_重复与并发Close安全(t *testing.T) {
 	if _, ok := f.peer.recv().(*agent.Bye); !ok {
 		t.Fatal("对端应收到 bye")
 	}
+	select {
+	case b := <-f.peer.c.in:
+		t.Fatalf("只应发出一个 bye，又收到: %s", b)
+	default:
+	}
 }
 
 func TestSession_空原因Close不发bye(t *testing.T) {
@@ -638,5 +740,16 @@ func TestSession_Handler里调用Close不死锁(t *testing.T) {
 	}
 	if r := waitDone(t, s); r.Kind != CloseLocal || r.Bye != agent.ReasonReplaced {
 		t.Fatalf("CloseReason = %+v", r)
+	}
+}
+
+func TestUnknownType_截断到64字节且保持UTF8(t *testing.T) {
+	if got := unknownType([]byte(`{"type":"from_future"}`)); got != "from_future" {
+		t.Fatalf("got %q", got)
+	}
+	long := strings.Repeat("a", 63) + "汉字"
+	got := unknownType([]byte(`{"type":"` + long + `"}`))
+	if got != strings.Repeat("a", 63)+"…" {
+		t.Fatalf("got %q", got)
 	}
 }
