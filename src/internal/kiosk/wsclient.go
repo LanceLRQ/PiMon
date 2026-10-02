@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,10 @@ const (
 	wsDialTimeout = 10 * time.Second
 	wsWriteLimit  = 10 * time.Second
 	wsReadLimit   = 1 << 20
+	// wsTokenPoll 是握手被 401 拒绝后检查令牌文件是否变化的间隔。
+	wsTokenPoll = 10 * time.Second
+	// wsLockedWait 是握手被 429 拒绝且没有 Retry-After 时的等待时长，与 hub 的登录锁定时长一致。
+	wsLockedWait = 15 * time.Minute
 )
 
 // wsURL 把 hub 的 http(s) 地址换成 ws(s) 并拼上 /ws。
@@ -138,6 +143,9 @@ func (l *WSLink) Wake() {
 
 // Run 连接 hub 并维持连接，直到 ctx 结束。每次拨号前通过 sink.ReadToken 重读令牌；
 // 拨号失败或断开后按 1s 起翻倍、上限 30s 退避，连上后清零。
+// 握手被 401 拒绝后，令牌文件内容不变就不再拨号（每 10 秒检查，变化后立即重拨），
+// 避免反复失败触发 hub 的登录锁定、连带挡住 Chromium 的 /screen/auth；
+// 被 429 拒绝则按 Retry-After（缺省 15 分钟）等待。
 func (l *WSLink) Run(ctx context.Context, sink LinkSink) {
 	settings := newMailbox[ui.ScreenSettings]()
 	builds := newMailbox[string]()
@@ -156,17 +164,41 @@ func (l *WSLink) Run(ctx context.Context, sink LinkSink) {
 
 	in := wsInbox{settings: settings, builds: builds, states: states}
 	bo := backoff{max: wsBackoffMax}
+	rejected := "" // 上次被 401 拒绝的令牌哈希
 	for ctx.Err() == nil {
+		wait := time.Duration(0)
 		token, err := sink.ReadToken()
-		if err != nil {
+		switch {
+		case err != nil:
 			l.cfg.Log.Warn("读取屏幕令牌失败，稍后重试", "err", err)
-		} else if l.session(ctx, sink, token, in) {
-			bo.reset()
+			wait = bo.next()
+		case rejected != "" && tokenHash(token) == rejected:
+			wait = wsTokenPoll
+		default:
+			res := l.session(ctx, sink, token, in)
+			switch {
+			case res.connected:
+				rejected = ""
+				bo.reset()
+				wait = bo.next()
+			case res.status == http.StatusUnauthorized:
+				rejected = tokenHash(token)
+				l.cfg.Log.Warn("屏幕令牌被 hub 拒绝（401），令牌文件变化前不再重试", "check_every", wsTokenPoll)
+				wait = wsTokenPoll
+			case res.status == http.StatusTooManyRequests:
+				wait = res.retryAfter
+				if wait <= 0 {
+					wait = wsLockedWait
+				}
+				l.cfg.Log.Warn("hub 限流了屏幕令牌握手（429），暂停重试", "wait", wait)
+			default:
+				wait = bo.next()
+			}
 		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-l.cfg.Clock.After(bo.next()):
+		case <-l.cfg.Clock.After(wait):
 		}
 	}
 }
@@ -177,8 +209,24 @@ type wsInbox struct {
 	states   *mailbox[model.ScreenState]
 }
 
-// session 拨号并服务一次连接，返回是否成功握手。
-func (l *WSLink) session(ctx context.Context, sink LinkSink, token string, in wsInbox) bool {
+// sessionResult 是一次拨号的结果：connected 表示握手成功过；否则 status 为被拒绝时的 HTTP 状态码（0 表示未拿到响应）。
+type sessionResult struct {
+	connected  bool
+	status     int
+	retryAfter time.Duration
+}
+
+// parseRetryAfter 解析秒数形式的 Retry-After；无法解析返回 0。
+func parseRetryAfter(v string) time.Duration {
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return time.Duration(n) * time.Second
+}
+
+// session 拨号并服务一次连接。
+func (l *WSLink) session(ctx context.Context, sink LinkSink, token string, in wsInbox) sessionResult {
 	dctx, cancelDial := context.WithTimeout(ctx, wsDialTimeout)
 	conn, resp, err := websocket.Dial(dctx, l.url, &websocket.DialOptions{
 		HTTPHeader: http.Header{"Authorization": {"Bearer " + token}},
@@ -187,10 +235,10 @@ func (l *WSLink) session(ctx context.Context, sink LinkSink, token string, in ws
 	if err != nil {
 		if resp != nil {
 			l.cfg.Log.Warn("连接 hub 被拒绝", "status", resp.StatusCode)
-		} else {
-			l.cfg.Log.Warn("连接 hub 失败", "err", err)
+			return sessionResult{status: resp.StatusCode, retryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
 		}
-		return false
+		l.cfg.Log.Warn("连接 hub 失败", "err", err)
+		return sessionResult{}
 	}
 	defer func() { _ = conn.CloseNow() }()
 	conn.SetReadLimit(wsReadLimit)
@@ -220,7 +268,7 @@ func (l *WSLink) session(ctx context.Context, sink LinkSink, token string, in ws
 			if ctx.Err() == nil {
 				l.cfg.Log.Warn("与 hub 的连接断开", "err", err)
 			}
-			return true
+			return sessionResult{connected: true}
 		}
 		l.dispatch(data, in)
 	}

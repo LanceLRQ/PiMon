@@ -20,6 +20,9 @@ import (
 type fakeHub struct {
 	srv     *httptest.Server
 	rejectN atomic.Int32
+	// rejectCode 为握手被拒时的状态码，0 表示 401；retryAfter 非空时作为 Retry-After 头。
+	rejectCode atomic.Int32
+	retryAfter atomic.Value // string
 	auths   chan string
 	conns   chan *websocket.Conn
 	msgs    chan map[string]any
@@ -39,7 +42,14 @@ func newFakeHub(t *testing.T) *fakeHub {
 		h.auths <- r.Header.Get("Authorization")
 		if h.rejectN.Load() > 0 {
 			h.rejectN.Add(-1)
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			code := int(h.rejectCode.Load())
+			if code == 0 {
+				code = http.StatusUnauthorized
+			}
+			if ra, _ := h.retryAfter.Load().(string); ra != "" {
+				w.Header().Set("Retry-After", ra)
+			}
+			http.Error(w, "rejected", code)
 			return
 		}
 		c, err := websocket.Accept(w, r, nil)
@@ -243,6 +253,7 @@ func TestWSLink_握手带Bearer令牌并拼接ws路径(t *testing.T) {
 
 func TestWSLink_握手失败按1s起翻倍退避_连上后清零(t *testing.T) {
 	f := newWSFixture(t)
+	f.hub.rejectCode.Store(http.StatusServiceUnavailable)
 	f.hub.rejectN.Store(3)
 	f.run(t)
 	for i, d := range []time.Duration{time.Second, 2 * time.Second, 4 * time.Second} {
@@ -264,6 +275,7 @@ func TestWSLink_握手失败按1s起翻倍退避_连上后清零(t *testing.T) {
 
 func TestWSLink_退避上限30秒(t *testing.T) {
 	f := newWSFixture(t)
+	f.hub.rejectCode.Store(http.StatusServiceUnavailable)
 	f.hub.rejectN.Store(100)
 	f.run(t)
 	for _, d := range []time.Duration{1, 2, 4, 8, 16, 30, 30} {
@@ -272,6 +284,59 @@ func TestWSLink_退避上限30秒(t *testing.T) {
 		f.clk.waitArmed(t, d)
 		f.clk.Advance(d)
 	}
+}
+
+func TestWSLink_401后令牌不变不再拨号_令牌变化立即重拨(t *testing.T) {
+	f := newWSFixture(t)
+	f.hub.rejectN.Store(1)
+	f.run(t)
+	if got := f.hub.nextAuth(t); got != "Bearer tok-1" {
+		t.Fatal(got)
+	}
+	for i := 0; i < 5; i++ {
+		f.clk.waitArmed(t, wsTokenPoll)
+		f.clk.Advance(wsTokenPoll)
+	}
+	f.clk.waitArmed(t, wsTokenPoll)
+	if len(f.hub.auths) != 0 {
+		t.Fatalf("令牌未变不应再拨号，多出 %d 次", len(f.hub.auths))
+	}
+	f.sink.token.Store("tok-2")
+	f.clk.Advance(wsTokenPoll)
+	if got := f.hub.nextAuth(t); got != "Bearer tok-2" {
+		t.Fatalf("令牌变化后应立即用新令牌重拨: %q", got)
+	}
+	f.hub.nextConn(t)
+	f.waitConnected(t)
+}
+
+func TestWSLink_429按RetryAfter等待_缺省15分钟(t *testing.T) {
+	f := newWSFixture(t)
+	f.hub.rejectCode.Store(http.StatusTooManyRequests)
+	f.hub.retryAfter.Store("120")
+	f.hub.rejectN.Store(1)
+	f.run(t)
+	f.hub.nextAuth(t)
+	f.clk.waitArmed(t, 120*time.Second)
+	f.clk.Advance(120 * time.Second)
+	f.hub.nextAuth(t) // 重拨成功
+	f.hub.nextConn(t)
+	f.waitConnected(t)
+}
+
+func TestWSLink_429无RetryAfter等15分钟(t *testing.T) {
+	f := newWSFixture(t)
+	f.hub.rejectCode.Store(http.StatusTooManyRequests)
+	f.hub.rejectN.Store(1)
+	f.run(t)
+	f.hub.nextAuth(t)
+	f.clk.waitArmed(t, 15*time.Minute)
+	if len(f.hub.auths) != 0 {
+		t.Fatal("等待期间不应拨号")
+	}
+	f.clk.Advance(15 * time.Minute)
+	f.hub.nextAuth(t)
+	f.hub.nextConn(t)
 }
 
 func TestWSLink_每次拨号前重读令牌(t *testing.T) {
