@@ -74,6 +74,7 @@ type env struct {
 	client    *http.Client
 	tokenFn   string
 	ring      *logging.Ring
+	pairer    *fakePairer
 }
 
 func newEnv(t *testing.T) *env { return newEnvWith(t) }
@@ -139,6 +140,7 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 			Dir: filepath.Join(dir, "backups"), Settings: st.Get,
 		}),
 		Proxies: proxies.New(proxies.Config{DB: db, Box: box, Clock: clk, Referrers: refs}),
+		DialOut: &fakePairer{},
 	}
 	inst.UseProxies(deps.Proxies)
 	deps.Screens = screens.New(screens.Config{DB: db, Clock: clk, Plugins: reg, Instances: inst})
@@ -152,7 +154,8 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 	}
 	srv := httptest.NewServer(New(deps))
 	t.Cleanup(srv.Close)
-	e := &env{t: t, clk: clk, deps: deps, db: db, refs: refs, plugins: reg, pluginDir: pluginDir, hasher: hasher, srv: srv, tokenFn: tokenPath, ring: ring}
+	e := &env{t: t, clk: clk, deps: deps, db: db, refs: refs, plugins: reg, pluginDir: pluginDir, hasher: hasher, srv: srv, tokenFn: tokenPath, ring: ring,
+		pairer: deps.DialOut.(*fakePairer)}
 	e.client = e.newClient()
 	return e
 }

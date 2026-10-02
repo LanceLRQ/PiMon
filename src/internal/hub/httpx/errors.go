@@ -32,6 +32,10 @@ package httpx
 //	run.timeout              采集超时（或上游请求超时），details.message 可选  504
 //	run.failed               采集失败（或上游请求失败），details.message 可选  502
 //	run.busy                 该实例正在运行，等待至多插件超时仍未轮到       409
+//	pairing.failed           拨出配对失败，details.reason：unreachable / pin_mismatch / bad_code /
+//	                         code_expired / rate_limited / incompatible / timeout / unknown；
+//	                         凭据已保存（设备保留）时带 device_id，incompatible 另带
+//	                         required_min、hub_version                                  502
 //	internal                 内部错误                              500
 //	server.shutting_down     中枢正在关停，暂不接受新的 WebSocket 连接    503
 //	ws.subscribe_denied      UI WebSocket 协议级错误消息（非 HTTP 响应，连接不断开）：
@@ -63,6 +67,7 @@ const (
 	CodeRunTimeout            = "run.timeout"
 	CodeRunFailed             = "run.failed"
 	CodeRunBusy               = "run.busy"
+	CodePairingFailed         = "pairing.failed"
 	CodeInternal              = "internal"
 	CodeShuttingDown          = "server.shutting_down"
 )

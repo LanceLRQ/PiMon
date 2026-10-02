@@ -51,6 +51,8 @@ type Deps struct {
 	LocalIPs func() []net.IP
 	// Web 是前端 SPA 处理器，挂在 "/" 兜底；为 nil 时不提供前端（测试用）。
 	Web http.Handler
+	// DialOut 是拨出配对服务，挂在 POST /api/devices/dial-out；为 nil 时不注册该路由（测试用）。
+	DialOut DialOutPairer
 	// WS 是 UI WebSocket 的握手处理器，挂在 GET /ws；为 nil 时不提供（测试用）。
 	// 它自己校验 Origin 与会话，不经 s.admin：管理员会话与屏幕会话都可以连。
 	WS http.Handler
@@ -84,6 +86,7 @@ func New(d Deps) http.Handler {
 	s.registerHistory(mux)
 	s.registerSystem(mux)
 	s.registerLogos(mux)
+	s.registerDevices(mux)
 	if d.WS != nil {
 		mux.Handle("GET /ws", d.WS)
 	}

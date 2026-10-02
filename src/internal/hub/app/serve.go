@@ -66,6 +66,17 @@ func (a *App) Serve(ctx context.Context) error {
 			return err
 		}
 	}
+	// 拨出管理器：为每台拨出设备启动重连循环；bg 结束时停止（先于数据库关闭，会话断开时会写最后在线时间）。
+	if err := a.dialout.Start(bg); err != nil {
+		_ = ln.Close()
+		return fmt.Errorf("启动拨出管理器: %w", err)
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-bg.Done()
+		a.dialout.Close()
+	}()
 	// 监视失败（目录不可建、inotify 额度用尽等）不影响中枢运行：记 Warn，
 	// 插件目录的变化改靠 POST /api/plugins/rescan 手动重新扫描。
 	if watchDone, err := a.plugins.Watch(bg); err != nil {

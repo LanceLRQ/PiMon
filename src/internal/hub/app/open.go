@@ -65,6 +65,8 @@ type App struct {
 	devices     *devices.Store
 	presence    *devices.Presence
 	agents      *agentsrv.Server
+	// dialout 是拨出管理器（hub 主动连公网 VPS 上的 agent），Serve 时启动。
+	dialout *agentsrv.DialOut
 	// cert 是网页 HTTPS 与 agent 通道共用的中枢证书，spki 是其公钥指纹。
 	cert     tls.Certificate
 	spki     certs.SPKI
@@ -174,8 +176,8 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	proxyStore := proxies.New(proxies.Config{
 		DB: a.db, Box: a.box, Clock: o.clk,
 		Referrers: a.instances,
-		// 代理被修改或删除后，引用它的实例要按新内容重新排程。
-		OnChange: a.instances.Refresh,
+		// 代理被修改或删除后，引用它的实例要按新内容重新排程，拨出设备按新代理重连（代理已删除则停止拨号）。
+		OnChange: a.onProxiesChanged,
 	})
 	a.instances.UseProxies(proxyStore)
 	a.screens = screens.New(screens.Config{DB: a.db, Clock: o.clk, Plugins: a.plugins, Instances: a.instances})
@@ -212,6 +214,9 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		Devices: a.devices, Presence: a.presence, Plugins: a.plugins, Clock: o.clk, HubVersion: o.version,
 	}); err != nil {
 		return fmt.Errorf("创建 agent 通道服务: %w", err)
+	}
+	if a.dialout, err = agentsrv.NewDialOut(agentsrv.DialOutConfig{Server: a.agents, Proxies: proxyStore}); err != nil {
+		return fmt.Errorf("创建拨出管理器: %w", err)
 	}
 	// hub-self 的统计来源在 instances 与 history 就绪后才能绑定，先于 Load 以便首次采集就有数据。
 	hubself.Bind(hubStats{
@@ -280,10 +285,19 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		ScreenTokens: a.screen,
 		Backups:      a.backups,
 		Proxies:      proxyStore,
+		DialOut:      a.dialout,
 		Web:          webui.New(webui.Embedded(), o.version),
 		WS:           a.ws.Handler(),
 	})
 	return nil
+}
+
+// onProxiesChanged 在代理被修改或删除后扇出给实例调度与拨出管理器。
+func (a *App) onProxiesChanged() {
+	a.instances.Refresh()
+	if a.dialout != nil {
+		a.dialout.Refresh()
+	}
 }
 
 // deliverScreenCommand 把一次性屏幕指令（refresh、switch）发给在线的屏幕会话；
@@ -325,9 +339,12 @@ func (a *App) AgentAddr() string {
 // AgentSPKI 返回中枢证书的 SPKI 指纹，agent 配对时用它钉扎。
 func (a *App) AgentSPKI() certs.SPKI { return a.spki }
 
-// stopAgents 按「先会话服务、后在线状态」的顺序释放 agent 通道相关资源，须在关闭数据库之前调用。
-// 调用前监听必须已停止（Serve 返回），否则新连接会在关闭后到达。
+// stopAgents 按「拨出管理器、会话服务、在线状态」的顺序释放 agent 通道相关资源，须在关闭数据库之前调用。
+// 调用前监听必须已停止（Serve 返回），否则新连接会在关闭后到达；拨出管理器先停，关停期间不再新建拨出会话。
 func (a *App) stopAgents() {
+	if a.dialout != nil {
+		a.dialout.Close()
+	}
 	if a.agents != nil {
 		a.agents.Close()
 	}

@@ -149,6 +149,19 @@
       "failed": "Collection failed",
       "busy": "This instance is running. Try again shortly."
     },
+    "pairing": {
+      "failed": "Dial-out pairing failed",
+      "reason": {
+        "unreachable": "Cannot reach the agent. Check the address, port, firewall and proxy.",
+        "pin_mismatch": "Certificate fingerprint mismatch. Compare it with the one shown by the agent.",
+        "bad_code": "The pairing code is wrong or already used",
+        "code_expired": "The pairing code has expired. Generate a new one on the VPS.",
+        "rate_limited": "Too many attempts. The agent is temporarily locked, try again later.",
+        "incompatible": "The agent version is incompatible with the hub. The device is kept and will connect after the agent is upgraded.",
+        "timeout": "Pairing timed out. Check the network and try again.",
+        "unknown": "Pairing failed for an unknown reason. Check the hub logs."
+      }
+    },
     "internal": "Internal hub error",
     "server": {
       "shutting_down": "The hub is shutting down. Try again shortly."
