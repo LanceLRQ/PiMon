@@ -18,6 +18,7 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/app"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/install"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugindev"
 	"github.com/LanceLRQ/PiMon/src/internal/kiosk"
@@ -31,6 +32,8 @@ const usage = `用法: pimon-hub <命令> [参数]
   setup-code [--if-needed]  生成新的首次设置码（尚未设置管理员时）；--if-needed 沿用仍有效的现有码，已有管理员时退出码为 3
   reset-password            从标准输入读取新密码并重置管理员密码
   restore [参数] <备份文件>  从备份包恢复（必须先停止服务）
+  install [--desktop-user <用户>]
+                            在树莓派上一键部署 hub（需 root：sudo ./pimon-hub install）
   kiosk [参数]              屏幕守护进程：看护 Chromium kiosk（由 labwc autostart 以桌面用户启动）
   plugin <子命令>           插件开发者工具：validate 校验目录、run 本机运行一次（详见 plugin help）
   version                   显示版本号
@@ -40,6 +43,9 @@ const usage = `用法: pimon-hub <命令> [参数]
   --addr <地址>        监听地址，默认 :31415（环境变量 PIMON_ADDR）
   --data-dir <目录>    数据目录，默认 /var/lib/pimon（环境变量 PIMON_DATA_DIR）
   --log-level <级别>   debug|info|warn|error，默认 info（环境变量 PIMON_LOG_LEVEL）
+
+install 的参数:
+  --desktop-user <用户>  桌面用户，加入 pimon 组以读取屏幕令牌（默认读取 lightdm 自动登录用户）
 
 kiosk 的参数:
   --hub <地址>         中枢网页地址，默认 http://127.0.0.1:31415
@@ -76,6 +82,18 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		return 0
 	case "help", "-h", "--help":
 		_, _ = fmt.Fprint(stdout, usage)
+		return 0
+	case "install":
+		sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := install.Command(sigCtx, rest, stdout); err != nil {
+			_, _ = fmt.Fprintln(stderr, "错误:", err)
+			var ue install.UsageError
+			if errors.As(err, &ue) {
+				return 2
+			}
+			return 1
+		}
 		return 0
 	case "kiosk":
 		// 守护进程随图形会话常驻；SIGTERM/Ctrl-C 经 ctx 触发有序退出（先停 Chromium）。

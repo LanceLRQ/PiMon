@@ -239,3 +239,16 @@ func TestSetupCodeIfNeededAdminExistsExitsThree(t *testing.T) {
 		t.Fatalf("不带 --if-needed 应退出 1，得到 %d", rc)
 	}
 }
+
+// 只测参数解析与帮助；绝不走到真实安装（CI 以 root 运行时会真的改系统）。
+func TestInstallUsage(t *testing.T) {
+	if code, out, _ := runArgs("help"); code != 0 || !strings.Contains(out, "install") || !strings.Contains(out, "--desktop-user") {
+		t.Fatalf("帮助应列出 install: %q", out)
+	}
+	if code, _, errOut := runArgs("install", "extra"); code != 2 || !strings.Contains(errOut, "位置参数") {
+		t.Fatalf("code=%d err=%q", code, errOut)
+	}
+	if code, _, _ := runArgs("install", "--bogus"); code != 2 {
+		t.Fatalf("未知参数应退出 2，得到 %d", code)
+	}
+}
