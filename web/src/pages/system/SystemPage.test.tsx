@@ -2,8 +2,9 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiError, defaultPlugins, json, mockApi, renderWithApp, type Req } from '@/pages/instances/test-utils'
+import { formatClockInZone, formatDateTime } from '@/lib/time'
 import { liveStore } from '@/store/live-store'
-import type { BackupInfo, LogEntry, LogList, PluginList, ScreenStatus, SystemInfo } from '@/types/generated'
+import type { BackupInfo, KioskIdleCheck, KioskStatus, LogEntry, LogList, PluginList, ScreenStatus, SystemInfo } from '@/types/generated'
 import { SystemPage } from './SystemPage'
 
 beforeEach(() => liveStore.reset())
@@ -102,10 +103,6 @@ describe('版本与资源', () => {
     expect((await screen.findAllByText('v0.1.0-test')).length).toBeGreaterThan(0)
   })
 
-  it('息屏检查是占位（M1e 提供）', async () => {
-    await setup()
-    expect(await screen.findByText(/M1e 的 kiosk 部署里提供/)).toBeInTheDocument()
-  })
 })
 
 describe('屏幕区', () => {
@@ -157,6 +154,149 @@ describe('屏幕区', () => {
   it('状态读取失败给出提示', async () => {
     await setup(withStatus(null))
     expect(await within(panel()).findByText('屏幕状态暂时无法读取。')).toBeInTheDocument()
+  })
+})
+
+const kioskStatus = (over: Partial<KioskStatus> = {}): KioskStatus => ({
+  online: true,
+  version: 'v0.1.0-test',
+  restarts: 0,
+  last_report_at: new Date().toISOString(),
+  ...over,
+})
+const idleCheck = (over: Partial<KioskIdleCheck> = {}): KioskIdleCheck => ({
+  user: false,
+  greeter: false,
+  system: false,
+  swayidle_running: false,
+  checked_at: '2026-10-02T03:00:00Z',
+  ...over,
+})
+const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000 - 30_000).toISOString()
+const baseStatus = (over: Partial<ScreenStatus> = {}): ScreenStatus => ({
+  state: { mode: 'on', theme_id: 'ambient', reason: 'schedule' },
+  viewport: { w: 1024, h: 600, dpr: 1 },
+  coarse_pointer: false,
+  current_screen: 'index',
+  online: true,
+  ...over,
+})
+const statusApi = (st: ScreenStatus) => ({
+  extra: (r: Req) => (r.method === 'GET' && r.url === '/api/screen/status' ? json(200, st) : undefined),
+})
+const rowValue = (p: HTMLElement, label: string) => within(p).getByText(label).closest('div')!
+
+describe('屏幕区：kiosk 守护进程', () => {
+  const panel = () => screen.getByRole('region', { name: '屏幕' })
+
+  it('在线时显示守护进程状态与版本、Chromium 运行时长与重启次数、下次计划重启', async () => {
+    const next = new Date(Date.now() + 5 * 3600_000).toISOString()
+    await setup(statusApi(baseStatus({ kiosk: kioskStatus({ chromium_started_at: hoursAgo(18), restarts: 2, next_restart: next }) })))
+    const p = panel()
+    await within(p).findByText('1024×600')
+    expect(rowValue(p, 'kiosk 守护进程')).toHaveTextContent('在线')
+    expect(rowValue(p, 'kiosk 守护进程')).toHaveTextContent('v0.1.0-test')
+    expect(rowValue(p, 'Chromium')).toHaveTextContent('已运行 18 小时 0 分')
+    expect(rowValue(p, 'Chromium')).toHaveTextContent('重启 2 次')
+    expect(rowValue(p, '下次计划重启')).toHaveTextContent(formatClockInZone(Date.parse(next), Date.now(), 'UTC', 'zh'))
+  })
+
+  it('下次计划重启按设置时区显示（与每日重启时刻同口径），不随浏览器时区', async () => {
+    liveStore.applySnapshot({
+      type: 'snapshot', build: 'b', role: 'admin', topics: [], server_time: new Date().toISOString(), instances: [],
+      settings: { timezone: 'Pacific/Kiritimati', backup: { daily_at: '04:00', keep: 7 }, screen: { carousel_mode: 'auto', idle_home_seconds: 60, default_dwell_seconds: 15, input_mode: 'auto', ui_scale: 1, daily_restart: { enabled: true, at: '10:00' } } },
+    } as unknown as Parameters<typeof liveStore.applySnapshot>[0])
+    // 20:00Z 在 UTC+14 是次日 10:00
+    await setup(statusApi(baseStatus({ kiosk: kioskStatus({ chromium_started_at: hoursAgo(1), next_restart: '2099-10-03T20:00:00Z' }) })))
+    const p = panel()
+    await within(p).findByText('1024×600')
+    expect(rowValue(p, '下次计划重启')).toHaveTextContent('10/4 10:00')
+  })
+
+  it('未开启每日重启显示「未开启」', async () => {
+    await setup(statusApi(baseStatus({ kiosk: kioskStatus({ chromium_started_at: hoursAgo(1), next_restart: null as unknown as undefined }) })))
+    const p = panel()
+    await within(p).findByText('1024×600')
+    expect(rowValue(p, '下次计划重启')).toHaveTextContent('未开启')
+  })
+
+  it('处于退避中时显示退避到何时，而不是运行时长', async () => {
+    const until = new Date(Date.now() + 40_000).toISOString()
+    await setup(statusApi(baseStatus({ kiosk: kioskStatus({ chromium_started_at: undefined, backoff_until: until, restarts: 5 }) })))
+    const p = panel()
+    await within(p).findByText('1024×600')
+    expect(rowValue(p, 'Chromium')).toHaveTextContent(`退避中，${formatDateTime(Date.parse(until), 'zh')} 再拉起`)
+    expect(rowValue(p, 'Chromium')).toHaveTextContent('重启 5 次')
+    expect(rowValue(p, 'Chromium')).not.toHaveTextContent('已运行')
+  })
+
+  it('kiosk 离线：状态显示离线，运行时长不再推算（未知）', async () => {
+    await setup(statusApi(baseStatus({ kiosk: kioskStatus({ online: false, chromium_started_at: hoursAgo(18) }) })))
+    const p = panel()
+    await within(p).findByText('1024×600')
+    expect(rowValue(p, 'kiosk 守护进程')).toHaveTextContent('离线')
+    expect(rowValue(p, 'Chromium')).toHaveTextContent('未知')
+    expect(rowValue(p, 'Chromium')).not.toHaveTextContent('已运行')
+  })
+
+  it('从未连接（kiosk 为 null 或缺失）：三行都不当作零', async () => {
+    await setup(statusApi({ ...baseStatus(), kiosk: null as unknown as undefined }))
+    const p = panel()
+    await within(p).findByText('1024×600')
+    expect(rowValue(p, 'kiosk 守护进程')).toHaveTextContent('从未连接')
+    expect(rowValue(p, 'Chromium')).toHaveTextContent('未知')
+    expect(rowValue(p, '下次计划重启')).toHaveTextContent('未知')
+  })
+
+  it('kiosk 的 touchscreen 优先于页面上报的 coarse_pointer（自动输入方式）', async () => {
+    liveStore.applySnapshot({
+      type: 'snapshot', build: 'b', role: 'admin', topics: [], server_time: new Date().toISOString(), instances: [],
+      settings: { backup: { daily_at: '04:00', keep: 7 }, screen: { carousel_mode: 'auto', idle_home_seconds: 60, default_dwell_seconds: 15, input_mode: 'auto', ui_scale: 1, daily_restart: { enabled: false, at: '04:00' } } },
+    } as unknown as Parameters<typeof liveStore.applySnapshot>[0])
+    await setup(statusApi(baseStatus({ coarse_pointer: false, kiosk: kioskStatus({ touchscreen: true }) })))
+    expect(await within(panel()).findByText('自动（检测：有触摸）')).toBeInTheDocument()
+  })
+})
+
+describe('系统空闲息屏检查（06.4）', () => {
+  const idle = () => screen.getByRole('region', { name: '系统空闲息屏检查' })
+
+  it('全部正常：正常态，列出四项与检查时间，不提 doctor 命令', async () => {
+    await setup(statusApi(baseStatus({ kiosk: kioskStatus({ idle_check: idleCheck() }) })))
+    const p = idle()
+    expect(await within(p).findByText('已关闭 · 系统不会自己息屏')).toBeInTheDocument()
+    expect(within(p).getByText(/用户 autostart/)).toBeInTheDocument()
+    expect(within(p).getByText(/greeter autostart/)).toBeInTheDocument()
+    expect(within(p).getByText(/系统 autostart/)).toBeInTheDocument()
+    expect(within(p).getByText(/swayidle 进程/)).toBeInTheDocument()
+    expect(within(p).getAllByText(/无 swayidle 行/)).toHaveLength(3)
+    expect(within(p).getByText('swayidle 进程未运行')).toBeInTheDocument()
+    expect(within(p).getByText(formatDateTime(Date.parse('2026-10-02T03:00:00Z'), 'zh'), { exact: false })).toBeInTheDocument()
+    expect(within(p).queryByText(/处理/)).toBeNull()
+    expect(p.textContent).not.toMatch(/doctor/)
+  })
+
+  it('任一命中：异常态，标出命中项并给手工处理步骤，不提 doctor 命令', async () => {
+    await setup(statusApi(baseStatus({ kiosk: kioskStatus({ idle_check: idleCheck({ system: true, swayidle_running: true }) }) })))
+    const p = idle()
+    expect(await within(p).findByText('检测到 swayidle 被重新启用')).toBeInTheDocument()
+    expect(within(p).getAllByText(/无 swayidle 行/)).toHaveLength(2)
+    expect(within(p).getByText(/系统 autostart.*含 swayidle 行/)).toBeInTheDocument()
+    expect(within(p).getByText('swayidle 进程运行中')).toBeInTheDocument()
+    expect(within(p).getByText(/删除.*swayidle.*行/)).toBeInTheDocument()
+    expect(within(p).getByText(/结束 swayidle 进程/)).toBeInTheDocument()
+    expect(p.textContent).not.toMatch(/doctor/)
+  })
+
+  it('kiosk 没有上报息屏检查时显示「kiosk 未上报」，不当作正常', async () => {
+    await setup(statusApi(baseStatus({ kiosk: kioskStatus() })))
+    expect(await within(idle()).findByText('kiosk 未上报')).toBeInTheDocument()
+    expect(within(idle()).queryByText('已关闭 · 系统不会自己息屏')).toBeNull()
+  })
+
+  it('从未连接 kiosk 同样显示「kiosk 未上报」', async () => {
+    await setup(statusApi({ ...baseStatus(), kiosk: null as unknown as undefined }))
+    expect(await within(idle()).findByText('kiosk 未上报')).toBeInTheDocument()
   })
 })
 

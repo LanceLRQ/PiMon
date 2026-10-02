@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -84,4 +85,41 @@ func TestLimiter_并发安全(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestLimiter_Fail时清理过期条目(t *testing.T) {
+	clk := newClock()
+	l := NewLimiter(clk, 2, time.Minute)
+	for i := 0; i < 50; i++ {
+		l.Fail(fmt.Sprintf("old-%d", i))
+		l.Fail(fmt.Sprintf("old-%d", i)) // 触发锁定
+	}
+	clk.Advance(2 * time.Minute)
+	l.Fail("fresh")
+	l.mu.Lock()
+	n := len(l.entries)
+	l.mu.Unlock()
+	if n != 1 {
+		t.Fatalf("过期条目应被清理, 剩余 %d", n)
+	}
+}
+
+func TestLimiter_条目数硬上限淘汰最旧(t *testing.T) {
+	clk := newClock()
+	l := NewLimiter(clk, 10, time.Minute)
+	for i := 0; i < maxLimiterEntries+10; i++ {
+		l.Fail(fmt.Sprintf("k-%d", i))
+		clk.Advance(time.Millisecond)
+	}
+	l.mu.Lock()
+	n := len(l.entries)
+	_, oldest := l.entries["k-0"]
+	_, newest := l.entries[fmt.Sprintf("k-%d", maxLimiterEntries+9)]
+	l.mu.Unlock()
+	if n != maxLimiterEntries {
+		t.Fatalf("条目数 = %d, 期望 %d", n, maxLimiterEntries)
+	}
+	if oldest || !newest {
+		t.Fatalf("应淘汰最旧保留最新: oldest=%v newest=%v", oldest, newest)
+	}
 }

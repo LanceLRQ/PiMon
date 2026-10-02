@@ -36,11 +36,13 @@ func recv(t *testing.T, c *net.UnixConn) string {
 	return string(buf[:n])
 }
 
+func pid42() int { return 42 }
+
 func env(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
 
 func TestNotifyReady(t *testing.T) {
 	conn, p := listen(t)
-	n := New(env(map[string]string{"NOTIFY_SOCKET": p}))
+	n := New(env(map[string]string{"NOTIFY_SOCKET": p}), pid42)
 	if err := n.Notify("READY=1"); err != nil {
 		t.Fatal(err)
 	}
@@ -50,14 +52,14 @@ func TestNotifyReady(t *testing.T) {
 }
 
 func TestNotifyWithoutSocketIsSilent(t *testing.T) {
-	n := New(env(nil))
+	n := New(env(nil), pid42)
 	if err := n.Notify("READY=1"); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestNotifyBadSocketErrors(t *testing.T) {
-	n := New(env(map[string]string{"NOTIFY_SOCKET": "/nonexistent-dir/x.sock"}))
+	n := New(env(map[string]string{"NOTIFY_SOCKET": "/nonexistent-dir/x.sock"}), pid42)
 	if err := n.Notify("READY=1"); err == nil {
 		t.Fatal("无法连接时应返回错误")
 	}
@@ -84,10 +86,14 @@ func TestWatchdogInterval(t *testing.T) {
 		{"0", 0, false},
 		{"-5", 0, false},
 		{"60000000", 30 * time.Second, true},
-		{"1", 500 * time.Nanosecond, true},
+		{"1", time.Second, true},
+		{"1000000", time.Second, true},
+		{"1999999", time.Second, true},
+		{"2000000", time.Second, true},
+		{"3000000", 1500 * time.Millisecond, true},
 	}
 	for _, c := range cases {
-		got, ok := New(env(map[string]string{"WATCHDOG_USEC": c.v})).WatchdogInterval()
+		got, ok := New(env(map[string]string{"WATCHDOG_USEC": c.v}), pid42).WatchdogInterval()
 		if got != c.want || ok != c.ok {
 			t.Errorf("WATCHDOG_USEC=%q: got (%v,%v), want (%v,%v)", c.v, got, ok, c.want, c.ok)
 		}
@@ -129,5 +135,32 @@ func TestRunWatchdogTicksWithFakeClock(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("ctx 结束后应返回")
+	}
+}
+
+func TestWatchdogPID(t *testing.T) {
+	cases := []struct {
+		name string
+		pid  string
+		ok   bool
+	}{
+		{"未设置", "", true},
+		{"等于本进程", "42", true},
+		{"不等于本进程", "43", false},
+		{"非数字", "abc", false},
+		{"带空白但相等", " 42 ", false},
+	}
+	for _, c := range cases {
+		m := map[string]string{"WATCHDOG_USEC": "60000000"}
+		if c.pid != "" {
+			m["WATCHDOG_PID"] = c.pid
+		}
+		got, ok := New(env(m), pid42).WatchdogInterval()
+		if ok != c.ok {
+			t.Errorf("%s: ok = %v, 期望 %v", c.name, ok, c.ok)
+		}
+		if ok && got != 30*time.Second {
+			t.Errorf("%s: 间隔 = %v", c.name, got)
+		}
 	}
 }

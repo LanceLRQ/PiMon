@@ -225,6 +225,16 @@ describe('总览页', () => {
       expect(within(card).getByText('ambient')).toBeInTheDocument()
     })
 
+    it('kiosk 的 udev 检测优先于页面上报：kiosk 检测到触摸屏、页面报 coarse=false 时显示有触摸', async () => {
+      mockApi((req) => (req.url === '/api/screen/status' ? json(200, statusOf({ coarse_pointer: false, kiosk: { online: true, version: 'v', restarts: 0, touchscreen: true } })) : undefined))
+      seedScreen()
+      await renderWithApp(<OverviewPage />)
+      const card = cell('屏幕')
+      expect(await within(card).findByText('显示器在线')).toBeInTheDocument()
+      expect(within(card).getByText('有触摸')).toBeInTheDocument()
+      expect(within(card).queryByText('无触摸')).toBeNull()
+    })
+
     it('离线时不显示 current_screen（服务端不会清空），缩略图回到首页，刷新与切换不可用', async () => {
       mockApi((req) => (req.url === '/api/screen/status' ? json(200, statusOf({ online: false, last_seen: '2026-10-01T08:00:00Z' })) : undefined))
       seedScreen()

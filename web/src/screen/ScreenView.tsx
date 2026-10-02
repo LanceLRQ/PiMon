@@ -166,7 +166,14 @@ export function ScreenView({ store, nav, reporter, topInset = 0 }: ScreenViewPro
   const gestureRef = useRef<{ start: { x: number; y: number } | null; suppressClick: boolean }>({ start: null, suppressClick: false })
   const onPointerDownCapture = (e: ReactPointerEvent) => {
     const gesture = gestureRef.current
-    if (!touch || mode === 'off') return
+    // 关屏时触摸只负责唤醒（由 kiosk 旁听触摸设备后请求 hub），不传给页面内容
+    if (mode === 'off') {
+      wakeGuard.noteTouchWhileOff()
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
+    if (!touch) return
     gesture.suppressClick = false
     if (wakeGuard.consume()) {
       e.stopPropagation()
@@ -190,6 +197,11 @@ export function ScreenView({ store, nav, reporter, topInset = 0 }: ScreenViewPro
     }
   }
   const onClickCapture = (e: ReactMouseEvent) => {
+    if (mode === 'off') {
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
     const gesture = gestureRef.current
     if (!gesture.suppressClick) return
     gesture.suppressClick = false

@@ -223,7 +223,7 @@ export function SchedulePage() {
     )
   }
 
-  const touch = settingsBase ? effectiveTouch(settingsBase.screen.input_mode, status?.coarse_pointer) : null
+  const touch = settingsBase ? effectiveTouch(settingsBase.screen.input_mode, status?.coarse_pointer, status?.kiosk?.touchscreen) : null
   const overridden = !!liveState && liveState.reason !== 'schedule'
   const selOff = selected?.theme === OFF
   const canSave = dirty && !saving && localProblems.length === 0 && !timeInvalid

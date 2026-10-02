@@ -89,6 +89,9 @@ func TestValidate_非法用例(t *testing.T) {
 		{"默认停留过大", func(s *model.Settings) { s.Screen.DefaultDwellSeconds = 3601 }, "screen.default_dwell_seconds", "out_of_range"},
 		{"输入方式", func(s *model.Settings) { s.Screen.InputMode = "mouse" }, "screen.input_mode", "invalid"},
 		{"界面缩放", func(s *model.Settings) { s.Screen.UIScale = 1.1 }, "screen.ui_scale", "invalid"},
+		{"每日重启时刻非法", func(s *model.Settings) { s.Screen.DailyRestart.At = "4:00" }, "screen.daily_restart.at", "invalid"},
+		{"每日重启时刻为空", func(s *model.Settings) { s.Screen.DailyRestart.At = "" }, "screen.daily_restart.at", "invalid"},
+		{"每日重启时刻越界", func(s *model.Settings) { s.Screen.DailyRestart.At = "24:00" }, "screen.daily_restart.at", "invalid"},
 		{"界面缩放为0", func(s *model.Settings) { s.Screen.UIScale = 0 }, "screen.ui_scale", "invalid"},
 	}
 	for _, c := range cases {
@@ -113,6 +116,7 @@ func TestValidate_非法用例(t *testing.T) {
 func TestDefaults_屏幕参数(t *testing.T) {
 	want := model.ScreenDisplaySettings{
 		CarouselMode: "auto", IdleHomeSeconds: 60, DefaultDwellSeconds: 15, InputMode: "auto", UIScale: 1,
+		DailyRestart: model.DailyRestartSettings{Enabled: false, At: "04:00"},
 	}
 	if got := Defaults("UTC").Screen; got != want {
 		t.Fatalf("屏幕参数默认值 = %+v，期望 %+v", got, want)

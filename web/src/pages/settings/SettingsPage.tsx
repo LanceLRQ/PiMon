@@ -260,6 +260,7 @@ export function SettingsPage() {
                 </span>
               </div>
               <FieldHelp>{t('settings.net.httpsHelp')}</FieldHelp>
+              <FieldHelp className="text-status-warn">{t('settings.net.httpsKiosk')}</FieldHelp>
             </FormRow>
             <FormRow label={t('settings.net.trusted')} fieldKey="trusted_proxies" {...mark('trusted_proxies')}>
               <TrustedProxies value={draft.trusted_proxies} rowErrors={proxyErrors} onChange={(next) => update((s) => void (s.trusted_proxies = next), ['trusted_proxies'])} />

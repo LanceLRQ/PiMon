@@ -73,9 +73,8 @@ func (s *server) issueSession(w http.ResponseWriter, r *http.Request, kind auth.
 	return nil
 }
 
-func limitKey(prefix string, r *http.Request) string {
-	return prefix + httpx.Info(r).ClientIP.String()
-}
+// limitKey 生成限流键，规则见 httpx.LimitKey。
+func limitKey(prefix string, r *http.Request) string { return httpx.LimitKey(prefix, r) }
 
 // writeLocked 回 auth.locked，锁定到期时刻按限流器的时钟计算。
 func (s *server) writeLocked(w http.ResponseWriter, r *http.Request, d time.Duration) {

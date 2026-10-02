@@ -25,7 +25,7 @@ export function ScreenCard() {
   })()
 
   const unknown = t('overview.screen.unknown')
-  const touch = settings ? effectiveTouch(settings.screen.input_mode, status?.coarse_pointer) : null
+  const touch = settings ? effectiveTouch(settings.screen.input_mode, status?.coarse_pointer, status?.kiosk?.touchscreen) : null
   const nextMs = parseTime(state?.next_change)
   const rows: { k: string; v: ReactNode }[] = [
     { k: t('overview.screen.kvResolution'), v: status?.viewport ? `${status.viewport.w}×${status.viewport.h}` : unknown },

@@ -18,7 +18,7 @@ const baseSettings: Settings = {
   trusted_proxies: ['192.168.1.2/32'],
   https_enabled: false,
   reduce_effects: false,
-  screen: { carousel_mode: 'auto', idle_home_seconds: 60, default_dwell_seconds: 15, input_mode: 'auto', ui_scale: 1 },
+  screen: { carousel_mode: 'auto', idle_home_seconds: 60, default_dwell_seconds: 15, input_mode: 'auto', ui_scale: 1, daily_restart: { enabled: false, at: '04:00' } },
   retention: { raw_hours: 24, five_min_days: 30, hour_days: 365 },
   backup: { daily_at: '04:00', keep: 7 },
 }
@@ -114,6 +114,11 @@ describe('设置页脏状态与保存条', () => {
     await userEvent.click(screen.getByRole('button', { name: '保存' }))
     expect(await screen.findByText(/HTTPS 的改动需重启 hub 后生效/)).toBeInTheDocument()
     expect((api.calls.find((c) => c.method === 'PUT')!.body as Settings).https_enabled).toBe(true)
+  })
+
+  it('HTTPS 开关处提示本机 kiosk 屏幕需要 HTTP，建议用 nginx 反代', async () => {
+    await setup()
+    expect(await screen.findByText('本机 kiosk 屏幕需要 HTTP，开启 HTTPS 后屏幕会断开；需要 HTTPS 请用 nginx 反代。')).toBeInTheDocument()
   })
 
   it('服务端字段错误回显到对应字段，保存条显示未通过数；修改字段后该错误消失', async () => {

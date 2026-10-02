@@ -204,3 +204,46 @@ func TestScreenTokens_并发Rotate后文件与库一致(t *testing.T) {
 		t.Fatalf("文件中的令牌应与库一致: ok=%v err=%v", ok, err)
 	}
 }
+
+func TestScreenTokens_EnsureExists读文件失败不轮换(t *testing.T) {
+	ctx := context.Background()
+	e := newScreenEnv(t)
+	if err := e.tokens.EnsureExists(ctx); err != nil {
+		t.Fatal(err)
+	}
+	old := readToken(t, e.path)
+	if err := os.Chmod(e.path, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(e.path, 0o640) })
+	if f, err := os.Open(e.path); err == nil {
+		_ = f.Close()
+		t.Skip("当前用户可忽略文件权限（root）")
+	}
+	if err := e.tokens.EnsureExists(ctx); err == nil {
+		t.Fatal("读文件权限错误应原样返回")
+	}
+	_ = os.Chmod(e.path, 0o640)
+	if got := readToken(t, e.path); got != old {
+		t.Fatal("读失败不应轮换令牌")
+	}
+	if ok, _ := e.tokens.Verify(ctx, old); !ok {
+		t.Fatal("旧令牌应仍有效")
+	}
+}
+
+func TestScreenTokens_EnsureExists内容不一致时轮换(t *testing.T) {
+	ctx := context.Background()
+	e := newScreenEnv(t)
+	_ = e.tokens.EnsureExists(ctx)
+	old := readToken(t, e.path)
+	if err := os.WriteFile(e.path, []byte("tampered\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.tokens.EnsureExists(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := readToken(t, e.path); got == old || got == "tampered\n" {
+		t.Fatal("内容不一致应重新生成")
+	}
+}

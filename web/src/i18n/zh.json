@@ -858,7 +858,8 @@
       "lockoutHelp": "固定策略，不可修改。",
       "lockoutTimes": "10 次",
       "lockoutFor": "锁定 15 分钟",
-      "lockoutPerIp": "按来源 IP"
+      "lockoutPerIp": "按来源 IP",
+      "httpsKiosk": "本机 kiosk 屏幕需要 HTTP，开启 HTTPS 后屏幕会断开；需要 HTTPS 请用 nginx 反代。"
     },
     "display": {
       "title": "显示",
@@ -1023,12 +1024,34 @@
       "touchNo": "无触摸",
       "touchAuto": "自动",
       "unavailable": "屏幕状态暂时无法读取。",
-      "inputAuto": "自动（检测：{{kind}}）"
+      "inputAuto": "自动（检测：{{kind}}）",
+      "kiosk": "kiosk 守护进程",
+      "kioskOnline": "在线",
+      "kioskOffline": "离线",
+      "kioskNever": "从未连接",
+      "kioskValue": "{{state}} · {{version}}",
+      "chromium": "Chromium",
+      "chromiumUp": "已运行 {{uptime}}",
+      "chromiumRestarts": "重启 {{n}} 次",
+      "chromiumBackoff": "退避中，{{time}} 再拉起",
+      "nextRestart": "下次计划重启",
+      "nextRestartOff": "未开启"
     },
     "idle": {
       "title": "系统空闲息屏检查",
-      "meta": "M1e",
-      "placeholder": "检查系统是否会自己息屏（swayidle 等），在 M1e 的 kiosk 部署里提供。"
+      "meta": "启动与每小时检查",
+      "allClear": "已关闭 · 系统不会自己息屏",
+      "found": "检测到 swayidle 被重新启用",
+      "user": "用户 autostart",
+      "greeter": "greeter autostart",
+      "system": "系统 autostart",
+      "fileClean": "{{name}} 无 swayidle 行",
+      "fileHit": "{{name}} 含 swayidle 行",
+      "processIdle": "swayidle 进程未运行",
+      "processRunning": "swayidle 进程运行中",
+      "checkedAt": "检查时间 {{time}}",
+      "notReported": "kiosk 未上报",
+      "fix": "处理：编辑上面含 swayidle 行的 autostart 文件，删除其中的 swayidle 行；若 swayidle 进程仍在运行，结束 swayidle 进程（pkill swayidle）或重启树莓派。"
     },
     "plugins": {
       "title": "插件",
@@ -1132,7 +1155,7 @@
     "disconnected": "连接中断，显示 {{time}} 的数据",
     "tokenInvalid": {
       "title": "屏幕令牌失效",
-      "body": "请在树莓派上重启 kiosk（或重新用屏幕令牌链接打开本页），以获取新的会话。"
+      "body": "本机 kiosk 会在几秒内自动用新令牌重新登录；其他设备上的屏幕请用新的屏幕令牌链接重新打开本页。"
     },
     "hubDown": {
       "title": "hub 未运行",
@@ -1421,7 +1444,7 @@
       "rotationOff": "{{id}} 退出轮播",
       "remove": "删除 screen {{id}}「{{name}}」",
       "order": "调整了 screen 的轮播顺序",
-      "display": "屏幕显示参数（轮播、输入方式或界面缩放）"
+      "display": "屏幕显示参数（轮播、输入方式、界面缩放或每日重启）"
     },
     "rotation": {
       "title": "轮播",
@@ -1508,9 +1531,15 @@
       "title": "界面缩放",
       "label": "缩放",
       "help": "高分屏放大文字与间距；网格列 × 行不变。",
-      "restart": "保存只写入设置，需由 kiosk 重启 Chromium 后生效。"
+      "restart": "保存后本机 kiosk 会自动重启 Chromium，缩放随即生效。"
     },
-    "settingsFailedAfterLayout": "布局已保存（v{{version}}），但设置保存失败：{{error}}"
+    "settingsFailedAfterLayout": "布局已保存（v{{version}}），但设置保存失败：{{error}}",
+    "restart": {
+      "title": "每日重启",
+      "label": "定时重启浏览器",
+      "at": "重启时刻",
+      "help": "默认关闭。只重启 kiosk 的 Chromium 浏览器，不重启 hub 与树莓派；时刻按设置里的时区。"
+    }
   },
   "remote": {
     "sub": "不用碰屏幕：刷新、切换、开关屏",
@@ -1579,7 +1608,7 @@
       },
       "token": {
         "label": "重置屏幕令牌",
-        "desc": "旧令牌立即失效，kiosk 需用新令牌链接重新登录。"
+        "desc": "旧令牌立即失效；本机 kiosk 会自动用新令牌重新登录，其他设备上的屏幕需用新令牌重新打开。"
       }
     },
     "ops": {
@@ -1603,13 +1632,13 @@
     "token": {
       "title": "重置屏幕令牌？",
       "warn": "旧令牌立即失效，屏幕会被断开并显示「屏幕令牌失效」。",
-      "consequence": "kiosk 需要用新令牌链接重新登录；重新登录之前屏幕停在最后一帧，不再更新。",
+      "consequence": "本机 kiosk 会在几秒内自动用新令牌重新登录；其他设备上的屏幕仍需用新令牌链接重新打开，重新登录之前停在最后一帧，不再更新。",
       "cancel": "取消",
       "confirm": "重置令牌",
       "close": "完成",
       "doneTitle": "令牌已重置",
-      "doneBody": "新令牌已写入中枢数据目录下的 screen.token 文件。在 kiosk 的浏览器里打开下面的链接即可重新登录：",
-      "doneHint": "把 <token> 换成 screen.token 文件里的内容（一行文本）。"
+      "doneBody": "新令牌已写入中枢数据目录下的 screen.token 文件。本机 kiosk 会自动重新登录，无需操作；其他设备上的屏幕请打开下面的链接重新登录：",
+      "doneHint": "仅其他设备需要：把 <token> 换成 screen.token 文件里的内容（一行文本）。"
     }
   },
   "schedule": {

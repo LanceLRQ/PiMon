@@ -201,7 +201,7 @@ describe('远程操作页', () => {
     await user.click(screen.getByTestId('key-k6'))
     const dlg = await screen.findByRole('alertdialog')
     expect(within(dlg).getByText(/旧令牌立即失效/)).toBeInTheDocument()
-    expect(within(dlg).getByText(/kiosk 需要用新令牌链接重新登录/)).toBeInTheDocument()
+    expect(within(dlg).getByText(/本机 kiosk 会在几秒内自动用新令牌重新登录/)).toBeInTheDocument()
     expect(posts(api.calls, '/api/screen/token/reset')).toHaveLength(0)
     await user.click(within(dlg).getByRole('button', { name: '取消' }))
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())

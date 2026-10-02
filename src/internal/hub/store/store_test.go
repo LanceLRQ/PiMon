@@ -236,3 +236,33 @@ func TestOpenSetsFileMode0600(t *testing.T) {
 		t.Fatalf("权限 = %o，期望 600", got)
 	}
 }
+
+func TestVersionsExported(t *testing.T) {
+	db := openTemp(t)
+	ctx := context.Background()
+	if _, ok, err := db.AppliedVersion(ctx); err != nil || ok {
+		t.Fatalf("空库应无已应用版本: ok=%v err=%v", ok, err)
+	}
+	emb, err := EmbeddedVersion()
+	if err != nil || emb < 3 {
+		t.Fatalf("内嵌最大版本 = %d, err = %v", emb, err)
+	}
+	if err := db.CheckNotNewer(ctx); err != nil {
+		t.Fatalf("空库不应判为更新: %v", err)
+	}
+	if err := db.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok, err := db.AppliedVersion(ctx); err != nil || !ok || v != emb {
+		t.Fatalf("已应用版本 = %d ok=%v err=%v, 期望 %d", v, ok, err, emb)
+	}
+	if err := db.CheckNotNewer(ctx); err != nil {
+		t.Fatalf("同版本不应判为更新: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO schema_migrations (version, name) VALUES (?, 'future')`, emb+1); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CheckNotNewer(ctx); !errors.Is(err, ErrDatabaseNewer) {
+		t.Fatalf("err = %v，期望 ErrDatabaseNewer", err)
+	}
+}

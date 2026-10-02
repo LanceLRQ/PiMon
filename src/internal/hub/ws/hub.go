@@ -64,6 +64,9 @@ type Config struct {
 	ScreenData  ScreenDataSource
 	// Sink 接收屏幕会话的上报与在线状态。
 	Sink ScreenSink
+	// KioskAuth 与 Kiosk 接入 kiosk 通道（Bearer 屏幕令牌握手）；任一为空时拒绝 Bearer 握手。
+	KioskAuth KioskAuth
+	Kiosk     KioskSink
 	// QueueSize 是每连接发送队列容量，缺省 64。
 	QueueSize int
 
@@ -93,6 +96,7 @@ type Hub struct {
 	lastResolved []byte                              // 最近一次广播给屏幕的解析后布局（JSON）
 	lastData     map[string]model.ScreenInstanceData // 最近一次广播的引用实例数据
 	screenConns  int                                 // 在线的屏幕会话数
+	kioskConns   int                                 // 在线的 kiosk 连接数
 
 	// mu 保护待推送集合，只做内存操作，供业务路径上的回调调用。
 	mu           sync.Mutex
@@ -255,8 +259,11 @@ func (h *Hub) attach(ctx context.Context, s sink, kind auth.SessionKind, token s
 		return nil, err
 	}
 	h.conns[c] = struct{}{}
-	if kind == auth.KindScreen {
+	switch kind {
+	case auth.KindScreen:
 		h.screenJoinedLocked()
+	case kindKiosk:
+		h.kioskJoinedLocked()
 	}
 	h.touchConnsLocked()
 	h.bmu.Unlock()
@@ -268,8 +275,11 @@ func (h *Hub) detach(c *client) {
 	h.bmu.Lock()
 	if _, ok := h.conns[c]; ok {
 		delete(h.conns, c)
-		if c.kind == auth.KindScreen {
+		switch c.kind {
+		case auth.KindScreen:
 			h.screenLeftLocked()
+		case kindKiosk:
+			h.kioskLeftLocked()
 		}
 		h.touchConnsLocked()
 	}
@@ -530,6 +540,10 @@ func (h *Hub) recheck(c *client) {
 	if c.token == "" {
 		return
 	}
+	if c.kind == kindKiosk {
+		h.recheckKiosk(c)
+		return
+	}
 	kind, ok, err := h.cfg.Sessions.Lookup(c.ctx, c.token)
 	if err != nil {
 		slog.Warn("复核 WebSocket 会话失败", "err", err)
@@ -540,9 +554,12 @@ func (h *Hub) recheck(c *client) {
 	}
 }
 
-// defaultTopics 是会话建立时的默认订阅：管理员看实例、设置、原始布局与屏幕状态；
+// defaultTopics 是会话建立时的默认订阅：kiosk 只看设置与屏幕状态；管理员看实例、设置、原始布局与屏幕状态；
 // 屏幕会话只看设置、解析后布局、屏幕状态与布局引用实例的数据。
 func defaultTopics(kind auth.SessionKind) []string {
+	if kind == kindKiosk {
+		return []string{ui.TopicSettings, ui.TopicScreenState}
+	}
 	if kind == auth.KindAdmin {
 		return []string{ui.TopicInstances, ui.TopicSettings, ui.TopicLayout, ui.TopicScreenState}
 	}
@@ -558,8 +575,11 @@ func allowedTopics(kind auth.SessionKind) []string {
 }
 
 func roleOf(kind auth.SessionKind) string {
-	if kind == auth.KindAdmin {
+	switch kind {
+	case auth.KindAdmin:
 		return ui.RoleAdmin
+	case kindKiosk:
+		return ui.RoleKiosk
 	}
 	return ui.RoleScreen
 }

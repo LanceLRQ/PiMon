@@ -107,6 +107,8 @@ type ScreenStatus struct {
 	LastSeen *time.Time `json:"last_seen,omitempty"`
 	// RecommendedGrid 是按已采信 viewport 推算出的推荐网格；尚无 viewport 时缺省。
 	RecommendedGrid *Grid `json:"recommended_grid,omitempty"`
+	// Kiosk 是本机 kiosk 守护进程的状态；从未连过时为 null。
+	Kiosk *KioskStatus `json:"kiosk"`
 }
 
 // ScreenControlRequest 是 POST /api/screen/control 的请求体。

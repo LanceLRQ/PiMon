@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/coder/websocket"
@@ -23,6 +24,10 @@ func (h *Hub) Handler() http.Handler {
 }
 
 func (h *Hub) serve(w http.ResponseWriter, r *http.Request) {
+	if token, ok := bearerToken(r); ok {
+		h.serveKiosk(w, r, token)
+		return
+	}
 	if !httpx.CheckOrigin(r, httpx.Info(r)) {
 		httpx.WriteError(w, http.StatusForbidden, httpx.CodeOriginMismatch, nil)
 		return
@@ -36,6 +41,40 @@ func (h *Hub) serve(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusUnauthorized, httpx.CodeAuthRequired, nil)
 		return
 	}
+	h.upgrade(w, r, kind, token)
+}
+
+// bearerToken 取出 Authorization: Bearer 令牌；带了 Bearer 方案但令牌为空时返回空串与 ok=true。
+func bearerToken(r *http.Request) (string, bool) {
+	scheme, token, _ := strings.Cut(strings.TrimSpace(r.Header.Get("Authorization")), " ")
+	if !strings.EqualFold(scheme, "Bearer") {
+		return "", false
+	}
+	return strings.TrimSpace(token), true
+}
+
+// serveKiosk 处理 kiosk 的握手：Bearer 屏幕令牌，非浏览器客户端不做 Origin 校验，也不落会话行。
+// 令牌校验与失败限流由 KioskAuth 完成（与 /screen/auth 共用限流）。
+func (h *Hub) serveKiosk(w http.ResponseWriter, r *http.Request, token string) {
+	if h.cfg.KioskAuth == nil || h.cfg.Kiosk == nil {
+		httpx.WriteError(w, http.StatusUnauthorized, httpx.CodeAuthRequired, nil)
+		return
+	}
+	ok, locked, err := h.cfg.KioskAuth.Authenticate(r, token)
+	switch {
+	case err != nil:
+		httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, nil)
+	case locked > 0:
+		httpx.WriteLocked(w, r, h.clk.Now(), locked)
+	case !ok:
+		httpx.WriteError(w, http.StatusUnauthorized, httpx.CodeAuthRequired, nil)
+	default:
+		h.upgrade(w, r, kindKiosk, token)
+	}
+}
+
+// upgrade 升级为 WebSocket 并进入读循环；鉴权已在调用方完成。
+func (h *Hub) upgrade(w http.ResponseWriter, r *http.Request, kind auth.SessionKind, token string) {
 	if h.isClosed() {
 		httpx.WriteError(w, http.StatusServiceUnavailable, httpx.CodeShuttingDown, nil)
 		return
@@ -125,6 +164,8 @@ func (h *Hub) handle(c *client, raw []byte) {
 		h.subscribe(c.ctx, c, msg.Topics)
 	case ui.TypeViewportReport:
 		h.handleReport(c, msg)
+	case ui.TypeKioskReport, ui.TypeKioskWake:
+		h.handleKiosk(c, msg)
 	default:
 		c.sendError(ui.ErrBadMessage, map[string]any{})
 	}

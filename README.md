@@ -30,7 +30,7 @@ PiMon 是一个自托管的桌面监控看板。树莓派运行中枢服务，�
 
 ## 安装
 
-尚未发布。首个可用版本（中枢 + 屏幕 + 本机与网络监控）完成后，将在此提供安装步骤。
+尚未发布正式版本。部署步骤（硬件准备、`install` 一键部署、升级、卸载、备份恢复、nginx 反向代理）见 [部署指南](docs/deploy.md)，nginx 示例配置在 [`deploy/nginx/pimon.conf`](deploy/nginx/pimon.conf)。
 
 ## 使用
 
@@ -43,3 +43,7 @@ PiMon 是一个自托管的桌面监控看板。树莓派运行中枢服务，�
 ## License
 
 AGPL-3.0 — 详见 [LICENSE](./LICENSE)。
+
+---
+
+Raspberry Pi is a trademark of Raspberry Pi Ltd. 本项目与 Raspberry Pi Ltd 没有隶属或背书关系。

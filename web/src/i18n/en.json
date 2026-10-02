@@ -858,7 +858,8 @@
       "lockoutHelp": "Fixed policy, not configurable.",
       "lockoutTimes": "10 failures",
       "lockoutFor": "locked for 15 min",
-      "lockoutPerIp": "per source IP"
+      "lockoutPerIp": "per source IP",
+      "httpsKiosk": "The kiosk screen on this device needs HTTP; turning on HTTPS disconnects it. Use an nginx reverse proxy if you need HTTPS."
     },
     "display": {
       "title": "Display",
@@ -1023,12 +1024,34 @@
       "touchNo": "No touch",
       "touchAuto": "Auto",
       "unavailable": "The display status cannot be read right now.",
-      "inputAuto": "Auto (detected: {{kind}})"
+      "inputAuto": "Auto (detected: {{kind}})",
+      "kiosk": "kiosk daemon",
+      "kioskOnline": "Online",
+      "kioskOffline": "Offline",
+      "kioskNever": "Never connected",
+      "kioskValue": "{{state}} · {{version}}",
+      "chromium": "Chromium",
+      "chromiumUp": "Up {{uptime}}",
+      "chromiumRestarts": "{{n}} restarts",
+      "chromiumBackoff": "Backing off, relaunch at {{time}}",
+      "nextRestart": "Next scheduled restart",
+      "nextRestartOff": "Off"
     },
     "idle": {
       "title": "System idle-blank check",
-      "meta": "M1e",
-      "placeholder": "Checks whether the system will blank the screen on its own (swayidle etc.); provided with the kiosk deployment in M1e."
+      "meta": "At start and hourly",
+      "allClear": "Disabled · the system will not blank the screen by itself",
+      "found": "swayidle has been re-enabled",
+      "user": "User autostart",
+      "greeter": "Greeter autostart",
+      "system": "System autostart",
+      "fileClean": "{{name}}: no swayidle line",
+      "fileHit": "{{name}}: contains a swayidle line",
+      "processIdle": "swayidle process not running",
+      "processRunning": "swayidle process running",
+      "checkedAt": "Checked at {{time}}",
+      "notReported": "Not reported by the kiosk",
+      "fix": "Fix: edit the autostart file above that contains a swayidle line and delete that line; if the swayidle process is still running, end it (pkill swayidle) or reboot the Raspberry Pi."
     },
     "plugins": {
       "title": "Plugins",
@@ -1132,7 +1155,7 @@
     "disconnected": "Connection lost, showing data from {{time}}",
     "tokenInvalid": {
       "title": "Screen token is no longer valid",
-      "body": "Restart the kiosk on the Raspberry Pi (or open this page again with the screen token link) to get a new session."
+      "body": "The kiosk on this device signs in again with the new token within seconds; for screens on other devices, open this page again with the new screen token link."
     },
     "hubDown": {
       "title": "The hub is not running",
@@ -1421,7 +1444,7 @@
       "rotationOff": "{{id}} leaves the rotation",
       "remove": "Delete screen {{id}} \"{{name}}\"",
       "order": "Changed the rotation order of the screens",
-      "display": "Screen display options (rotation, input mode or UI scale)"
+      "display": "Screen display options (rotation, input mode, UI scale or daily restart)"
     },
     "rotation": {
       "title": "Rotation",
@@ -1508,9 +1531,15 @@
       "title": "UI scale",
       "label": "Scale",
       "help": "Enlarges text and spacing on high-resolution displays; the grid columns × rows stay the same.",
-      "restart": "Saving only stores the setting; it takes effect after the kiosk restarts Chromium."
+      "restart": "After saving, the kiosk on this device restarts Chromium automatically and the scale takes effect."
     },
-    "settingsFailedAfterLayout": "The layout was saved (v{{version}}), but saving the settings failed: {{error}}"
+    "settingsFailedAfterLayout": "The layout was saved (v{{version}}), but saving the settings failed: {{error}}",
+    "restart": {
+      "title": "Daily restart",
+      "label": "Restart browser daily",
+      "at": "Restart time",
+      "help": "Off by default. Only the kiosk Chromium browser restarts, not the hub or the Raspberry Pi; the time follows the timezone in settings."
+    }
   },
   "remote": {
     "sub": "Without touching the screen: refresh, switch, power",
@@ -1579,7 +1608,7 @@
       },
       "token": {
         "label": "Reset screen token",
-        "desc": "The old token stops working at once; the kiosk must sign in again with the new token link."
+        "desc": "The old token stops working at once; the kiosk on this device signs in again automatically, while screens on other devices must be reopened with the new token."
       }
     },
     "ops": {
@@ -1603,13 +1632,13 @@
     "token": {
       "title": "Reset the screen token?",
       "warn": "The old token stops working at once; the screen is disconnected and shows \"Screen token invalid\".",
-      "consequence": "The kiosk must sign in again with the new token link. Until then the screen stays on its last frame and does not update.",
+      "consequence": "The kiosk on this device signs in again with the new token within seconds. Screens on other devices must be reopened with the new token link, and stay on their last frame until then.",
       "cancel": "Cancel",
       "confirm": "Reset token",
       "close": "Done",
       "doneTitle": "Token reset",
-      "doneBody": "The new token was written to the screen.token file in the hub data directory. Open this link in the kiosk browser to sign in again:",
-      "doneHint": "Replace <token> with the contents of screen.token (a single line of text)."
+      "doneBody": "The new token was written to the screen.token file in the hub data directory. The kiosk on this device signs in again automatically; for screens on other devices, open this link to sign in again:",
+      "doneHint": "Only needed on other devices: replace <token> with the contents of screen.token (a single line of text)."
     }
   },
   "schedule": {

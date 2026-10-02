@@ -28,7 +28,7 @@ const layoutState = (version = 5): LayoutState => ({ version, source: 'edit', cr
 const settings = (): Settings =>
   ({
     language: 'zh', timezone: 'Asia/Shanghai', access_url: '', https_enabled: false, trusted_proxies: [], reduce_effects: false,
-    screen: { carousel_mode: 'auto', idle_home_seconds: 60, default_dwell_seconds: 15, input_mode: 'auto', ui_scale: 1 },
+    screen: { carousel_mode: 'auto', idle_home_seconds: 60, default_dwell_seconds: 15, input_mode: 'auto', ui_scale: 1, daily_restart: { enabled: false, at: '04:00' } },
     retention: { raw_hours: 24, five_min_days: 30, hour_days: 365 }, backup: { daily_at: '04:00', keep: 7 },
   }) as Settings
 const status = (over: Partial<ScreenStatus> = {}): ScreenStatus => ({
@@ -239,7 +239,7 @@ describe('screens 管理页', () => {
     await waitFor(() => expect(screen.queryByText(/布局已被修改/)).toBeNull())
     expect(within(row('s1')).getByRole('switch', { name: 's1 参与轮播' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByRole('radio', { name: '1.5×' })).toHaveAttribute('aria-checked', 'true')
-    expect(within(screen.getByTestId('screens-changes')).getByText('屏幕显示参数（轮播、输入方式或界面缩放）')).toBeInTheDocument()
+    expect(within(screen.getByTestId('screens-changes')).getByText('屏幕显示参数（轮播、输入方式、界面缩放或每日重启）')).toBeInTheDocument()
   })
 
   it('布局保存成功、设置保存失败：提示里说明布局已保存，设置仍为未保存', async () => {
@@ -290,15 +290,15 @@ describe('screens 管理页', () => {
     expect(screen.getByText(/屏幕还没有上报触摸能力/)).toBeInTheDocument()
   })
 
-  it('界面缩放只保存设置（先取最新设置再整份 PUT），并提示由 kiosk 重启 Chromium 后生效', async () => {
+  it('界面缩放只保存设置（先取最新设置再整份 PUT），并提示本机 kiosk 会自动重启 Chromium', async () => {
     const user = userEvent.setup()
     const api = await mount((req) => {
       if (req.method === 'PUT' && req.url === '/api/settings') return json(200, { ...settings(), screen: { ...settings().screen, ui_scale: 1.5 } })
       return undefined
     })
-    expect(screen.getByText('保存只写入设置，需由 kiosk 重启 Chromium 后生效。')).toBeInTheDocument()
+    expect(screen.getByText('保存后本机 kiosk 会自动重启 Chromium，缩放随即生效。')).toBeInTheDocument()
     await user.click(screen.getByRole('radio', { name: '1.5×' }))
-    expect(within(screen.getByTestId('screens-changes')).getByText('屏幕显示参数（轮播、输入方式或界面缩放）')).toBeInTheDocument()
+    expect(within(screen.getByTestId('screens-changes')).getByText('屏幕显示参数（轮播、输入方式、界面缩放或每日重启）')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(screen.queryByTestId('screens-dirty-bar')).toBeNull())
     expect(lastPut(api.calls, '/api/screens')).toBeUndefined()
@@ -306,6 +306,62 @@ describe('screens 管理页', () => {
     expect(body.screen.ui_scale).toBe(1.5)
     expect(body.timezone).toBe('Asia/Shanghai')
     expect(body.backup.keep).toBe(7)
+  })
+
+  it('每日重启：默认关闭并说明只重启浏览器；开启并改时间后整份 PUT 带上 daily_restart', async () => {
+    const user = userEvent.setup()
+    const api = await mount((req) => (req.method === 'PUT' && req.url === '/api/settings' ? json(200, settings()) : undefined))
+    const form = screen.getByRole('region', { name: '每日重启' })
+    expect(within(form).getByRole('switch', { name: '定时重启浏览器' })).toHaveAttribute('aria-checked', 'false')
+    expect(within(form).getByText(/只重启 kiosk 的 Chromium 浏览器/)).toBeInTheDocument()
+    expect(within(form).getByText(/按设置里的时区/)).toBeInTheDocument()
+    expect(screen.queryByTestId('screens-dirty-bar')).toBeNull()
+
+    await user.click(within(form).getByRole('switch', { name: '定时重启浏览器' }))
+    expect(within(screen.getByTestId('screens-changes')).getByText('屏幕显示参数（轮播、输入方式、界面缩放或每日重启）')).toBeInTheDocument()
+    const at = within(form).getByRole('textbox', { name: '重启时刻' })
+    expect(at).toHaveValue('04:00')
+    await user.clear(at)
+    await user.type(at, '05:30')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(screen.queryByTestId('screens-dirty-bar')).toBeNull())
+    const body = lastPut(api.calls, '/api/settings')!.body as Settings
+    expect(body.screen.daily_restart).toEqual({ enabled: true, at: '05:30' })
+  })
+
+  it('只改每日重启的时间也算未保存改动，放弃后还原', async () => {
+    const user = userEvent.setup()
+    await mount()
+    const form = screen.getByRole('region', { name: '每日重启' })
+    const at = within(form).getByRole('textbox', { name: '重启时刻' })
+    await user.clear(at)
+    await user.type(at, '03:15')
+    expect(screen.getByTestId('screens-dirty-bar')).toBeInTheDocument()
+    await user.click(within(screen.getByTestId('screens-dirty-bar')).getByRole('button', { name: '放弃改动' }))
+    await waitFor(() => expect(screen.queryByTestId('screens-dirty-bar')).toBeNull())
+    expect(within(form).getByRole('textbox', { name: '重启时刻' })).toHaveValue('04:00')
+  })
+
+  it('有效触摸以 kiosk 的 udev 结果为准：页面报无触摸但 kiosk 检测到触摸屏时不提示无触摸', async () => {
+    const user = userEvent.setup()
+    await mount(undefined, status({ coarse_pointer: false, kiosk: { online: true, version: 'v', restarts: 0, touchscreen: true } }))
+    await user.click(screen.getByRole('radio', { name: /只显示首页/ }))
+    expect(screen.queryByText(/当前屏幕无触摸：选择/)).toBeNull()
+    expect(screen.getByText(/当前检测为「有触摸」/)).toBeInTheDocument()
+  })
+
+  it('kiosk 检测为无触摸、页面却报有触摸（coarse）时仍按无触摸提示', async () => {
+    const user = userEvent.setup()
+    await mount(undefined, status({ coarse_pointer: true, kiosk: { online: true, version: 'v', restarts: 0, touchscreen: false } }))
+    await user.click(screen.getByRole('radio', { name: /只显示首页/ }))
+    expect(screen.getByText(/当前屏幕无触摸：选择「只显示首页」后/)).toBeInTheDocument()
+  })
+
+  it('kiosk 未检测（touchscreen 缺失）时回退到页面上报', async () => {
+    const user = userEvent.setup()
+    await mount(undefined, status({ coarse_pointer: false, kiosk: { online: true, version: 'v', restarts: 0 } }))
+    await user.click(screen.getByRole('radio', { name: /只显示首页/ }))
+    expect(screen.getByText(/当前屏幕无触摸：选择「只显示首页」后/)).toBeInTheDocument()
   })
 
   it('默认停留与空闲回首页用步进器，写入设置', async () => {

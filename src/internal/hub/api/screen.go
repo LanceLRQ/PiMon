@@ -9,6 +9,9 @@ import (
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 )
 
+// maxScreenSessions 是屏幕会话的保留条数。
+const maxScreenSessions = 20
+
 func (s *server) registerScreen(mux *http.ServeMux) {
 	mux.HandleFunc("GET /screen/auth", s.screenAuth)
 	mux.HandleFunc("POST /api/screen/token/reset", s.admin(s.resetScreenToken))
@@ -42,6 +45,10 @@ func (s *server) screenAuth(w http.ResponseWriter, r *http.Request) {
 	if err := s.issueSession(w, r, auth.KindScreen); err != nil {
 		internalError(w, r, err)
 		return
+	}
+	// kiosk 每次启动都走这里换会话，只留最新的若干条，防止会话行无限增长；失败不影响本次登录。
+	if err := s.Sessions.PruneKind(r.Context(), auth.KindScreen, maxScreenSessions); err != nil {
+		slog.Warn("清理旧屏幕会话失败", "err", err)
 	}
 	http.Redirect(w, r, "/screen", http.StatusFound)
 }

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,8 +40,9 @@ func (s *ScreenTokens) storedHash(ctx context.Context) (string, bool, error) {
 }
 
 // EnsureExists 保证库记录与令牌文件一致。
-// 两者都在且哈希相符时不做任何事；库无记录、文件缺失、或二者不一致时都重新生成，
+// 两者都在且哈希相符时不做任何事；库无记录、文件不存在、或二者不一致时都重新生成，
 // 因为库里只有哈希，无法从哈希恢复明文，重新生成是唯一能让两边重新对齐的办法。
+// 文件存在但读取失败（如权限不足）时直接返回错误，不轮换，避免误作废仍有效的令牌。
 func (s *ScreenTokens) EnsureExists(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -49,8 +51,14 @@ func (s *ScreenTokens) EnsureExists(ctx context.Context) error {
 		return err
 	}
 	if ok {
-		if b, err := os.ReadFile(s.path); err == nil && hashToken(strings.TrimSpace(string(b))) == hash {
-			return nil
+		b, err := os.ReadFile(s.path)
+		switch {
+		case err == nil:
+			if hashToken(strings.TrimSpace(string(b))) == hash {
+				return nil
+			}
+		case !errors.Is(err, fs.ErrNotExist):
+			return fmt.Errorf("读取屏幕令牌文件: %w", err)
 		}
 	}
 	return s.rotate(ctx)

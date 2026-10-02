@@ -50,7 +50,7 @@ export function settingsOf(over: Partial<ScreenSettings['screen']> = {}, rest: P
     language: 'zh',
     timezone: 'Asia/Shanghai',
     reduce_effects: false,
-    screen: { carousel_mode: 'auto', idle_home_seconds: 60, default_dwell_seconds: 15, input_mode: 'none', ui_scale: 1, ...over },
+    screen: { carousel_mode: 'auto', idle_home_seconds: 60, default_dwell_seconds: 15, input_mode: 'none', ui_scale: 1, daily_restart: { enabled: false, at: '04:00' }, ...over },
     ...rest,
   }
 }

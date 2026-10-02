@@ -181,6 +181,12 @@ describe('屏幕根：轮播与 current_screen 上报', () => {
   })
 })
 
+/** 关屏期间在黑屏层上按一下：页面吞掉这次 pointerdown */
+function touchOffOverlay(container: HTMLElement) {
+  const overlay = container.querySelector<HTMLElement>('[data-screen-off]')!
+  fireEvent.pointerDown(overlay, { clientX: 10, clientY: 10, pointerId: 1, pointerType: 'touch' })
+}
+
 describe('屏幕根：触摸与详情层', () => {
   const touchStore = () => storeWith({ screen_settings: touchSettings() })
 
@@ -287,7 +293,17 @@ describe('屏幕根：触摸与详情层', () => {
     expect(container.querySelector('[data-detail-layer]')).toBeNull()
   })
 
-  it('关屏后唤醒的第一次触摸只点亮不点击，第二次才点击（Ruling 33）', async () => {
+  it('关屏期间触摸过，唤醒后的第一次触摸直接点击', async () => {
+    const store = touchStore()
+    const { container } = await renderScreen(store)
+    act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'off', theme_id: 'ambient', reason: 'schedule' } })))
+    touchOffOverlay(container)
+    act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'on', theme_id: 'ambient', reason: 'wake' } })))
+    tap(widgetEl(container, 'w2'))
+    expect(container.querySelector('[data-detail-layer]')).not.toBeNull()
+  })
+
+  it('关屏期间无触摸，转亮后 1 秒内的首触被吞（竞态保护），之后的触摸点击', async () => {
     const store = touchStore()
     const { container } = await renderScreen(store)
     act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'off', theme_id: 'ambient', reason: 'schedule' } })))
@@ -327,27 +343,27 @@ describe('屏幕根：数据更新', () => {
   })
 })
 
-describe('屏幕根：唤醒保护只在 10 秒内有效（Ruling 51）', () => {
+describe('屏幕根：唤醒保护只在 1 秒内有效（Ruling 51）', () => {
   const touchStore = () => storeWith({ screen_settings: touchSettings() })
   const offOn = (store: ReturnType<typeof touchStore>) => {
     act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'off', theme_id: 'ambient', reason: 'schedule' } })))
     act(() => store.applyPatch(patchOf('screen_state', { screen_state: { mode: 'on', theme_id: 'ambient', reason: 'schedule' } })))
   }
 
-  it('亮屏很久之后的第一次触摸正常点击', async () => {
+  it('亮屏满 1 秒后的第一次触摸正常点击', async () => {
     const store = touchStore()
     const { container } = await renderScreen(store)
     offOn(store)
-    act(() => void vi.advanceTimersByTime(10_000))
+    act(() => void vi.advanceTimersByTime(1_000))
     tap(widgetEl(container, 'w2'))
     expect(container.querySelector('[data-detail-layer]')).not.toBeNull()
   })
 
-  it('10 秒内的第一次触摸只点亮', async () => {
+  it('1 秒内的第一次触摸只点亮', async () => {
     const store = touchStore()
     const { container } = await renderScreen(store)
     offOn(store)
-    act(() => void vi.advanceTimersByTime(9_000))
+    act(() => void vi.advanceTimersByTime(900))
     tap(widgetEl(container, 'w2'))
     expect(container.querySelector('[data-detail-layer]')).toBeNull()
   })
@@ -456,5 +472,39 @@ describe('屏幕根：顶部让位', () => {
       </I18nextProvider>,
     )
     expect(container.querySelector<HTMLElement>('[data-screen-grid]')!.style.height).toBe('600px')
+  })
+})
+
+describe('屏幕根：关屏时吞掉触摸（Ruling 5）', () => {
+  const offPatch = () => patchOf('screen_state', { screen_state: { mode: 'off', theme_id: 'ambient', reason: 'schedule' } })
+
+  it.each([
+    ['有触摸', touchSettings()],
+    ['无触摸', settingsOf({ input_mode: 'none' })],
+  ])('%s：pointerdown 与 click 都不会传到页面内容，并被 preventDefault', async (_name, settings) => {
+    const store = storeWith({ screen_settings: settings })
+    const { container } = await renderScreen(store)
+    act(() => store.applyPatch(offPatch()))
+    const overlay = container.querySelector<HTMLElement>('[data-screen-off]')!
+    const reached: string[] = []
+    overlay.addEventListener('pointerdown', () => reached.push('pointerdown'))
+    overlay.addEventListener('click', () => reached.push('click'))
+
+    const downNotPrevented = fireEvent.pointerDown(overlay, { clientX: 10, clientY: 10, pointerId: 1, pointerType: 'touch' })
+    const clickNotPrevented = fireEvent.click(overlay, { clientX: 10, clientY: 10 })
+
+    expect(reached).toEqual([])
+    expect(downNotPrevented).toBe(false)
+    expect(clickNotPrevented).toBe(false)
+  })
+
+  it('亮屏时事件照常传到内容', async () => {
+    const store = storeWith({ screen_settings: touchSettings() })
+    const { container } = await renderScreen(store)
+    const el = widgetEl(container, 'w1')
+    const reached: string[] = []
+    el.addEventListener('click', () => reached.push('click'))
+    fireEvent.click(el)
+    expect(reached).toEqual(['click'])
   })
 })

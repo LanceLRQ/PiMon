@@ -258,6 +258,9 @@ func (s *Service) Open(name string) (*os.File, model.BackupInfo, error) {
 // RunDaily 按设置里的每日时刻循环备份，直到 ctx 结束。
 // 每轮开始时才读取一次设置：修改备份时刻或时区后，要等当前这次等待结束、
 // 进入下一轮才会生效。备份或清理失败只记日志，不中断循环。
+//
+// 树莓派没有 RTC，开机时墙钟可能还没被 NTP 校准：计时器到期后重新读取墙钟，
+// 早于计划时刻就补等差额；按设置时区当天已有每日备份时跳过本次。
 func (s *Service) RunDaily(ctx context.Context) {
 	for {
 		cfg := s.cfg.Settings()
@@ -272,10 +275,12 @@ func (s *Service) RunDaily(ctx context.Context) {
 			slog.Error("备份时刻无效，一小时后重试", "daily_at", cfg.Backup.DailyAt, "err", err)
 			next = now.Add(time.Hour)
 		}
-		select {
-		case <-ctx.Done():
+		if !s.sleepUntil(ctx, next) {
 			return
-		case <-s.cfg.Clock.After(next.Sub(now)):
+		}
+		if s.hasDailyOn(s.cfg.Clock.Now(), loc) {
+			slog.Info("今天已有每日备份，跳过本次")
+			continue
 		}
 		if _, err := s.Create(ctx, ReasonDaily); err != nil {
 			slog.Error("每日备份失败", "err", err)
@@ -285,6 +290,41 @@ func (s *Service) RunDaily(ctx context.Context) {
 			slog.Error("清理旧备份失败", "err", err)
 		}
 	}
+}
+
+// sleepUntil 等到墙钟到达 target；每次计时器到期后重新读取墙钟，不足则补等。
+// ctx 结束时返回 false。
+func (s *Service) sleepUntil(ctx context.Context, target time.Time) bool {
+	for {
+		remain := target.Sub(s.cfg.Clock.Now())
+		if remain <= 0 {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-s.cfg.Clock.After(remain):
+		}
+	}
+}
+
+// hasDailyOn 报告按 loc 时区 at 所在的日历日内是否已有每日备份。
+func (s *Service) hasDailyOn(at time.Time, loc *time.Location) bool {
+	list, err := s.List()
+	if err != nil {
+		return false
+	}
+	y, m, d := at.In(loc).Date()
+	for _, b := range list {
+		if b.Reason != ReasonDaily {
+			continue
+		}
+		by, bm, bd := b.CreatedAt.In(loc).Date()
+		if by == y && bm == m && bd == d {
+			return true
+		}
+	}
+	return false
 }
 
 // NextRun 返回严格晚于 now 的下一个 loc 时区 hhmm（HH:MM）时刻。

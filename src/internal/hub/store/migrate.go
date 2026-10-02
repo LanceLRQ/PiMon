@@ -25,6 +25,53 @@ type migration struct {
 	name    string
 }
 
+// EmbeddedVersion 返回程序内嵌迁移的最大版本号。
+func EmbeddedVersion() (int, error) {
+	sub, err := fs.Sub(embeddedMigrations, "migrations")
+	if err != nil {
+		return 0, fmt.Errorf("读取内嵌迁移: %w", err)
+	}
+	list, err := listMigrations(sub)
+	if err != nil || len(list) == 0 {
+		return 0, err
+	}
+	return list[len(list)-1].version, nil
+}
+
+// AppliedVersion 返回库已应用的最大迁移版本；尚未建立迁移记录或记录为空时 ok=false。
+func (d *DB) AppliedVersion(ctx context.Context) (version int, ok bool, err error) {
+	var exists int
+	if err := d.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'`).Scan(&exists); err != nil {
+		return 0, false, fmt.Errorf("检查 schema_migrations: %w", err)
+	}
+	if exists == 0 {
+		return 0, false, nil
+	}
+	var applied sql.NullInt64
+	if err := d.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`).Scan(&applied); err != nil {
+		return 0, false, fmt.Errorf("读取已应用迁移版本: %w", err)
+	}
+	return int(applied.Int64), applied.Valid, nil
+}
+
+// CheckNotNewer 在库已应用的迁移版本高于内嵌版本时返回 ErrDatabaseNewer。
+// 升级前备份之前调用，避免用旧二进制打开新库时先多生成一份备份再报错退出。
+func (d *DB) CheckNotNewer(ctx context.Context) error {
+	applied, ok, err := d.AppliedVersion(ctx)
+	if err != nil || !ok {
+		return err
+	}
+	emb, err := EmbeddedVersion()
+	if err != nil {
+		return err
+	}
+	if applied > emb {
+		return fmt.Errorf("%w（数据库版本 %d）", ErrDatabaseNewer, applied)
+	}
+	return nil
+}
+
 // Migrate 执行内嵌的迁移文件。
 func (d *DB) Migrate(ctx context.Context) error {
 	sub, err := fs.Sub(embeddedMigrations, "migrations")

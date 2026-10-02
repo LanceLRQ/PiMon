@@ -18,8 +18,11 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/app"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/install"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugindev"
+	"github.com/LanceLRQ/PiMon/src/internal/kiosk"
+	"github.com/LanceLRQ/PiMon/src/internal/sessionwd"
 	"github.com/LanceLRQ/PiMon/src/pkg/version"
 )
 
@@ -27,9 +30,14 @@ const usage = `用法: pimon-hub <命令> [参数]
 
 命令:
   serve                     启动中枢服务
-  setup-code                生成新的首次设置码（尚未设置管理员时）
+  setup-code [--if-needed]  生成新的首次设置码（尚未设置管理员时）；--if-needed 沿用仍有效的现有码，已有管理员时退出码为 3
   reset-password            从标准输入读取新密码并重置管理员密码
   restore [参数] <备份文件>  从备份包恢复（必须先停止服务）
+  install [--desktop-user <用户>] [--kiosk]
+                            在树莓派上一键部署 hub（需 root：sudo ./pimon-hub install）
+  kiosk [参数]              屏幕守护进程：看护 Chromium kiosk（由 labwc autostart 以桌面用户启动）
+  session-watchdog --user <桌面用户>
+                            会话级看门狗：图形会话连续失效时重启 lightdm（root 的 systemd 服务，由 install --kiosk 安装）
   plugin <子命令>           插件开发者工具：validate 校验目录、run 本机运行一次（详见 plugin help）
   version                   显示版本号
   help                      显示本说明
@@ -38,6 +46,20 @@ const usage = `用法: pimon-hub <命令> [参数]
   --addr <地址>        监听地址，默认 :31415（环境变量 PIMON_ADDR）
   --data-dir <目录>    数据目录，默认 /var/lib/pimon（环境变量 PIMON_DATA_DIR）
   --log-level <级别>   debug|info|warn|error，默认 info（环境变量 PIMON_LOG_LEVEL）
+
+install 的参数:
+  --desktop-user <用户>  桌面用户，加入 pimon 组以读取屏幕令牌（默认读取 lightdm 自动登录用户）
+  --kiosk                同时配置桌面会话：labwc autostart 启动 kiosk、关闭系统息屏（删 swayidle 行，先备份）、安装透明鼠标指针（需要桌面用户）
+
+session-watchdog 的参数:
+  --user <用户>        桌面用户（必填）；仅当 lightdm 的 autologin-user 等于它时生效
+  --log-level <级别>   debug|info|warn|error，默认 info
+
+kiosk 的参数:
+  --hub <地址>         中枢网页地址，默认 http://127.0.0.1:31415
+  --token-file <文件>  屏幕令牌文件，默认 /var/lib/pimon/screen.token
+  --chromium <路径>    Chromium 可执行文件，默认 /usr/bin/chromium
+  --log-level <级别>   debug|info|warn|error，默认 info
 `
 
 func main() {
@@ -69,6 +91,43 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 	case "help", "-h", "--help":
 		_, _ = fmt.Fprint(stdout, usage)
 		return 0
+	case "install":
+		sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := install.Command(sigCtx, rest, stdout); err != nil {
+			_, _ = fmt.Fprintln(stderr, "错误:", err)
+			var ue install.UsageError
+			if errors.As(err, &ue) {
+				return 2
+			}
+			return 1
+		}
+		return 0
+	case "kiosk":
+		// 守护进程随图形会话常驻；SIGTERM/Ctrl-C 经 ctx 触发有序退出（先停 Chromium）。
+		sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := kiosk.Command(sigCtx, rest, stderr, getenv); err != nil {
+			_, _ = fmt.Fprintln(stderr, "错误:", err)
+			var ue kiosk.UsageError
+			if errors.As(err, &ue) {
+				return 2
+			}
+			return 1
+		}
+		return 0
+	case "session-watchdog":
+		sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := sessionwd.Command(sigCtx, rest, stderr); err != nil {
+			_, _ = fmt.Fprintln(stderr, "错误:", err)
+			var ue sessionwd.UsageError
+			if errors.As(err, &ue) {
+				return 2
+			}
+			return 1
+		}
+		return 0
 	case "plugin":
 		if len(rest) > 0 && (rest[0] == "help" || rest[0] == "-h" || rest[0] == "--help") {
 			_, _ = fmt.Fprint(stdout, plugindev.Usage)
@@ -92,6 +151,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		return 2
 	}
 
+	ifNeeded := false
+	if cmd == "setup-code" {
+		rest, ifNeeded = takeFlag(rest, "--if-needed")
+	}
 	cfg, pos, err := config.Parse(rest, getenv)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "错误:", err)
@@ -101,7 +164,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		lv.Set(cfg.SlogLevel())
 	}
 
-	if err := dispatch(context.Background(), cmd, cfg, pos, stdin, stdout, stderr, getenv); err != nil {
+	if err := dispatch(context.Background(), cmd, ifNeeded, cfg, pos, stdin, stdout, stderr, getenv); err != nil {
+		var ee exitError
+		if errors.As(err, &ee) {
+			return ee.code
+		}
 		_, _ = fmt.Fprintln(stderr, "错误:", err)
 		var ue usageError
 		if errors.As(err, &ue) {
@@ -112,17 +179,60 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 	return 0
 }
 
+// takeFlag 从参数里去掉布尔开关 name（遇到 -- 之后不再识别），返回剩余参数与是否出现过。
+func takeFlag(args []string, name string) ([]string, bool) {
+	out := make([]string, 0, len(args))
+	found := false
+	for i, a := range args {
+		if a == "--" {
+			out = append(out, args[i:]...)
+			break
+		}
+		if a == name {
+			found = true
+			continue
+		}
+		out = append(out, a)
+	}
+	return out, found
+}
+
+// exitSetupCodeAdminExists 是 setup-code --if-needed 在已有管理员时的退出码，供安装脚本区分「无需设置码」与失败。
+const exitSetupCodeAdminExists = 3
+
+// exitError 携带需要原样返回的退出码；说明文字已由命令自己输出，run 不再追加「错误:」。
+type exitError struct{ code int }
+
+func (e exitError) Error() string { return fmt.Sprintf("退出码 %d", e.code) }
+
 type usageError string
 
 func (e usageError) Error() string { return string(e) }
 
-func dispatch(ctx context.Context, cmd string, cfg config.Config, pos []string,
+// checkRootRun 是「root 运行拒绝」的检查点，测试中替换以免依赖真实 root。
+var checkRootRun = app.CheckRootRun
+
+func dispatch(ctx context.Context, cmd string, ifNeeded bool, cfg config.Config, pos []string,
 	stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string) error {
+	// serve 由 systemd 以服务用户运行，不做此检查；其余会写数据目录的子命令必须拒绝 root。
+	if cmd != "serve" {
+		if err := checkRootRun(cfg); err != nil {
+			return err
+		}
+	}
 	if cmd == "restore" {
 		if len(pos) != 1 {
 			return usageError("用法: pimon-hub restore [参数] <备份文件>")
 		}
 		return app.Restore(cfg, pos[0], stdout)
+	}
+	if cmd == "serve" {
+		// 在打开数据库之前取数据目录锁，持有到进程结束，防止 restore 在服务运行时覆盖数据库。
+		lk, err := app.LockDataDir(cfg)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = lk.Release() }()
 	}
 	a, err := app.Open(ctx, cfg, app.WithGetenv(getenv), app.WithStderr(stderr), app.WithLogRing(logRing))
 	if err != nil {
@@ -142,7 +252,15 @@ func dispatch(ctx context.Context, cmd string, cfg config.Config, pos []string,
 		}()
 		return a.Serve(sigCtx)
 	case "setup-code":
-		code, exp, err := a.SetupCode(ctx)
+		gen := a.SetupCode
+		if ifNeeded {
+			gen = a.SetupCodeIfNeeded
+		}
+		code, exp, err := gen(ctx)
+		if ifNeeded && errors.Is(err, app.ErrAdminExists) {
+			_, _ = fmt.Fprintln(stdout, "已设置管理员，不需要设置码")
+			return exitError{code: exitSetupCodeAdminExists}
+		}
 		if err != nil {
 			return err
 		}

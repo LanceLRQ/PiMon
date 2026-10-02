@@ -67,10 +67,12 @@ type DiskFunc func(path string) (free, total uint64, err error)
 type Plugin struct {
 	m    *manifest.Manifest
 	disk DiskFunc
+	sys  Sys
 
 	mu        sync.Mutex
 	stats     Stats
 	restarted bool // 已经在某份报告里带出过重启事件
+	cpu       cpuBaseline
 }
 
 var defaultPlugin *Plugin
@@ -89,7 +91,7 @@ func New(disk DiskFunc) *Plugin {
 	if disk == nil {
 		disk = statDisk
 	}
-	return &Plugin{m: m, disk: disk}
+	return &Plugin{m: m, disk: disk, sys: defaultSys()}
 }
 
 // Bind 给已注册的 hub-self 绑定统计来源。传 nil 解除绑定。
@@ -144,6 +146,7 @@ func (p *Plugin) fillItems(rep *report.Report, st Stats, now time.Time, last *re
 		screenItem(st.ScreenOnline()),
 		report.Item{Key: keyUptime, Type: report.TypeNumber, Unit: "s", Value: ptr(max(0, now.Sub(st.StartedAt()).Seconds()))},
 	)
+	rep.Items = append(rep.Items, p.metricItems(st, now)...)
 	// 写库错误是累计计数：只在比上次报告增长时才告警，一次瞬时失败不会让状态永久停在 warning；
 	// 没有上次报告时无从比较，不升级。
 	if grew(last, writeErrs) {
