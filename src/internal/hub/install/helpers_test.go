@@ -83,7 +83,11 @@ func (f *fakeFS) Stat(name string) (FileInfo, error) {
 
 func (f *fakeFS) WriteFile(name string, data []byte, perm fs.FileMode, own *Owner) error {
 	f.writes = append(f.writes, writeRec{name, perm, own})
-	f.files[name] = &fakeFile{data: string(data), mode: perm, mtime: f.now()}
+	nf := &fakeFile{data: string(data), mode: perm, mtime: f.now()}
+	if own != nil {
+		nf.uid, nf.gid = own.UID, own.GID
+	}
+	f.files[name] = nf
 	return nil
 }
 
@@ -110,6 +114,13 @@ func (u *fakeUsers) Lookup(name string) (User, error) {
 		return x, nil
 	}
 	return User{}, ErrNotFound
+}
+
+func (u *fakeUsers) Home(name string) (string, error) {
+	if _, ok := u.users[name]; !ok {
+		return "", ErrNotFound
+	}
+	return "/home/" + name, nil
 }
 
 func (u *fakeUsers) InGroup(name, group string) (bool, error) {
@@ -208,6 +219,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	e.fs = &fakeFS{files: map[string]*fakeFile{
 		"/run/systemd/system": {dir: true},
 		"/etc/lightdm":        {dir: true},
+		"/home/lancelrq":      {dir: true, mode: 0o755, uid: 1000, gid: 1000},
 		lightdmMainConf:       {data: "[LightDM]\n[Seat:*]\n#autologin-user=nobody\nautologin-user=lancelrq\nautologin-session=rpd-labwc\n"},
 		"/tmp/new/pimon-hub":  {data: "BIN-V1", mode: 0o755},
 		pingRange:             {data: "0\t2147483647\n"},

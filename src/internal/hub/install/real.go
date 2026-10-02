@@ -138,6 +138,18 @@ func (osUsers) Lookup(name string) (User, error) {
 	return out, nil
 }
 
+func (osUsers) Home(name string) (string, error) {
+	u, err := user.Lookup(name)
+	if err != nil {
+		var unk user.UnknownUserError
+		if errors.As(err, &unk) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	return u.HomeDir, nil
+}
+
 func (osUsers) InGroup(name, group string) (bool, error) {
 	u, err := user.Lookup(name)
 	if err != nil {

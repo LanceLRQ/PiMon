@@ -12,6 +12,7 @@ const (
 	StatusDone    Status = "完成"
 	StatusSkipped Status = "跳过"
 	StatusExisted Status = "已存在"
+	StatusWarning Status = "警告"
 )
 
 type entry struct {
@@ -38,6 +39,7 @@ func (r *report) add(st Status, name, detail string) {
 func (r *report) done(name, detail string)    { r.add(StatusDone, name, detail) }
 func (r *report) skipped(name, detail string) { r.add(StatusSkipped, name, detail) }
 func (r *report) existed(name, detail string) { r.add(StatusExisted, name, detail) }
+func (r *report) warn(name, detail string)    { r.add(StatusWarning, name, detail) }
 
 // failure 输出失败原因与已完成的步骤。
 func (r *report) failure(step string, err error) {

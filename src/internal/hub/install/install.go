@@ -52,6 +52,7 @@ func Command(ctx context.Context, args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	desktop := fs.String("desktop-user", "", "桌面用户（默认自动识别 lightdm 自动登录用户）")
+	kiosk := fs.Bool("kiosk", false, "安装桌面会话里的 kiosk 配置（autostart、关闭系统息屏、透明鼠标指针）")
 	if err := fs.Parse(args); err != nil {
 		return UsageError(err.Error())
 	}
@@ -77,7 +78,7 @@ func Command(ctx context.Context, args []string, stdout io.Writer) error {
 		GOOS:     runtime.GOOS,
 		Self:     self,
 		LocalIPs: netaddr.LANIPv4,
-	}, Options{DesktopUser: *desktop})
+	}, Options{DesktopUser: *desktop, Kiosk: *kiosk})
 }
 
 // run 保存一次安装过程中跨步骤的状态。
@@ -94,6 +95,9 @@ type run struct {
 	setupExpires string
 	adminExists  bool
 	needRelogin  string // 刚加入 pimon 组的桌面用户
+	kioskUser    string // --kiosk 时的桌面用户
+	kioskHome    string
+	kioskOwner   Owner
 }
 
 // Run 按固定顺序执行安装；任何一步失败立即停止，并输出原因与已完成的步骤。
@@ -104,6 +108,7 @@ func Run(ctx context.Context, d Deps, opts Options) error {
 		fn   func(context.Context) error
 	}{
 		{"检测运行环境", r.checkSystem},
+		{"确定桌面用户", r.resolveKioskUser},
 		{"创建服务用户与数据目录", r.ensureUserAndDir},
 		{"安装二进制", r.installBinary},
 		{"检查端口", r.checkPort},
@@ -116,6 +121,7 @@ func Run(ctx context.Context, d Deps, opts Options) error {
 		{"生成首次设置码", r.setupCodeAfterStart},
 		{"桌面用户加组", r.addDesktopUser},
 		{"校验 ping_group_range", r.ensureSysctl},
+		{"kiosk 系统配置", r.installKiosk},
 	}
 	for _, s := range steps {
 		if err := s.fn(ctx); err != nil {

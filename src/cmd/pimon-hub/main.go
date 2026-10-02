@@ -32,7 +32,7 @@ const usage = `用法: pimon-hub <命令> [参数]
   setup-code [--if-needed]  生成新的首次设置码（尚未设置管理员时）；--if-needed 沿用仍有效的现有码，已有管理员时退出码为 3
   reset-password            从标准输入读取新密码并重置管理员密码
   restore [参数] <备份文件>  从备份包恢复（必须先停止服务）
-  install [--desktop-user <用户>]
+  install [--desktop-user <用户>] [--kiosk]
                             在树莓派上一键部署 hub（需 root：sudo ./pimon-hub install）
   kiosk [参数]              屏幕守护进程：看护 Chromium kiosk（由 labwc autostart 以桌面用户启动）
   plugin <子命令>           插件开发者工具：validate 校验目录、run 本机运行一次（详见 plugin help）
@@ -46,6 +46,7 @@ const usage = `用法: pimon-hub <命令> [参数]
 
 install 的参数:
   --desktop-user <用户>  桌面用户，加入 pimon 组以读取屏幕令牌（默认读取 lightdm 自动登录用户）
+  --kiosk                同时配置桌面会话：labwc autostart 启动 kiosk、关闭系统息屏（删 swayidle 行，先备份）、安装透明鼠标指针（需要桌面用户）
 
 kiosk 的参数:
   --hub <地址>         中枢网页地址，默认 http://127.0.0.1:31415

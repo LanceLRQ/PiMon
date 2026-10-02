@@ -68,6 +68,8 @@ var ErrNotFound = errors.New("不存在")
 type Users interface {
 	Lookup(name string) (User, error)
 	InGroup(user, group string) (bool, error)
+	// Home 返回用户的家目录。
+	Home(name string) (string, error)
 }
 
 // Listener 是占用某个 TCP 端口的监听进程；PID 为 0 表示找不到属主进程。
@@ -99,4 +101,5 @@ type Deps struct {
 // Options 是 install 的命令行选项。
 type Options struct {
 	DesktopUser string // 空表示自动识别 lightdm 自动登录用户
+	Kiosk       bool   // 同时安装桌面会话里的 kiosk 配置（必须有桌面用户）
 }
