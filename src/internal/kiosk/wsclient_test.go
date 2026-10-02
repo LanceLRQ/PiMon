@@ -23,10 +23,10 @@ type fakeHub struct {
 	// rejectCode 为握手被拒时的状态码，0 表示 401；retryAfter 非空时作为 Retry-After 头。
 	rejectCode atomic.Int32
 	retryAfter atomic.Value // string
-	auths   chan string
-	conns   chan *websocket.Conn
-	msgs    chan map[string]any
-	paths   chan string
+	auths      chan string
+	conns      chan *websocket.Conn
+	msgs       chan map[string]any
+	paths      chan string
 }
 
 func newFakeHub(t *testing.T) *fakeHub {

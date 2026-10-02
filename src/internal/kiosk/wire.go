@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
+	"github.com/LanceLRQ/PiMon/src/pkg/devnum"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 )
 
@@ -21,9 +22,10 @@ const (
 type Peripherals struct {
 	WlopmPath string
 	Runner    CommandRunner
-	// InputDir、UdevDir 用于触摸检测。
+	// InputDir、UdevDir 用于触摸检测；StatRdev 取输入设备节点的 major:minor（nil 时用真实 stat）。
 	InputDir string
 	UdevDir  string
+	StatRdev func(path string) (major, minor uint32, err error)
 	// OpenInput 打开输入设备做只读旁听。
 	OpenInput func(path string) (io.ReadCloser, error)
 	// 息屏检查的三处 autostart 与 /proc 根目录。
@@ -40,6 +42,7 @@ func DefaultPeripherals(getenv func(string) string) Peripherals {
 		Runner:           ExecRunner,
 		InputDir:         DefaultInputDir,
 		UdevDir:          DefaultUdevDataDir,
+		StatRdev:         devnum.StatRdev,
 		OpenInput:        func(path string) (io.ReadCloser, error) { return os.Open(path) },
 		UserAutostart:    UserAutostartPath(getenv),
 		GreeterAutostart: GreeterAutostartPath,
@@ -63,6 +66,10 @@ func attachHubLink(cfg *Config, p Peripherals) (bind func(*Daemon), err error) {
 	}
 	var mode atomic.Value
 	mode.Store("")
+	rdev := p.StatRdev
+	if rdev == nil {
+		rdev = devnum.StatRdev
+	}
 	power := NewPower(p.WlopmPath, p.Runner, cfg.Log)
 
 	link, err := NewWSLink(WSConfig{
@@ -82,7 +89,7 @@ func attachHubLink(cfg *Config, p Peripherals) (bind func(*Daemon), err error) {
 	touch := NewTouchWatcher(TouchConfig{
 		Clock:    cfg.Clock,
 		Log:      cfg.Log,
-		Detect:   func() TouchResult { return DetectTouch(p.InputDir, p.UdevDir) },
+		Detect:   func() TouchResult { return DetectTouchWith(p.InputDir, p.UdevDir, rdev) },
 		Open:     p.OpenInput,
 		Mode:     func() string { return mode.Load().(string) },
 		Wake:     link.Wake,

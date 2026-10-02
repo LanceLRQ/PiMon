@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/LanceLRQ/PiMon/src/pkg/devnum"
 )
 
 const (
@@ -14,9 +16,6 @@ const (
 	DefaultInputDir = "/dev/input"
 	// DefaultUdevDataDir 是 udev 数据库目录，条目名为 c<major>:<minor>。
 	DefaultUdevDataDir = "/run/udev/data"
-	// inputMajor 是 evdev 字符设备的主设备号；eventN 的次设备号是 evdevMinorBase+N。
-	inputMajor     = 13
-	evdevMinorBase = 64
 )
 
 // TouchResult 是触摸屏检测结果。
@@ -38,9 +37,15 @@ func (r TouchResult) Touchscreen() *bool {
 	return &v
 }
 
-// DetectTouch 枚举 inputDir 下的 event* 设备，读 udevDir/c13:<minor> 中是否有
-// E:ID_INPUT_TOUCHSCREEN=1。一个设备的 udev 条目都读不到时结果为未知。
+// DetectTouch 用真实的 stat 设备号检测触摸屏，见 DetectTouchWith。
 func DetectTouch(inputDir, udevDir string) TouchResult {
+	return DetectTouchWith(inputDir, udevDir, devnum.StatRdev)
+}
+
+// DetectTouchWith 枚举 inputDir 下的 event* 设备，用 rdev 取每个设备节点的 major:minor，
+// 读 udevDir/c<major>:<minor> 中是否有 E:ID_INPUT_TOUCHSCREEN=1。
+// rdev 失败或 udev 条目读不到的设备视为未知；所有设备都未知时结果为未知。
+func DetectTouchWith(inputDir, udevDir string, rdev func(path string) (major, minor uint32, err error)) TouchResult {
 	matches, err := filepath.Glob(filepath.Join(inputDir, "event*"))
 	if err != nil {
 		return TouchResult{}
@@ -48,11 +53,14 @@ func DetectTouch(inputDir, udevDir string) TouchResult {
 	sort.Strings(matches)
 	var res TouchResult
 	for _, dev := range matches {
-		n, err := strconv.Atoi(strings.TrimPrefix(filepath.Base(dev), "event"))
-		if err != nil || n < 0 {
+		if n, err := strconv.Atoi(strings.TrimPrefix(filepath.Base(dev), "event")); err != nil || n < 0 {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(udevDir, fmt.Sprintf("c%d:%d", inputMajor, evdevMinorBase+n)))
+		major, minor, err := rdev(dev)
+		if err != nil {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(udevDir, fmt.Sprintf("c%d:%d", major, minor)))
 		if err != nil {
 			continue
 		}

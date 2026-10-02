@@ -39,6 +39,7 @@ func TestAttachHubLink_端到端(t *testing.T) {
 		Runner:        runner.run,
 		InputDir:      inputDir,
 		UdevDir:       udevDir,
+		StatRdev:      func(string) (uint32, uint32, error) { return 13, 67, nil },
 		ProcRoot:      filepath.Join(root, "proc"),
 		UserAutostart: filepath.Join(root, "user-autostart"),
 		OpenInput: func(string) (io.ReadCloser, error) {

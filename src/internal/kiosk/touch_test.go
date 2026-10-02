@@ -47,13 +47,13 @@ func TestIsTouchEvent(t *testing.T) {
 }
 
 type touchFixture struct {
-	clk     *armClock
-	w       *TouchWatcher
-	mode    atomic.Value
-	wakes   chan struct{}
+	clk   *armClock
+	w     *TouchWatcher
+	mode  atomic.Value
+	wakes chan struct{}
 	// undelivered 为 true 时 Wake 返回未投递（链路未连接）。
 	undelivered atomic.Bool
-	changes atomic.Int32
+	changes     atomic.Int32
 
 	mu      sync.Mutex
 	result  TouchResult
