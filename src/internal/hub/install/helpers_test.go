@@ -149,6 +149,7 @@ type fakeRunner struct {
 	log          []string
 	failOn       map[string]error // 以命令前缀（空格拼接的 argv）匹配
 	active       bool
+	wdActive     bool   // pimon-session-watchdog.service 是否在运行
 	setupOut     string // setup-code 的标准输出
 	setupExit    int    // 非 0 时以该退出码失败
 	setupCodeRun int
@@ -185,6 +186,13 @@ func (r *fakeRunner) RunEnv(_ context.Context, setEnv []string, argv ...string) 
 			return "active\n", nil
 		}
 		return "inactive\n", &ExitError{Argv: argv, Code: 3}
+	case line == cmdSystemctl+" is-active "+watchdogService:
+		if r.wdActive {
+			return "active\n", nil
+		}
+		return "inactive\n", &ExitError{Argv: argv, Code: 3}
+	case line == cmdSystemctl+" enable --now "+watchdogService:
+		r.wdActive = true
 	case line == cmdSystemctl+" show -p ActiveEnterTimestampMonotonic --value "+serviceName:
 		return fmt.Sprintf("%d\n", r.startedAt.Sub(bootTime).Microseconds()), nil
 	case line == cmdSystemctl+" restart "+serviceName:

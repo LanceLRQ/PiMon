@@ -22,6 +22,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugindev"
 	"github.com/LanceLRQ/PiMon/src/internal/kiosk"
+	"github.com/LanceLRQ/PiMon/src/internal/sessionwd"
 	"github.com/LanceLRQ/PiMon/src/pkg/version"
 )
 
@@ -35,6 +36,8 @@ const usage = `用法: pimon-hub <命令> [参数]
   install [--desktop-user <用户>] [--kiosk]
                             在树莓派上一键部署 hub（需 root：sudo ./pimon-hub install）
   kiosk [参数]              屏幕守护进程：看护 Chromium kiosk（由 labwc autostart 以桌面用户启动）
+  session-watchdog --user <桌面用户>
+                            会话级看门狗：图形会话连续失效时重启 lightdm（root 的 systemd 服务，由 install --kiosk 安装）
   plugin <子命令>           插件开发者工具：validate 校验目录、run 本机运行一次（详见 plugin help）
   version                   显示版本号
   help                      显示本说明
@@ -47,6 +50,10 @@ const usage = `用法: pimon-hub <命令> [参数]
 install 的参数:
   --desktop-user <用户>  桌面用户，加入 pimon 组以读取屏幕令牌（默认读取 lightdm 自动登录用户）
   --kiosk                同时配置桌面会话：labwc autostart 启动 kiosk、关闭系统息屏（删 swayidle 行，先备份）、安装透明鼠标指针（需要桌面用户）
+
+session-watchdog 的参数:
+  --user <用户>        桌面用户（必填）；仅当 lightdm 的 autologin-user 等于它时生效
+  --log-level <级别>   debug|info|warn|error，默认 info
 
 kiosk 的参数:
   --hub <地址>         中枢网页地址，默认 http://127.0.0.1:31415
@@ -103,6 +110,18 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		if err := kiosk.Command(sigCtx, rest, stderr, getenv); err != nil {
 			_, _ = fmt.Fprintln(stderr, "错误:", err)
 			var ue kiosk.UsageError
+			if errors.As(err, &ue) {
+				return 2
+			}
+			return 1
+		}
+		return 0
+	case "session-watchdog":
+		sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := sessionwd.Command(sigCtx, rest, stderr); err != nil {
+			_, _ = fmt.Fprintln(stderr, "错误:", err)
+			var ue sessionwd.UsageError
 			if errors.As(err, &ue) {
 				return 2
 			}

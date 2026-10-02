@@ -187,6 +187,16 @@ func TestHelp_包含kiosk(t *testing.T) {
 	}
 }
 
+func TestSessionWatchdog_参数错误返回2且帮助里有说明(t *testing.T) {
+	if code, _, errOut := runArgs("session-watchdog"); code != 2 || !strings.Contains(errOut, "--user") {
+		t.Fatalf("缺 --user 应返回 2: code=%d err=%q", code, errOut)
+	}
+	_, out, _ := runArgs("help")
+	if !strings.Contains(out, "session-watchdog") {
+		t.Fatalf("帮助缺少 session-watchdog: %q", out)
+	}
+}
+
 func TestSetupCodeIfNeeded(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "data")
 	stubRootRun(t, nil)

@@ -122,6 +122,7 @@ func Run(ctx context.Context, d Deps, opts Options) error {
 		{"桌面用户加组", r.addDesktopUser},
 		{"校验 ping_group_range", r.ensureSysctl},
 		{"kiosk 系统配置", r.installKiosk},
+		{"会话看门狗", r.installWatchdog},
 	}
 	for _, s := range steps {
 		if err := s.fn(ctx); err != nil {

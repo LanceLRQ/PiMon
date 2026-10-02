@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/LanceLRQ/PiMon/src/internal/labwc"
+	"github.com/LanceLRQ/PiMon/src/internal/sessionwd"
 )
 
 const (
@@ -33,6 +34,9 @@ func (r *run) resolveKioskUser(_ context.Context) error {
 	}
 	if name == "" {
 		return errors.New("--kiosk 需要桌面用户：请用 --desktop-user 指定，或在 lightdm 配置里设置 autologin-user")
+	}
+	if !sessionwd.UserNamePattern.MatchString(name) {
+		return fmt.Errorf("桌面用户名 %q 含有不允许的字符", name)
 	}
 	u, err := r.Users.Lookup(name)
 	if err != nil {
