@@ -25,6 +25,102 @@ export interface BackupInfo {
    */
   size: number /* int64 */;
 }
+/**
+ * 远端备份目标类型。
+ */
+export const BackupRemoteSMB = "smb";
+/**
+ * 远端备份目标类型。
+ */
+export const BackupRemoteWebDAV = "webdav";
+/**
+ * BackupSecretState 是密钥字段的回显形式：{"set": true}，不含明文。
+ */
+export interface BackupSecretState {
+  set: boolean;
+}
+/**
+ * BackupRemote 是远端备份目标配置（GET 与 PUT 的响应）。两种类型的字段分列保存，切换类型不丢另一类型已填的值。
+ */
+export interface BackupRemote {
+  enabled: boolean;
+  /**
+   * Type 是 smb | webdav。
+   */
+  type: string;
+  smb_host: string;
+  smb_port: number /* int */;
+  smb_share: string;
+  smb_dir: string;
+  smb_username: string;
+  smb_password: BackupSecretState;
+  smb_domain: string;
+  webdav_url: string;
+  webdav_dir: string;
+  webdav_username: string;
+  webdav_password: BackupSecretState;
+  /**
+   * Passphrase 表示备份口令是否已设置；口令丢失将无法恢复已加密的备份。
+   */
+  passphrase: BackupSecretState;
+  /**
+   * Keep 是远端保留份数（1–365）。
+   */
+  keep: number /* int */;
+  /**
+   * UpdatedAt 为空表示从未保存过。
+   */
+  updated_at?: string;
+  /**
+   * PassphraseChanged 仅在 PUT 响应中有意义：本次保存改了已有的备份口令，之后上传的备份用新口令加密。
+   */
+  passphrase_changed: boolean;
+}
+/**
+ * BackupRemoteInput 是 PUT 与测试连接的请求体。密钥字段为明文字符串，留空表示保留已保存的值。
+ */
+export interface BackupRemoteInput {
+  enabled: boolean;
+  type: string;
+  smb_host: string;
+  smb_port: number /* int */;
+  smb_share: string;
+  smb_dir: string;
+  smb_username: string;
+  smb_password: string;
+  smb_domain: string;
+  webdav_url: string;
+  webdav_dir: string;
+  webdav_username: string;
+  webdav_password: string;
+  passphrase: string;
+  keep: number /* int */;
+}
+/**
+ * BackupUpload 是一次远端上传的记录。
+ */
+export interface BackupUpload {
+  id: number /* int64 */;
+  /**
+   * Name 是远端文件名（本地备份名加 .age）。
+   */
+  name: string;
+  /**
+   * TargetType 是 smb | webdav。
+   */
+  target_type: string;
+  started_at: string;
+  finished_at: string;
+  /**
+   * Size 是实际写到远端的密文字节数；失败时为已写入的字节数。
+   */
+  size: number /* int64 */;
+  success: boolean;
+  /**
+   * Reason 在失败时给出原因（不含密码与口令），成功时为空。
+   */
+  reason: string;
+}
 
 //////////
 // source: device.go
