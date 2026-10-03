@@ -112,16 +112,25 @@ func Load(path string, euid int) (Config, error) {
 	return c, nil
 }
 
-// Save 以 0600 原子写入配置（同目录临时文件 + rename）。
-func Save(path string, c Config) error {
+// Marshal 校验并编码配置为 agent.json 的文件内容（缩进 JSON，末尾换行）；install 以指定属主写入时使用。
+func Marshal(c Config) ([]byte, error) {
 	if err := c.Validate(); err != nil {
-		return err
+		return nil, err
 	}
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
-		return fmt.Errorf("编码配置: %w", err)
+		return nil, fmt.Errorf("编码配置: %w", err)
 	}
-	return WriteFileAtomic(path, append(data, '\n'), -1, -1)
+	return append(data, '\n'), nil
+}
+
+// Save 以 0600 原子写入配置（同目录临时文件 + rename）。
+func Save(path string, c Config) error {
+	data, err := Marshal(c)
+	if err != nil {
+		return err
+	}
+	return WriteFileAtomic(path, data, -1, -1)
 }
 
 // WriteFileAtomic 以 0600 原子写文件；uid/gid 均为 -1 时不改属主。

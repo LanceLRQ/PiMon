@@ -17,6 +17,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/agent/config"
 	"github.com/LanceLRQ/PiMon/src/internal/agent/ctl"
 	"github.com/LanceLRQ/PiMon/src/internal/agent/daemon"
+	"github.com/LanceLRQ/PiMon/src/internal/agent/install"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
 	"github.com/LanceLRQ/PiMon/src/pkg/version"
 )
@@ -24,7 +25,8 @@ import (
 const usage = `用法: pimon-agent <命令> [参数]
 
 命令:
-  install    安装并启动 agent 服务（拨入：--hub --fp --code；拨出：--listen）
+  install    安装并启动 agent 服务（拨入：--hub --fp --code [--name]；拨出：--listen；
+             可选 --user、--docker-group、--re-pair）
   pair       拨出模式下开启 15 分钟配对窗口并打印配对信息
   run        守护进程（由服务管理器调用；--log-level debug|info|warn|error）
   status     显示模式、连接状态、已分配实例数、版本等
@@ -33,11 +35,11 @@ const usage = `用法: pimon-agent <命令> [参数]
   uninstall  停止并删除服务（--purge 同时删除配置与数据）
   version    显示版本号
 
-pair、run、status、repin 在 Linux 上加 --user 表示用户模式（macOS 总是用户模式）。
+install、uninstall、pair、run、status、repin 在 Linux 上加 --user 表示用户模式（macOS 总是用户模式）。
 `
 
 // unimplemented 是后续子任务实现的命令。
-var unimplemented = map[string]bool{"install": true, "upgrade": true, "uninstall": true}
+var unimplemented = map[string]bool{"upgrade": true}
 
 // ctlTimeout 是 CLI 经控制套接字调用一次的总超时（略大于服务端的操作上限）。
 const ctlTimeout = ctl.OpTimeout + 2*ctl.IOTimeout
@@ -76,10 +78,14 @@ type cli struct {
 	tweak func(*daemon.Config)
 	// runDaemon 运行守护进程，为空用 (*daemon.Daemon).Run（测试注入关停卡住的场景）。
 	runDaemon func(ctx context.Context, d *daemon.Daemon) error
+	// doInstall、doUninstall 执行安装与卸载（测试替换为记录参数，不触碰真实系统）。
+	doInstall   func(ctx context.Context, d install.Deps, o install.Options) error
+	doUninstall func(ctx context.Context, d install.Deps, o install.UninstallOptions) error
 }
 
 func newCLI(stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string) *cli {
-	return &cli{stdin: stdin, stdout: stdout, stderr: stderr, getenv: getenv, goos: goruntime.GOOS, now: time.Now}
+	return &cli{stdin: stdin, stdout: stdout, stderr: stderr, getenv: getenv, goos: goruntime.GOOS, now: time.Now,
+		doInstall: install.Install, doUninstall: install.Uninstall}
 }
 
 func (c *cli) run(args []string) int {
@@ -103,6 +109,10 @@ func (c *cli) run(args []string) int {
 		return c.cmdPair(rest)
 	case cmd == "repin":
 		return c.cmdRepin(rest)
+	case cmd == "install":
+		return c.cmdInstall(rest)
+	case cmd == "uninstall":
+		return c.cmdUninstall(rest)
 	case unimplemented[cmd]:
 		_, _ = fmt.Fprintf(c.stderr, "错误: 命令 %s 尚未实现\n", cmd)
 		return 1

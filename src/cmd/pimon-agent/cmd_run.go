@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"syscall"
 
 	"github.com/LanceLRQ/PiMon/src/internal/agent/daemon"
+	"github.com/LanceLRQ/PiMon/src/internal/agent/logfile"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
 )
@@ -15,6 +18,7 @@ import (
 func (c *cli) cmdRun(args []string) int {
 	fs, user := c.flagSet("run")
 	level := fs.String("log-level", "info", "日志级别 debug|info|warn|error")
+	logFile := fs.String("log-file", "", "日志写入该文件（超过 5 MiB 轮转为 .1，只保留一个旧文件；macOS LaunchAgent 使用），默认写标准错误")
 	if code, ok := c.parse(fs, args); !ok {
 		return code
 	}
@@ -29,7 +33,18 @@ func (c *cli) cmdRun(args []string) int {
 	if c.ring == nil {
 		c.ring = logging.NewRing(daemon.RingCapacity)
 	}
-	if c.log == nil {
+	switch {
+	case *logFile != "":
+		if err := os.MkdirAll(filepath.Dir(*logFile), 0o700); err != nil {
+			return c.fail("创建日志目录: %v", err)
+		}
+		w, err := logfile.Open(*logFile, logfile.DefaultMaxBytes)
+		if err != nil {
+			return c.fail("打开日志文件 %s: %v", *logFile, err)
+		}
+		defer func() { _ = w.Close() }()
+		c.log = logging.NewWithRing(w, c.lv, c.ring)
+	case c.log == nil:
 		c.log = logging.NewWithRing(c.stderr, c.lv, c.ring)
 	}
 	c.lv.Set(lvl)
