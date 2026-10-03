@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Settings } from '@/types/generated'
-import { dirtyKeys, normalizeForSave, trustedProxyErrors } from './model'
+import { defaultRemoteForm, dirtyKeys, normalizeForSave, normalizeRemoteForSave, remoteDirtyKeys, trustedProxyErrors } from './model'
 
 const base: Settings = {
   language: 'zh',
@@ -78,5 +78,19 @@ describe('保存前规整', () => {
 describe('服务端字段错误定位', () => {
   it('trusted_proxies[i] 按规整后的下标对应到列表行', () => {
     expect(trustedProxyErrors({ 'trusted_proxies[1]': 'invalid', language: 'invalid', 'trusted_proxies[x]': 'invalid' })).toEqual({ 1: 'invalid' })
+  })
+})
+
+describe('NAS 备份草稿', () => {
+  it('首尾空白不算修改，密钥非空才算修改', () => {
+    const a = defaultRemoteForm()
+    expect(remoteDirtyKeys({ ...a, smb_host: '  ' }, a)).toEqual([])
+    expect(remoteDirtyKeys({ ...a, passphrase: 'x' }, a)).toEqual(['passphrase'])
+  })
+
+  it('保存前规整非密钥文本，密钥原样', () => {
+    const n = normalizeRemoteForSave({ ...defaultRemoteForm(), smb_host: ' nas ', passphrase: ' p ' })
+    expect(n.smb_host).toBe('nas')
+    expect(n.passphrase).toBe(' p ')
   })
 })

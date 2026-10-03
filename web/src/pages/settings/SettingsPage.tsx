@@ -10,7 +10,7 @@ import { formatBytes } from '@/lib/format'
 import { formatDateTime, parseTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { timezoneOptions } from '@/pages/setup/timezones'
-import type { BackupInfo, Settings } from '@/types/generated'
+import type { BackupInfo, BackupRemote, BackupRemoteInput, BackupRemoteTest, Settings } from '@/types/generated'
 import { Button } from '@/ui/button'
 import { Input } from '@/ui/input'
 import { Note } from '@/ui/note'
@@ -23,7 +23,8 @@ import { Stepper } from '@/ui/stepper'
 import { Switch } from '@/ui/switch'
 import { useToast } from '@/ui/toast'
 import { BackupDownloadDialog } from './BackupDownloadDialog'
-import { dirtyKeys, normalizeForSave, trustedProxyErrors, type SettingsKey } from './model'
+import { defaultRemoteForm, dirtyKeys, normalizeForSave, normalizeRemoteForSave, remoteDirtyKeys, remoteErrorPrefix, remoteToForm, trustedProxyErrors, type SettingsKey } from './model'
+import { NasBackupRows, type NasTestState } from './NasBackupRows'
 import { PasswordDialog } from './PasswordDialog'
 import { TrustedProxies } from './TrustedProxies'
 
@@ -57,6 +58,12 @@ export function SettingsPage() {
   const [backups, setBackups] = useState<BackupInfo[] | null>(null)
   const [downloading, setDownloading] = useState<BackupInfo | null>(null)
   const [backingUp, setBackingUp] = useState(false)
+  // NAS 备份是独立资源（/api/backups/remote），草稿并入同一条保存栏；读取失败时用默认值降级显示
+  const [remoteSaved, setRemoteSaved] = useState<BackupRemote | null>(null)
+  const [remoteBase, setRemoteBase] = useState<BackupRemoteInput>(defaultRemoteForm)
+  const [remoteDraft, setRemoteDraft] = useState<BackupRemoteInput>(defaultRemoteForm)
+  const [remoteLoadFailed, setRemoteLoadFailed] = useState(false)
+  const [remoteTest, setRemoteTest] = useState<NasTestState>({ testing: false, result: null })
 
   const load = useCallback(async () => {
     try {
@@ -77,14 +84,29 @@ export function SettingsPage() {
     }
   }, [])
 
+  const loadRemote = useCallback(async () => {
+    try {
+      const r = await http.get<BackupRemote>('/api/backups/remote')
+      const form = remoteToForm(r)
+      setRemoteSaved(r)
+      setRemoteBase(form)
+      setRemoteDraft(form)
+      setRemoteLoadFailed(false)
+    } catch {
+      setRemoteLoadFailed(true)
+    }
+  }, [])
+
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 进入页面时取一次远端设置与备份
     void load()
     void loadBackups()
-  }, [load, loadBackups])
+    void loadRemote()
+  }, [load, loadBackups, loadRemote])
 
   const dirty = useMemo(() => (base && draft ? dirtyKeys(draft, base) : []), [base, draft])
-  const isDirty = dirty.length > 0
+  const remoteDirty = useMemo(() => remoteDirtyKeys(remoteDraft, remoteBase), [remoteDraft, remoteBase])
+  const dirtyCount = dirty.length + remoteDirty.length
+  const isDirty = dirtyCount > 0
   const changed = (k: SettingsKey) => dirty.includes(k)
   const errorCount = Object.keys(fieldErrors).length
 
@@ -118,32 +140,107 @@ export function SettingsPage() {
     return t('settings.fieldError.invalid')
   }
 
-  async function save() {
-    if (!draft || !base || saving) return
-    setSaving(true)
-    setFailure(null)
-    setFieldErrors({})
+  // 并入错误表：NAS 的键由服务端返回不带前缀的字段名，加前缀后与通用设置的键互不冲突
+  function setRemoteFieldErrors(fields: Record<string, string>) {
+    setFieldErrors((prev) => ({
+      ...Object.fromEntries(Object.entries(prev).filter(([k]) => !k.startsWith(remoteErrorPrefix))),
+      ...Object.fromEntries(Object.entries(fields).map(([k, v]) => [remoteErrorPrefix + k, v])),
+    }))
+  }
+
+  function clearErrors(remote: boolean) {
+    setFieldErrors((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k.startsWith(remoteErrorPrefix) !== remote)))
+  }
+
+  async function saveSettings(current: Settings, baseline: Settings) {
+    clearErrors(false)
     try {
-      const body = normalizeForSave(draft)
-      const saved = await http.put<Settings>('/api/settings', body)
-      const httpsChanged = saved.https_enabled !== base.https_enabled
+      const saved = await http.put<Settings>('/api/settings', normalizeForSave(current))
+      const httpsChanged = saved.https_enabled !== baseline.https_enabled
       setBase(saved)
       setDraft(structuredClone(saved))
       toast.show(httpsChanged ? t('settings.savedRestart') : t('settings.saved'))
     } catch (e) {
       if (isApiError(e) && e.code === 'validation.failed') {
-        setFieldErrors((e.details.fields ?? {}) as Record<string, string>)
+        setFieldErrors((prev) => ({ ...prev, ...((e.details.fields ?? {}) as Record<string, string>) }))
       } else {
         setFailure(translateErrorValue(i18n, e))
       }
+    }
+  }
+
+  async function saveRemote() {
+    clearErrors(true)
+    try {
+      const saved = await http.put<BackupRemote>('/api/backups/remote', normalizeRemoteForSave(remoteDraft))
+      const form = remoteToForm(saved)
+      setRemoteSaved(saved)
+      setRemoteBase(form)
+      setRemoteDraft(form)
+      setRemoteLoadFailed(false)
+      setRemoteTest({ testing: false, result: null })
+      toast.show(t('settings.saved'))
+      if (saved.passphrase_changed) toast.show(t('settings.backup.remote.passphraseChanged'), 'warn')
+    } catch (e) {
+      if (isApiError(e) && e.code === 'validation.failed') {
+        setRemoteFieldErrors((e.details.fields ?? {}) as Record<string, string>)
+      } else {
+        setFailure(translateErrorValue(i18n, e))
+      }
+    }
+  }
+
+  // 哪边脏就提交哪边；任一边失败只保留该边的草稿与错误
+  async function save() {
+    if (!draft || !base || saving) return
+    setSaving(true)
+    setFailure(null)
+    try {
+      if (dirty.length > 0) await saveSettings(draft, base)
+      if (remoteDirty.length > 0) await saveRemote()
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function testRemote() {
+    if (remoteTest.testing) return
+    clearErrors(true)
+    setRemoteTest({ testing: true, result: null })
+    try {
+      const res = await http.post<BackupRemoteTest>('/api/backups/remote/test', normalizeRemoteForSave(remoteDraft))
+      const type = res.target_type === 'webdav' ? 'WebDAV' : 'SMB'
+      setRemoteTest({ testing: false, result: { ok: true, text: t('settings.backup.remote.testOk', { type, ms: res.elapsed_ms }) } })
+    } catch (e) {
+      let text: string
+      if (isApiError(e) && e.code === 'validation.failed') {
+        setRemoteFieldErrors((e.details.fields ?? {}) as Record<string, string>)
+        text = t('settings.backup.remote.testFailed', { reason: translateErrorValue(i18n, e) })
+      } else if (isApiError(e) && e.code === 'backup.remote_failed') {
+        const key = `errors.backup.remote_reason.${String(e.details.reason ?? '')}`
+        text = t('settings.backup.remote.testFailed', { reason: i18n.exists(key) ? t(key) : translateErrorValue(i18n, e) })
+      } else {
+        text = t('settings.backup.remote.testFailed', { reason: translateErrorValue(i18n, e) })
+      }
+      setRemoteTest({ testing: false, result: { ok: false, text } })
+    }
+  }
+
+  function updateRemote(patch: Partial<BackupRemoteInput>, clearKeys: string[] = []) {
+    setRemoteDraft((d) => ({ ...d, ...patch }))
+    if (clearKeys.length > 0) {
+      setFieldErrors((prev) => {
+        const n = { ...prev }
+        for (const k of clearKeys) delete n[remoteErrorPrefix + k]
+        return n
+      })
     }
   }
 
   function discard() {
     if (!base) return
     setDraft(structuredClone(base))
+    setRemoteDraft(remoteBase)
     setFieldErrors({})
     setFailure(null)
     toast.show(t('settings.discarded'))
@@ -391,22 +488,25 @@ export function SettingsPage() {
                 </Button>
               </div>
             </FormRow>
-            <FormRow label={<span className="inline-flex items-center gap-1.5">{t('settings.backup.nas')}<span className="rounded-[2px] border border-border px-1 font-mono text-[10px] text-muted-foreground">{t('settings.backup.nasBadge')}</span></span>} fieldKey="backup.remote" className="opacity-50">
-              <div className="inline-flex overflow-hidden rounded-[2px] border border-line-strong">
-                <button type="button" disabled className="h-7 cursor-not-allowed px-3 text-xs">SMB</button>
-                <button type="button" disabled className="h-7 cursor-not-allowed border-l border-border px-3 text-xs">WebDAV</button>
-              </div>
-              <FieldHelp>{t('settings.backup.nasHelp')}</FieldHelp>
-            </FormRow>
+            <NasBackupRows
+              form={remoteDraft}
+              saved={remoteSaved}
+              loadFailed={remoteLoadFailed}
+              changedKeys={remoteDirty}
+              errorText={(k) => errorText(remoteErrorPrefix + k)}
+              test={remoteTest}
+              onChange={updateRemote}
+              onTest={() => void testRemote()}
+            />
           </Section>
         </div>
       </div>
 
       {isDirty && (
-        <div role="region" aria-label={t('settings.bar.dirty', { count: dirty.length })} className="sticky bottom-0 z-30 mt-auto flex flex-wrap items-center gap-3 border-t border-line-strong bg-card px-6 py-2.5 mobile:bottom-16 mobile:px-3.5">
+        <div role="region" aria-label={t('settings.bar.dirty', { count: dirtyCount })} className="sticky bottom-0 z-30 mt-auto flex flex-wrap items-center gap-3 border-t border-line-strong bg-card px-6 py-2.5 mobile:bottom-16 mobile:px-3.5">
           <span className="inline-flex items-center gap-2 text-[13px] font-medium">
             <span aria-hidden className="size-2 rounded-full bg-signal" />
-            {t('settings.bar.dirty', { count: dirty.length })}
+            {t('settings.bar.dirty', { count: dirtyCount })}
           </span>
           {errorCount > 0 && <span className="text-[12.5px] text-status-crit">{t('settings.bar.errors', { count: errorCount })}</span>}
           <span className="text-[12px] text-muted-foreground mobile:hidden">{t('settings.bar.hint')}</span>

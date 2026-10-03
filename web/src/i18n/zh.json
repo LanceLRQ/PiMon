@@ -937,9 +937,35 @@
       "downloadBtn": "下载 {{name}}",
       "downloadNone": "还没有备份可下载",
       "nas": "NAS 备份",
-      "nasHelp": "加密后同步到 NAS，阶段 2 提供。",
-      "nasBadge": "M2",
-      "backupNow": "立即备份"
+      "nasHelp": "每日本地备份成功后加密上传到 NAS；未启用时也可编辑字段与测试连接。",
+      "backupNow": "立即备份",
+      "remote": {
+        "enabled": "启用",
+        "type": "目标类型",
+        "host": "主机",
+        "port": "端口",
+        "share": "共享名",
+        "dir": "目录",
+        "username": "用户名",
+        "password": "密码",
+        "domain": "域",
+        "domainPlaceholder": "可选",
+        "url": "地址",
+        "urlPlaceholder": "https://nas.local:5006/",
+        "dirHelp": "相对共享（或 WebDAV 根）的目录，不存在时自动创建；留空表示根目录。",
+        "passphrase": "备份口令",
+        "passphraseNew": "至少 12 个字符",
+        "passphraseWarn": "口令丢失将无法恢复已加密的备份。",
+        "passphraseChanged": "备份口令已更改：之后上传的备份用新口令加密，已上传的旧备份仍需旧口令才能恢复。",
+        "keep": "远端保留份数",
+        "keepUnit": "份",
+        "keepHelp": "远端只保留最近这些份。NAS 空间约为「份数 × 单份大小」。",
+        "test": "测试连接",
+        "testing": "测试中…",
+        "testOk": "连接成功（{{type}}，用时 {{ms}} 毫秒）",
+        "testFailed": "连接失败：{{reason}}",
+        "loadFailed": "无法读取 NAS 备份配置，以下为默认值；保存前请确认。"
+      }
     },
     "reason": {
       "daily": "每日",
@@ -998,6 +1024,30 @@
         },
         "keep": {
           "out_of_range": "保留 1–30 份"
+        },
+        "remote": {
+          "type": {
+            "invalid": "不支持这个目标类型"
+          },
+          "keep": {
+            "out_of_range": "保留 1–365 份"
+          },
+          "passphrase": {
+            "required": "请设置备份口令",
+            "out_of_range": "备份口令至少 12 个字符"
+          },
+          "smb_port": {
+            "out_of_range": "端口须为 1–65535"
+          },
+          "smb_host": {
+            "invalid": "主机不能为空，且不含空白或控制字符"
+          },
+          "smb_share": {
+            "invalid": "共享名不合法"
+          },
+          "webdav_url": {
+            "invalid": "地址须是 https:// 或局域网 http:// 的有效地址"
+          }
         }
       }
     },

@@ -5,7 +5,7 @@ import { createMemoryRouter, Link, RouterProvider } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createI18n } from '@/i18n'
 import { apiError, json, mockApi, type Req } from '@/pages/instances/test-utils'
-import type { BackupInfo, Settings } from '@/types/generated'
+import type { BackupInfo, BackupRemote, Settings } from '@/types/generated'
 import { ToastProvider } from '@/ui/toast'
 import { SettingsPage } from './SettingsPage'
 
@@ -271,13 +271,6 @@ describe('备份与其余分组', () => {
     expect(link).toHaveAttribute('href', '/api/backups/pimon-backup-20260928-040000-daily.tar.gz')
   })
 
-  it('NAS 备份灰显并标注 M2', async () => {
-    await setup()
-    expect(screen.getByRole('button', { name: 'SMB' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'WebDAV' })).toBeDisabled()
-    expect(screen.getByText('M2')).toBeInTheDocument()
-  })
-
   it('保留份数步进到边界时禁用', async () => {
     await setup({ settings: { ...baseSettings, backup: { daily_at: '04:00', keep: 1 } } })
     expect(screen.getByRole('button', { name: '−' })).toBeDisabled()
@@ -288,5 +281,159 @@ describe('备份与其余分组', () => {
   it('当前值不在常用档位时，数据保留下拉仍显示真实值', async () => {
     await setup({ settings: { ...baseSettings, retention: { raw_hours: 36, five_min_days: 30, hour_days: 365 } } })
     expect(screen.getByLabelText('原始采样')).toHaveValue('36')
+  })
+})
+
+const savedRemote: BackupRemote = {
+  enabled: true,
+  type: 'smb',
+  smb_host: 'nas.local',
+  smb_port: 445,
+  smb_share: 'backup',
+  smb_dir: 'pimon',
+  smb_username: 'pi',
+  smb_password: { set: true },
+  smb_domain: '',
+  webdav_url: '',
+  webdav_dir: '',
+  webdav_username: '',
+  webdav_password: { set: false },
+  passphrase: { set: true },
+  keep: 30,
+  passphrase_changed: false,
+}
+
+function nasExtra(opts: { remote?: BackupRemote | null; put?: (r: Req) => Response; test?: (r: Req) => Response } = {}) {
+  const remote = opts.remote === undefined ? savedRemote : opts.remote
+  return (r: Req) => {
+    if (r.url === '/api/backups/remote' && r.method === 'GET') return remote ? json(200, remote) : apiError(404, 'not_found')
+    if (r.url === '/api/backups/remote' && r.method === 'PUT') return opts.put ? opts.put(r) : json(200, savedRemote)
+    if (r.url === '/api/backups/remote/test' && r.method === 'POST') return opts.test ? opts.test(r) : json(200, { success: true, target_type: 'smb', elapsed_ms: 120 })
+    return undefined
+  }
+}
+
+describe('NAS 备份', () => {
+  it('不再灰显或标注 M2，字段可编辑', async () => {
+    await setup({ extra: nasExtra() })
+    expect(await screen.findByLabelText('主机')).toHaveValue('nas.local')
+    expect(screen.queryByText('M2')).not.toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'SMB' })).toBeEnabled()
+  })
+
+  it('切换类型后只显示对应字段', async () => {
+    await setup({ extra: nasExtra() })
+    await screen.findByLabelText('主机')
+    expect(screen.queryByLabelText('地址')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('radio', { name: 'WebDAV' }))
+    expect(screen.getByLabelText('地址')).toBeInTheDocument()
+    expect(screen.queryByLabelText('主机')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('共享名')).not.toBeInTheDocument()
+    expect(saveBar()).toHaveTextContent('有 1 处未保存的修改')
+  })
+
+  it('密钥字段显示已设置，留空提交时为空串表示保留原值', async () => {
+    const { api } = await setup({ extra: nasExtra() })
+    const pass = await screen.findByLabelText('备份口令')
+    expect(pass).toHaveAttribute('placeholder', '已设置，留空则保持不变')
+    expect(pass).toHaveValue('')
+    await userEvent.clear(screen.getByLabelText('主机'))
+    await userEvent.type(screen.getByLabelText('主机'), 'nas2.local')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(api.calls.some((c) => c.method === 'PUT')).toBe(true))
+    const put = api.calls.find((c) => c.method === 'PUT')!
+    expect(put.url).toBe('/api/backups/remote')
+    expect(put.body).toMatchObject({ smb_host: 'nas2.local', smb_password: '', passphrase: '', webdav_password: '', keep: 30 })
+  })
+
+  it('只改 NAS 时只调用 NAS 的 PUT', async () => {
+    const { api } = await setup({ extra: nasExtra() })
+    await userEvent.type(await screen.findByLabelText('域'), 'HOME')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(saveBar()).not.toBeInTheDocument())
+    expect(api.calls.filter((c) => c.method === 'PUT').map((c) => c.url)).toEqual(['/api/backups/remote'])
+  })
+
+  it('只改通用设置时只调用 settings 的 PUT', async () => {
+    const { api } = await setup({ extra: (r) => nasExtra()(r) ?? (r.url === '/api/settings' && r.method === 'PUT' ? json(200, baseSettings) : undefined) })
+    await screen.findByLabelText('主机')
+    await userEvent.type(screen.getByLabelText('访问地址'), 'https://x.example')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(api.calls.some((c) => c.method === 'PUT')).toBe(true))
+    expect(api.calls.filter((c) => c.method === 'PUT').map((c) => c.url)).toEqual(['/api/settings'])
+  })
+
+  it('两边都改时各提交一次，脏计数合并', async () => {
+    const { api } = await setup({ extra: (r) => nasExtra()(r) ?? (r.url === '/api/settings' && r.method === 'PUT' ? json(200, baseSettings) : undefined) })
+    await userEvent.type(await screen.findByLabelText('域'), 'HOME')
+    await userEvent.type(screen.getByLabelText('访问地址'), 'https://x.example')
+    expect(saveBar()).toHaveTextContent('有 2 处未保存的修改')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(api.calls.filter((c) => c.method === 'PUT')).toHaveLength(2))
+  })
+
+  it('NAS 保存失败时保留草稿并显示字段错误，不影响另一边', async () => {
+    const { api } = await setup({
+      extra: nasExtra({ put: () => apiError(400, 'validation.failed', { fields: { passphrase: 'out_of_range', smb_host: 'invalid' } }) }),
+    })
+    const pass = await screen.findByLabelText('备份口令')
+    await userEvent.type(pass, 'short')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByText('备份口令至少 12 个字符')).toBeInTheDocument()
+    expect(screen.getByText('主机不能为空，且不含空白或控制字符')).toBeInTheDocument()
+    expect(pass).toHaveValue('short')
+    expect(saveBar()).toHaveTextContent('有 1 处未保存的修改')
+    expect(api.calls.filter((c) => c.method === 'PUT')).toHaveLength(1)
+  })
+
+  it('保存改了口令时弹出警告，且口令框下方始终有丢失提示', async () => {
+    await setup({ extra: nasExtra({ put: () => json(200, { ...savedRemote, passphrase_changed: true }) }) })
+    expect(await screen.findByText('口令丢失将无法恢复已加密的备份。')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('备份口令'), 'a-new-passphrase-1')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByText(/备份口令已更改/)).toBeInTheDocument()
+  })
+
+  it('保留份数说明提示 NAS 空间', async () => {
+    await setup({ extra: nasExtra() })
+    expect(await screen.findByText(/份数 × 单份大小/)).toBeInTheDocument()
+  })
+
+  it('测试连接成功：用表单当前值调用并显示结果', async () => {
+    const { api } = await setup({ extra: nasExtra() })
+    await userEvent.type(await screen.findByLabelText('域'), 'HOME')
+    await userEvent.click(screen.getByRole('button', { name: '测试连接' }))
+    expect(await screen.findByText('连接成功（SMB，用时 120 毫秒）')).toBeInTheDocument()
+    const call = api.calls.find((c) => c.url === '/api/backups/remote/test')!
+    expect(call.body).toMatchObject({ smb_domain: 'HOME', smb_host: 'nas.local' })
+  })
+
+  it('测试连接失败：按 reason 翻译，未知 reason 回退通用文案，进行中按钮禁用', async () => {
+    let release: (r: Response) => void = () => {}
+    const pending = new Promise<Response>((res) => (release = res))
+    await setup({
+      extra: (r) => (r.url === '/api/backups/remote/test' ? (pending as unknown as Response) : nasExtra()(r)),
+    })
+    await screen.findByLabelText('主机')
+    await userEvent.click(screen.getByRole('button', { name: '测试连接' }))
+    expect(screen.getByRole('button', { name: '测试中…' })).toBeDisabled()
+    release(apiError(502, 'backup.remote_failed', { reason: 'auth', message: 'x' }))
+    expect(await screen.findByText('连接失败：用户名或密码错误')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '测试连接' })).toBeEnabled()
+  })
+
+  it('测试连接失败且 reason 未知时显示通用文案', async () => {
+    await setup({ extra: nasExtra({ test: () => apiError(502, 'backup.remote_failed', { reason: 'weird' }) }) })
+    await screen.findByLabelText('主机')
+    await userEvent.click(screen.getByRole('button', { name: '测试连接' }))
+    expect(await screen.findByText('连接失败：远端备份失败')).toBeInTheDocument()
+  })
+
+  it('读取配置失败（404）时降级显示默认表单并提示', async () => {
+    await setup({ extra: nasExtra({ remote: null }) })
+    expect(await screen.findByText(/无法读取 NAS 备份配置/)).toBeInTheDocument()
+    expect(screen.getByLabelText('端口')).toHaveValue(445)
+    expect(screen.getByLabelText('备份口令')).toHaveAttribute('placeholder', '至少 12 个字符')
+    expect(saveBar()).not.toBeInTheDocument()
   })
 })

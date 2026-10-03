@@ -937,9 +937,35 @@
       "downloadBtn": "Download {{name}}",
       "downloadNone": "No backup to download yet",
       "nas": "NAS backup",
-      "nasHelp": "Encrypted sync to a NAS, coming in phase 2.",
-      "nasBadge": "M2",
-      "backupNow": "Back up now"
+      "nasHelp": "After each successful daily local backup, encrypt and upload it to a NAS. Fields can be edited and tested while disabled.",
+      "backupNow": "Back up now",
+      "remote": {
+        "enabled": "Enabled",
+        "type": "Target type",
+        "host": "Host",
+        "port": "Port",
+        "share": "Share",
+        "dir": "Directory",
+        "username": "Username",
+        "password": "Password",
+        "domain": "Domain",
+        "domainPlaceholder": "Optional",
+        "url": "URL",
+        "urlPlaceholder": "https://nas.local:5006/",
+        "dirHelp": "Directory under the share (or WebDAV root). Created if missing; leave empty for the root.",
+        "passphrase": "Backup passphrase",
+        "passphraseNew": "At least 12 characters",
+        "passphraseWarn": "If the passphrase is lost, encrypted backups cannot be recovered.",
+        "passphraseChanged": "Backup passphrase changed: later uploads use the new passphrase; backups already uploaded still need the old one to restore.",
+        "keep": "Remote copies to keep",
+        "keepUnit": "copies",
+        "keepHelp": "Only the most recent copies are kept on the remote. NAS space is about copies × size of one backup.",
+        "test": "Test connection",
+        "testing": "Testing…",
+        "testOk": "Connected ({{type}}, {{ms}} ms)",
+        "testFailed": "Connection failed: {{reason}}",
+        "loadFailed": "Could not read the NAS backup settings; defaults are shown. Review before saving."
+      }
     },
     "reason": {
       "daily": "Daily",
@@ -998,6 +1024,30 @@
         },
         "keep": {
           "out_of_range": "Keep 1–30 copies"
+        },
+        "remote": {
+          "type": {
+            "invalid": "Unsupported target type"
+          },
+          "keep": {
+            "out_of_range": "Keep 1–365 copies"
+          },
+          "passphrase": {
+            "required": "Set a backup passphrase",
+            "out_of_range": "The passphrase must be at least 12 characters"
+          },
+          "smb_port": {
+            "out_of_range": "Port must be 1–65535"
+          },
+          "smb_host": {
+            "invalid": "Host is required and must not contain whitespace or control characters"
+          },
+          "smb_share": {
+            "invalid": "Invalid share name"
+          },
+          "webdav_url": {
+            "invalid": "URL must be a valid https:// or LAN http:// address"
+          }
         }
       }
     },
