@@ -11,7 +11,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
 )
 
-// cmdRun 运行守护进程：SIGINT/SIGTERM 优雅退出，SIGHUP 重新加载（重扫插件目录、重读配置）。
+// cmdRun 运行守护进程：SIGINT/SIGTERM 优雅退出（第二次强制退出，退出码 1），SIGHUP 重新加载（重扫插件目录、重读配置）。
 func (c *cli) cmdRun(args []string) int {
 	fs, user := c.flagSet("run")
 	level := fs.String("log-level", "info", "日志级别 debug|info|warn|error")
@@ -51,8 +51,13 @@ func (c *cli) cmdRun(args []string) int {
 	defer stopSig()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	runDaemon := c.runDaemon
+	if runDaemon == nil {
+		runDaemon = func(ctx context.Context, d *daemon.Daemon) error { return d.Run(ctx) }
+	}
 	errc := make(chan error, 1)
-	go func() { errc <- d.Run(ctx) }()
+	go func() { errc <- runDaemon(ctx, d) }()
+	stopping := false
 	c.log.Info("agent 守护进程启动", "config", p.Config, "ctl", p.CtlSock)
 	for {
 		select {
@@ -64,7 +69,12 @@ func (c *cli) cmdRun(args []string) int {
 				}
 				continue
 			}
-			c.log.Info("收到退出信号，正在停止", "signal", s.String())
+			if stopping { // 关停卡住时第二次信号强制退出
+				c.log.Warn("再次收到退出信号，强制退出", "signal", s.String())
+				return 1
+			}
+			stopping = true
+			c.log.Info("收到退出信号，正在停止（再次发送将强制退出）", "signal", s.String())
 			cancel()
 		case err := <-errc:
 			if err != nil {

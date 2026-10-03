@@ -3,7 +3,9 @@
 package ctl
 
 import (
+	"io/fs"
 	"net"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 )
@@ -28,4 +30,13 @@ func peerUID(c *net.UnixConn) (int, error) {
 		return -1, cerr
 	}
 	return int(cred.Uid), nil
+}
+
+// ownerUID 返回文件属主的 uid。
+func ownerUID(fi fs.FileInfo) (uint32, bool) {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, false
+	}
+	return st.Uid, true
 }

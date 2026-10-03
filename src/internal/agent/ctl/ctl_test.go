@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -282,7 +283,9 @@ func TestServe_对端凭据读取失败被拒(t *testing.T) {
 	s := serve(t, b, func(c *ServerConfig) {
 		c.PeerUID = func(*net.UnixConn) (int, error) { return -1, errors.New("boom") }
 	})
-	if _, err := (Client{Path: s.path}).Status(context.Background()); err == nil || b.calls.Load() != 0 {
+	_, err := (Client{Path: s.path}).Status(context.Background())
+	var re *RemoteError
+	if !errors.As(err, &re) || !strings.Contains(re.Msg, "无权") || b.calls.Load() != 0 {
 		t.Fatalf("应被拒绝，得到 %v", err)
 	}
 }
@@ -433,5 +436,48 @@ func TestPairWindow_日志不含配对码(t *testing.T) {
 	slog.New(slog.NewTextHandler(&sb, nil)).Info("x", "w", PairWindow{Code: "SECRET-CODE", Fingerprint: "fp"})
 	if strings.Contains(sb.String(), "SECRET-CODE") {
 		t.Fatalf("日志含配对码: %s", sb.String())
+	}
+}
+
+// 探测旧套接字时遇到「连接被拒/文件不存在」以外的错误（如 accept 队列满的 EAGAIN），可能是活跃的守护进程：不删、报错。
+func TestListen_探测残留套接字遇到其他错误不删除(t *testing.T) {
+	path := filepath.Join(shortDir(t), "agent.sock")
+	l, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.SetUnlinkOnClose(false)
+	_ = l.Close()
+	orig := staleDial
+	t.Cleanup(func() { staleDial = orig })
+	staleDial = func(string) (net.Conn, error) {
+		return nil, &net.OpError{Op: "dial", Net: "unix", Err: os.NewSyscallError("connect", syscall.EAGAIN)}
+	}
+	if _, err := Listen(ServerConfig{Path: path, Backend: &fakeBackend{}}); err == nil || !strings.Contains(err.Error(), "未删除") {
+		t.Fatalf("应报错且不删除: %v", err)
+	}
+	if _, err := os.Lstat(path); err != nil {
+		t.Fatalf("套接字文件不应被删除: %v", err)
+	}
+	staleDial = func(string) (net.Conn, error) {
+		return nil, &net.OpError{Op: "dial", Net: "unix", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
+	}
+	srv, err := Listen(ServerConfig{Path: path, Backend: &fakeBackend{}})
+	if err != nil {
+		t.Fatalf("连接被拒时应清理: %v", err)
+	}
+	_ = srv.Close()
+}
+
+func TestPrepareDir_属主须为当前用户或root(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root 下任何属主都允许")
+	}
+	dir := shortDir(t)
+	if err := prepareDir(dir, os.Geteuid()); err != nil {
+		t.Fatalf("自己的目录应通过: %v", err)
+	}
+	if err := prepareDir(dir, os.Geteuid()+1); err == nil || !strings.Contains(err.Error(), "属主") {
+		t.Fatalf("属主不是 euid 也不是 root 时应拒绝: %v", err)
 	}
 }

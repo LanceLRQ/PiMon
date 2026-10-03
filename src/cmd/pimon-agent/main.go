@@ -74,6 +74,8 @@ type cli struct {
 	signals func() (<-chan os.Signal, func())
 	// tweak 在创建守护进程前调整其配置（测试用）。
 	tweak func(*daemon.Config)
+	// runDaemon 运行守护进程，为空用 (*daemon.Daemon).Run（测试注入关停卡住的场景）。
+	runDaemon func(ctx context.Context, d *daemon.Daemon) error
 }
 
 func newCLI(stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string) *cli {

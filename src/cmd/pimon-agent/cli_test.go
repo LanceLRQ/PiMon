@@ -104,9 +104,9 @@ func (e *testEnv) startDaemon(extra ...string) *runningDaemon {
 	rd := &runningDaemon{sig: make(chan os.Signal, 4), code: make(chan int, 1), stderr: errb}
 	c.signals = func() (<-chan os.Signal, func()) { return rd.sig, func() {} }
 	go func() { rd.code <- c.run(append([]string{"run", "--user"}, extra...)) }()
-	waitUntil(e.t, "控制套接字就绪", func() bool {
-		_, err := (ctl.Client{Path: e.paths.CtlSock}).Status(context.Background())
-		return err == nil
+	waitUntil(e.t, "控制套接字就绪且守护进程已读入配置", func() bool {
+		st, err := (ctl.Client{Path: e.paths.CtlSock}).Status(context.Background())
+		return err == nil && st.Mode != ""
 	})
 	e.t.Cleanup(func() { rd.stop(e.t) })
 	return rd
@@ -194,7 +194,7 @@ func TestStatusPair_输出不含凭据哈希且配对码只在pair输出(t *test
 	rd := e.startDaemon()
 	waitUntil(t, "拨出监听就绪", func() bool {
 		st, err := (ctl.Client{Path: e.paths.CtlSock}).Status(context.Background())
-		return err == nil && st.Listen != "127.0.0.1:0"
+		return err == nil && strings.HasPrefix(st.Listen, "127.0.0.1:") && st.Listen != "127.0.0.1:0" // 读配置前为空，监听前为 :0
 	})
 	code, pairOut, errb := e.call("pair", "--user")
 	if code != 0 {
@@ -275,6 +275,10 @@ func TestPair_拨入模式报错(t *testing.T) {
 	conf, _ := dialInConf(t)
 	e.save(conf)
 	e.startDaemon()
+	waitUntil(t, "守护进程读入配置", func() bool {
+		st, err := (ctl.Client{Path: e.paths.CtlSock}).Status(context.Background())
+		return err == nil && st.Mode == config.ModeDialIn
+	})
 	code, out, errb := e.call("pair", "--user")
 	if code != 1 || out != "" || !strings.Contains(errb, "拨入模式请用 install --code 重新配对") {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errb)
@@ -328,5 +332,40 @@ func TestCLI_多余参数为用法错误(t *testing.T) {
 		if code, _, _ := e.call(cmd, "--user", "extra"); code != 2 {
 			t.Fatalf("%s: code=%d", cmd, code)
 		}
+	}
+}
+
+// 关停卡住时，第二次 SIGINT/SIGTERM 强制退出，退出码 1。
+func TestRun_第二次退出信号强制退出(t *testing.T) {
+	e := newEnv(t)
+	e.save(dialOutConf())
+	c, _, errb := e.cli()
+	sig := make(chan os.Signal, 4)
+	c.signals = func() (<-chan os.Signal, func()) { return sig, func() {} }
+	stopped, release := make(chan struct{}), make(chan struct{})
+	defer close(release)
+	c.runDaemon = func(ctx context.Context, _ *daemon.Daemon) error {
+		<-ctx.Done()
+		close(stopped)
+		<-release // 模拟关停卡住
+		return nil
+	}
+	code := make(chan int, 1)
+	go func() { code <- c.run([]string{"run", "--user"}) }()
+	sig <- syscall.SIGINT
+	<-stopped
+	select {
+	case n := <-code:
+		t.Fatalf("第一次信号后不应直接返回（退出码 %d）", n)
+	default:
+	}
+	sig <- syscall.SIGTERM
+	select {
+	case n := <-code:
+		if n != 1 || !strings.Contains(errb.String(), "强制退出") {
+			t.Fatalf("退出码 = %d，stderr=%s", n, errb.String())
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("第二次信号后应强制退出")
 	}
 }

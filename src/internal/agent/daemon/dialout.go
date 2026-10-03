@@ -141,11 +141,11 @@ func (d *Daemon) OpenPairWindow(ctx context.Context) (PairWindow, error) {
 		return PairWindow{}, err
 	}
 	d.mu.Lock()
-	if d.conf.Mode != config.ModeDialOut {
+	if d.conf.Mode == config.ModeDialIn {
 		d.mu.Unlock()
 		return PairWindow{}, fmt.Errorf("%w：拨入模式请用 install --code 重新配对", ErrNotDialOut)
 	}
-	if d.listen == nil {
+	if d.conf.Mode != config.ModeDialOut || d.listen == nil { // 刚启动尚未读配置，或监听未就绪
 		d.mu.Unlock()
 		return PairWindow{}, ErrNotListening
 	}

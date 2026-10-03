@@ -84,6 +84,9 @@ func TestCtl_套接字已被占用时Run返回错误(t *testing.T) {
 	if err := h2.d.Run(ctx); err == nil || !strings.Contains(err.Error(), "控制套接字") {
 		t.Fatalf("第二个守护进程应因控制套接字被占用而失败: %v", err)
 	}
+	if _, err := os.Stat(h2.paths.DB); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("应在打开本地数据库之前失败: %v", err)
+	}
 }
 
 func TestCtl_退出后删除套接字文件(t *testing.T) {

@@ -78,12 +78,7 @@ func (d *Daemon) Repin(ctx context.Context, pin certs.SPKI) error {
 	if pin == (certs.SPKI{}) {
 		return errors.New("指纹不能为空")
 	}
-	d.mu.Lock()
-	mode := d.conf.Mode
-	d.mu.Unlock()
-	if mode != config.ModeDialIn {
-		return ErrNotDialIn
-	}
+	// 模式以磁盘配置为准（updateConfig 内检查）：守护进程刚启动、连接循环尚未读配置时也能 repin。
 	notDialIn := false
 	err := d.updateConfig(func(c *config.Config) bool {
 		if c.Mode != config.ModeDialIn {

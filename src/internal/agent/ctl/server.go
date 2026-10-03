@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/internal/certs"
@@ -75,7 +76,7 @@ func Listen(cfg ServerConfig) (*Server, error) {
 	if n := len(path); n == 0 || n > maxPathLen {
 		return nil, fmt.Errorf("控制套接字路径 %q 长 %d 字节，本平台上限 %d 字节", path, n, maxPathLen)
 	}
-	if err := prepareDir(filepath.Dir(path)); err != nil {
+	if err := prepareDir(filepath.Dir(path), os.Geteuid()); err != nil {
 		return nil, err
 	}
 	if err := removeStale(path); err != nil {
@@ -92,8 +93,8 @@ func Listen(cfg ServerConfig) (*Server, error) {
 	return &Server{cfg: cfg, log: cfg.Log, ln: ln, sem: make(chan struct{}, MaxConns)}, nil
 }
 
-// prepareDir 确认套接字所在目录存在且不能被属组或其他用户写入（否则别人可以替换套接字）。
-func prepareDir(dir string) error {
+// prepareDir 确认套接字所在目录存在、属主是 euid 或 root、且不能被属组或其他用户写入（否则别人可以替换套接字）。
+func prepareDir(dir string, euid int) error {
 	fi, err := os.Stat(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -110,8 +111,14 @@ func prepareDir(dir string) error {
 	if perm := fi.Mode().Perm(); perm&0o022 != 0 {
 		return fmt.Errorf("控制套接字目录 %s 权限过宽（%04o），属组或其他用户可写，请执行: chmod go-w %s", dir, perm, dir)
 	}
+	if uid, ok := ownerUID(fi); ok && int(uid) != euid && uid != 0 {
+		return fmt.Errorf("控制套接字目录 %s 的属主（uid %d）既不是当前用户（uid %d）也不是 root", dir, uid, euid)
+	}
 	return nil
 }
+
+// staleDial 探测旧套接字是否仍有进程监听（测试可替换以模拟其他拨号错误）。
+var staleDial = func(path string) (net.Conn, error) { return net.DialTimeout("unix", path, staleDialTimeout) }
 
 // removeStale 删除没有进程监听的旧套接字；仍有进程监听时报错，不是套接字的文件不碰。
 func removeStale(path string) error {
@@ -125,9 +132,14 @@ func removeStale(path string) error {
 	if fi.Mode()&os.ModeSocket == 0 {
 		return fmt.Errorf("%s 已存在且不是套接字，拒绝覆盖", path)
 	}
-	if c, err := net.DialTimeout("unix", path, staleDialTimeout); err == nil {
+	c, err := staleDial(path)
+	if err == nil {
 		_ = c.Close()
 		return fmt.Errorf("控制套接字 %s 已有进程在监听（守护进程已在运行？）", path)
+	}
+	// 只有确定无人监听（连接被拒或文件已不在）才删；其他错误（如 accept 队列满的 EAGAIN）可能是活跃的守护进程，不删。
+	if !errors.Is(err, syscall.ECONNREFUSED) && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("探测控制套接字 %s 失败（%v），无法确认没有进程在监听，未删除", path, err)
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("删除残留的控制套接字 %s: %w", path, err)

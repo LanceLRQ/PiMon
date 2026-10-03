@@ -152,6 +152,17 @@ func (d *Daemon) Run(ctx context.Context) error {
 	if err := config.EnsureDataDir(d.cfg.Paths); err != nil {
 		return fmt.Errorf("准备数据目录: %w", err)
 	}
+	// 控制套接字最先占位：第二个实例在打开库、迁移、扫描插件之前就因套接字被占用而失败。
+	// 监听期间到达的连接留在 backlog，Serve 在运行器就绪后才开始处理；
+	// 即使提前处理，Status/Repin/Reload/OpenPairWindow/UpgradeInfo 也不依赖运行器。
+	var srv *ctl.Server
+	if d.cfg.CtlSock != "" {
+		var err error
+		if srv, err = ctl.Listen(ctl.ServerConfig{Path: d.cfg.CtlSock, Backend: d, Log: d.log}); err != nil {
+			return fmt.Errorf("打开控制套接字: %w", err)
+		}
+		defer func() { _ = srv.Close() }()
+	}
 	st, err := store.Open(d.cfg.Paths.DB, store.WithClock(d.clk))
 	if err != nil {
 		return fmt.Errorf("打开本地数据库: %w", err)
@@ -163,14 +174,6 @@ func (d *Daemon) Run(ctx context.Context) error {
 	d.runner = r
 	d.mu.Unlock()
 	d.reg.Scan() // 首次扫描也会通知变化：此时没有就绪会话，丢弃即可
-
-	var srv *ctl.Server
-	if d.cfg.CtlSock != "" {
-		if srv, err = ctl.Listen(ctl.ServerConfig{Path: d.cfg.CtlSock, Backend: d, Log: d.log}); err != nil {
-			return fmt.Errorf("打开控制套接字: %w", err)
-		}
-		defer func() { _ = srv.Close() }()
-	}
 
 	bg, stopBG := context.WithCancel(ctx)
 	defer stopBG()
@@ -199,7 +202,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	d.mu.Unlock()
 	d.wg.Wait()
 	stopBG()
-	<-ctlDone // 控制套接字取消并等完在途请求后删除套接字文件
+	<-ctlDone // 控制套接字随 ctx 与连接循环同时开始关停，这里等它取消完在途请求并删除套接字文件
 	<-gcDone
 	if watchDone != nil {
 		<-watchDone

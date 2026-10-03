@@ -113,7 +113,7 @@ func modeText(m string) string {
 	case config.ModeDialOut:
 		return "拨出（hub 连接本机）"
 	case "":
-		return "未知（配置缺失）"
+		return "未知（守护进程尚未读入配置，或配置有误）"
 	}
 	return m
 }
