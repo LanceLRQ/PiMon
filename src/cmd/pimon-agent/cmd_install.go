@@ -30,6 +30,7 @@ func (c *cli) cmdInstall(args []string) int {
 	fs.BoolVar(&o.RePair, "re-pair", false, "拨入：已与该 hub 配对时仍用 --code 重新配对")
 	fs.StringVar(&o.Listen, "listen", "", "拨出：监听地址，如 :31418")
 	fs.BoolVar(&o.DockerGroup, "docker-group", false, "系统模式：把 pimon 加入 docker 组（近似授予 root 权限；非交互模式须显式指定）")
+	fs.BoolVar(&o.Sudoers, "sudoers", false, "系统模式：写入 storage-health 只读命令的 sudoers 白名单（smartctl、mdadm、btrfs；非交互模式须显式指定）")
 	if code, ok := c.parse(fs, args); !ok {
 		return code
 	}

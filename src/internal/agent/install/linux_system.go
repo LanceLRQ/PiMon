@@ -57,9 +57,7 @@ func (r *run) dockerGroup(ctx context.Context) error {
 			r.rep.Warn("docker 组", "未把 "+serviceUser+" 加入 docker 组，Docker 相关插件将无法读取容器状态；非交互模式需显式加 --docker-group。注意："+dockerRisk)
 			return nil
 		}
-		_, _ = fmt.Fprintf(r.Out, "本机有 Docker。是否把 %s 加入 docker 组，让 Docker 相关插件读取容器状态？\n注意：%s。[y/N] ", serviceUser, dockerRisk)
-		ans, _ := bufio.NewReader(r.In).ReadString('\n')
-		if a := strings.ToLower(strings.TrimSpace(ans)); a != "y" && a != "yes" {
+		if !r.ask(fmt.Sprintf("本机有 Docker。是否把 %s 加入 docker 组，让 Docker 相关插件读取容器状态？\n注意：%s。[y/N] ", serviceUser, dockerRisk)) {
 			r.rep.Skipped("docker 组", "未加入")
 			return nil
 		}
@@ -70,6 +68,20 @@ func (r *run) dockerGroup(ctx context.Context) error {
 	r.groupChanged = true
 	r.rep.Done(serviceUser+" 加入 docker 组", dockerRisk)
 	return nil
+}
+
+// ask 输出问题并从共用读取器读一行，回答 y 或 yes（不分大小写）才返回真。
+func (r *run) ask(question string) bool {
+	_, _ = fmt.Fprint(r.Out, question)
+	if r.in == nil {
+		if r.In == nil {
+			return false
+		}
+		r.in = bufio.NewReader(r.In)
+	}
+	ans, _ := r.in.ReadString('\n')
+	a := strings.ToLower(strings.TrimSpace(ans))
+	return a == "y" || a == "yes"
 }
 
 // hasGroup 读 /etc/group 判断组是否存在。

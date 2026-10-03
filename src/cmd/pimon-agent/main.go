@@ -27,7 +27,7 @@ const usage = `用法: pimon-agent <命令> [参数]
 
 命令:
   install    安装并启动 agent 服务（拨入：--hub --fp --code [--name]；拨出：--listen；
-             可选 --user、--docker-group、--re-pair）
+             可选 --user、--docker-group、--sudoers、--re-pair）
   pair       拨出模式下开启 15 分钟配对窗口并打印配对信息
   run        守护进程（由服务管理器调用；--log-level debug|info|warn|error）
   status     显示模式、连接状态、已分配实例数、版本等

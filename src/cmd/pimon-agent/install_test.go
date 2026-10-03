@@ -40,8 +40,8 @@ func installCLI(t *testing.T, ret error) (*cli, *install.Options, *install.Unins
 
 func TestInstall_参数映射(t *testing.T) {
 	c, io, _, _ := installCLI(t, nil)
-	code := c.run([]string{"install", "--hub", "wss://1.2.3.4:31418", "--fp", "SHA256:x", "--code", "C", "--name", "nas", "--re-pair", "--docker-group", "--user"})
-	want := install.Options{User: true, Hub: "wss://1.2.3.4:31418", Fingerprint: "SHA256:x", Code: "C", Name: "nas", RePair: true, DockerGroup: true}
+	code := c.run([]string{"install", "--hub", "wss://1.2.3.4:31418", "--fp", "SHA256:x", "--code", "C", "--name", "nas", "--re-pair", "--docker-group", "--sudoers", "--user"})
+	want := install.Options{User: true, Hub: "wss://1.2.3.4:31418", Fingerprint: "SHA256:x", Code: "C", Name: "nas", RePair: true, DockerGroup: true, Sudoers: true}
 	if code != 0 || *io != want {
 		t.Fatalf("code=%d opts=%+v", code, *io)
 	}

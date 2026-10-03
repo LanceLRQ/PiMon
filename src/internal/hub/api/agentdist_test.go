@@ -125,6 +125,12 @@ func TestInstallScript语法与Host注入(t *testing.T) {
 	if strings.Contains(string(body), "@HUB_URL@") {
 		t.Error("占位符未替换")
 	}
+	// 一行安装是非交互模式，用法注释须说明 docker 组与 sudoers 都要显式加参数。
+	for _, flag := range []string{"--docker-group", "--sudoers"} {
+		if !strings.Contains(string(body), flag) {
+			t.Errorf("脚本用法注释缺少 %s", flag)
+		}
+	}
 	script := filepath.Join(t.TempDir(), "install.sh")
 	if err := os.WriteFile(script, body, 0o600); err != nil {
 		t.Fatal(err)
@@ -200,11 +206,11 @@ func runInstall(t *testing.T, srv *httptest.Server, args ...string) installRun {
 
 func TestInstallScript下载校验并执行install(t *testing.T) {
 	srv := distServer(t, []byte(fakeBinary), currentPlatform(t))
-	r := runInstall(t, srv, "--user", "--hub", "wss://1.2.3.4:31418", "--code", "ABC")
+	r := runInstall(t, srv, "--user", "--hub", "wss://1.2.3.4:31418", "--code", "ABC", "--sudoers")
 	if r.err != nil {
 		t.Fatalf("脚本失败：%v\n%s", r.err, r.out)
 	}
-	if want := "install\n--user\n--hub\nwss://1.2.3.4:31418\n--code\nABC\n"; r.args != want {
+	if want := "install\n--user\n--hub\nwss://1.2.3.4:31418\n--code\nABC\n--sudoers\n"; r.args != want {
 		t.Errorf("install 收到的参数 = %q，期望 %q", r.args, want)
 	}
 	if r.tmpLeft != 0 {

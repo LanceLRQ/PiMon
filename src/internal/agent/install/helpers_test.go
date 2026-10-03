@@ -337,7 +337,8 @@ func (e *testEnv) deps() Deps {
 	return Deps{
 		Out: &e.out, In: strings.NewReader(e.in), Interactive: e.tty,
 		Clock: e.clk, Runner: e.runner, FS: e.fs, Users: e.users, Ports: e.ports,
-		GOOS: e.goos, EUID: e.euid, EGID: e.egid, Home: e.home, Username: "alice",
+		SudoFS: e.fs.sudoFS(),
+		GOOS:   e.goos, EUID: e.euid, EGID: e.egid, Home: e.home, Username: "alice",
 		Self: selfPath,
 		Pair: func(ctx context.Context, req link.PairRequest) (link.PairResult, error) {
 			e.pairReqs = append(e.pairReqs, req)

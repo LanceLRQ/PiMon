@@ -13,6 +13,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/sysinstall"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/protocol/agent"
+	"github.com/LanceLRQ/PiMon/src/plugins/storagehealth/sudocmd"
 )
 
 const (
@@ -23,7 +24,7 @@ const (
 
 	serviceUser    = "pimon"
 	systemUnitPath = "/etc/systemd/system/" + ServiceName
-	sudoersPath    = "/etc/sudoers.d/pimon-agent" // M2d storage-health 写入
+	sudoersPath    = "/etc/sudoers.d/pimon-agent" // storage-health 的只读命令白名单，见 sudoers.go
 	sysctlPath     = "/etc/sysctl.d/99-pimon-agent.conf"
 	pingRangeProc  = "/proc/sys/net/ipv4/ping_group_range"
 	dockerSock     = "/var/run/docker.sock"
@@ -49,16 +50,18 @@ type FS interface {
 // Deps 汇集 install/uninstall/Restart 的全部外部依赖，测试里整体替换。
 type Deps struct {
 	Out io.Writer
-	// In 与 Interactive 用于交互询问（Docker 组）；Interactive 为假时从不读 In。
+	// In 与 Interactive 用于交互询问（Docker 组、sudoers）；Interactive 为假时从不读 In。
 	In          io.Reader
 	Interactive bool
 	Clock       clock.Clock
 	Runner      sysinstall.Runner
 	FS          FS
 	Users       sysinstall.Users
-	Ports       sysinstall.Ports
-	GOOS        string
-	EUID, EGID  int
+	// SudoFS 用于解析 storage-health 需要 sudo 的命令路径（含属主校验）。
+	SudoFS     sudocmd.FS
+	Ports      sysinstall.Ports
+	GOOS       string
+	EUID, EGID int
 	// Home 与 Username 是当前用户的家目录与用户名（用户模式的路径、loginctl 提示）。
 	Home     string
 	Username string
@@ -83,7 +86,8 @@ func NewDeps(out io.Writer, in io.Reader, interactive bool, goos, home, username
 	return Deps{
 		Out: out, In: in, Interactive: interactive,
 		Clock: clock.Real{}, Runner: sysinstall.ExecRunner{}, FS: osFS{}, Users: sysinstall.OSUsers{},
-		Ports: sysinstall.NewPorts(goos), GOOS: goos, EUID: os.Geteuid(), EGID: os.Getegid(),
+		SudoFS: sudocmd.SystemFS(),
+		Ports:  sysinstall.NewPorts(goos), GOOS: goos, EUID: os.Geteuid(), EGID: os.Getegid(),
 		Home: home, Username: username, Self: self,
 		Pair: link.PairDialIn,
 		Status: func(ctx context.Context, sock string) error {
@@ -107,6 +111,8 @@ type Options struct {
 	Listen string
 	// DockerGroup 非交互时把 pimon 加入 docker 组（交互时不给则询问）。
 	DockerGroup bool
+	// Sudoers 非交互时写入 storage-health 的 sudoers 白名单（交互时不给则询问）；只用于系统模式。
+	Sudoers bool
 }
 
 // UninstallOptions 是 uninstall 的命令行选项。

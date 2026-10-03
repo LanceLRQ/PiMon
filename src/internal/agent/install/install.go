@@ -1,6 +1,7 @@
 package install
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -30,6 +31,8 @@ type run struct {
 	o   Options
 	t   target
 	rep *sysinstall.Report
+	// in 是全部交互询问共用的读取器：每次新建 bufio.Reader 会把后续回答预读后丢掉。
+	in *bufio.Reader
 
 	mode        string // config.ModeDialIn / ModeDialOut
 	pin         certs.SPKI
@@ -91,9 +94,12 @@ func Install(ctx context.Context, d Deps, o Options) error {
 	)
 	switch t.kind {
 	case kindSystem:
-		steps = append(steps, step{"docker 组", r.dockerGroup}, step{"放开 ping_group_range", r.ensureSysctl})
+		steps = append(steps, step{"docker 组", r.dockerGroup}, step{"放开 ping_group_range", r.ensureSysctl},
+			step{"sudoers 白名单", r.ensureSudoers})
 	case kindUser:
-		steps = append(steps, step{"检查 ping_group_range", r.pingHint})
+		steps = append(steps, step{"检查 ping_group_range", r.pingHint}, step{"检查 sudoers", r.sudoersHint})
+	case kindDarwin:
+		steps = append(steps, step{"检查 sudoers", r.darwinSudoersHint})
 	}
 	steps = append(steps,
 		step{"配对", r.configure},

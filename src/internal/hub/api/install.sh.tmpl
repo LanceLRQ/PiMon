@@ -3,7 +3,8 @@
 # 用法：curl -fsSL @HUB_URL@/agent/install.sh | sh -s -- --hub wss://… --fp SHA256:… --code …
 # （脚本自己会在参数前加上 install 子命令）
 # 经 curl | sh 运行时 stdin 不是终端，agent 走非交互模式：系统模式下要把 pimon 加入 docker 组，
-# 须显式加 --docker-group。
+# 须显式加 --docker-group；要写入 storage-health 只读命令（smartctl、mdadm、btrfs）的 sudoers 白名单，
+# 须显式加 --sudoers（参数原样透传给 pimon-agent install）。
 # 注意：校验和与二进制都来自同一个 HTTP 地址，只在局域网可信的前提下防得住传输损坏，防不住中间人。
 set -eu
 
