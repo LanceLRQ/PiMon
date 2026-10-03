@@ -164,6 +164,8 @@ type installRun struct {
 	err  error
 	args string // 假 install 收到的参数（每行一个），未执行时为空
 	home string
+	// tmpLeft 是脚本结束后 TMPDIR 中残留的条目数，应为 0
+	tmpLeft int
 }
 
 // runInstall 在临时 HOME 下用 --user 跑脚本，不触碰真实 /usr/local 与 ~/.pimon。
@@ -183,12 +185,17 @@ func runInstall(t *testing.T, srv *httptest.Server, args ...string) installRun {
 		t.Fatal(err)
 	}
 	argsFile := filepath.Join(dir, "args")
+	tmpdir := filepath.Join(dir, "tmp")
+	if err := os.MkdirAll(tmpdir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	cmd := exec.Command("sh", append([]string{script}, args...)...)
-	cmd.Env = append(os.Environ(), "HOME="+home, "PIMON_TEST_ARGS="+argsFile)
+	cmd.Env = append(os.Environ(), "HOME="+home, "PIMON_TEST_ARGS="+argsFile, "TMPDIR="+tmpdir)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	got, _ := os.ReadFile(argsFile)
-	return installRun{out: string(out), err: err, args: string(got), home: home}
+	left, _ := os.ReadDir(tmpdir)
+	return installRun{out: string(out), err: err, args: string(got), home: home, tmpLeft: len(left)}
 }
 
 func TestInstallScript下载校验并执行install(t *testing.T) {
@@ -199,6 +206,9 @@ func TestInstallScript下载校验并执行install(t *testing.T) {
 	}
 	if want := "install\n--user\n--hub\nwss://1.2.3.4:31418\n--code\nABC\n"; r.args != want {
 		t.Errorf("install 收到的参数 = %q，期望 %q", r.args, want)
+	}
+	if r.tmpLeft != 0 {
+		t.Errorf("成功后临时目录未清理，残留 %d 项", r.tmpLeft)
 	}
 	bin := filepath.Join(r.home, ".pimon", "bin", "pimon-agent")
 	if st, err := os.Stat(bin); err != nil || st.Mode().Perm()&0o100 == 0 {
@@ -217,6 +227,9 @@ func TestInstallScript校验失败时退出(t *testing.T) {
 	}
 	if !strings.Contains(r.out, "校验失败") {
 		t.Errorf("输出应说明原因：%s", r.out)
+	}
+	if r.tmpLeft != 0 {
+		t.Errorf("失败后临时目录未清理，残留 %d 项", r.tmpLeft)
 	}
 	if r.args != "" {
 		t.Errorf("校验失败后不应执行 install：%q", r.args)
