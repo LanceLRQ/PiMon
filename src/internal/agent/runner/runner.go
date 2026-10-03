@@ -32,6 +32,7 @@ type Store interface {
 	State(ctx context.Context, id string) (string, error)
 	PutState(ctx context.Context, id, pluginID, state string) error
 	Touch(ctx context.Context, ids []string) error
+	DeleteState(ctx context.Context, id string) error
 	GC(ctx context.Context, before time.Time) (int64, error)
 }
 
@@ -58,6 +59,10 @@ type Config struct {
 // Runner 持有跨会话的运行态，为每个会话创建 Binding。
 type Runner struct {
 	cfg Config
+
+	// writeMu 串行化「运行结果写入（state 与上次报告）」与「配置变化时清空」：写入方持锁后先检查运行是否已被取消，
+	// Assign 先取消旧运行再持锁清空，所以旧配置的结果不会在清空之后写回。
+	writeMu sync.Mutex
 
 	mu sync.Mutex
 	// locks 是每实例运行锁（容量 1 的 channel），跨 Binding 共享：会话被顶替时旧 Binding 的
@@ -156,6 +161,35 @@ func (r *Runner) setLast(id string, rep *report.Report) {
 			return
 		}
 	}
+}
+
+// reset 清空实例的上次报告并删除本地 state（配置内容变化后旧值不再可信，与 hub 的 resetState 一致）。
+// 调用方须已取消该实例旧配置的运行。
+func (r *Runner) reset(ctx context.Context, id string) {
+	r.writeMu.Lock()
+	defer r.writeMu.Unlock()
+	r.mu.Lock()
+	delete(r.last, id)
+	r.mu.Unlock()
+	if err := r.cfg.Store.DeleteState(ctx, id); err != nil {
+		r.cfg.Log.Warn("配置变化后删除本地 state 失败", "instance_id", clipLog(id), "err", err)
+	}
+}
+
+// commit 在运行未被取消时写入成功结果：state 与 old 不同才写库，并记下上次报告；已取消时返回 false。
+func (r *Runner) commit(ctx context.Context, id, pluginID, old string, rep *report.Report) bool {
+	r.writeMu.Lock()
+	defer r.writeMu.Unlock()
+	if ctx.Err() != nil {
+		return false
+	}
+	if rep.State != old {
+		if err := r.cfg.Store.PutState(ctx, id, pluginID, rep.State); err != nil {
+			r.cfg.Log.Warn("写入本地 state 失败", "instance_id", clipLog(id), "err", err)
+		}
+	}
+	r.setLast(id, rep)
+	return true
 }
 
 // setAssigned 更新 b 当前分配的实例集合，并丢弃不再被任何活跃 Binding 分配的实例的上次报告。

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/internal/agent/plugins"
@@ -21,6 +22,8 @@ const maxReceiptMessage = 512
 
 // spec 是当前 assign 里的一个实例：回执结果，以及回执为 started 时的运行快照。
 type spec struct {
+	// hash 是下发摘要；与上一次下发不同表示配置内容变了（不论回执是否成功）。
+	hash    string
 	status  string
 	message string
 	// job 只在 status 为 started 时非 nil。
@@ -55,6 +58,9 @@ func (b *Binding) Assign(m *agent.Assign) {
 	results := make([]agent.AssignResultItem, 0, len(m.Instances))
 	for _, in := range m.Instances {
 		sp := b.prepare(in)
+		if old := b.specs[in.ID]; old != nil && old.hash != sp.hash && sp.job != nil {
+			sp.job.reset = &sync.Once{}
+		}
 		next[in.ID] = sp
 		ids[in.ID] = true
 		touch = append(touch, in.ID)
@@ -71,10 +77,15 @@ func (b *Binding) Assign(m *agent.Assign) {
 		}
 	}
 	started := 0
-	for _, sp := range next {
+	for id, sp := range next {
 		if sp.job != nil {
-			b.upsertTask(sp)
+			b.upsertTask(sp) // 哈希变化时这里取消旧运行，先于下面的清空
 			started++
+		}
+		if old := b.specs[id]; old != nil && old.hash != sp.hash {
+			// 配置内容变化：旧的上次报告与 state 不再可信（与 hub 的 resetState 一致）。旧运行已在 upsertTask
+			// 里取消，commit 会拒绝它写回；新任务若抢先启动，其首次运行也会在持锁读 state 前再清空一次（job.reset）。
+			b.r.reset(b.ctx, id)
 		}
 	}
 	b.specs = next
@@ -85,6 +96,13 @@ func (b *Binding) Assign(m *agent.Assign) {
 
 // prepare 校验一个下发实例并构造运行快照。校验顺序：插件存在 → manifest 兼容 → 代理与配置合法。
 func (b *Binding) prepare(in agent.AssignedInstance) *spec {
+	sp := b.validate(in)
+	sp.hash = in.ConfigHash
+	return sp
+}
+
+// validate 按顺序校验并在通过时构造运行快照。
+func (b *Binding) validate(in agent.AssignedInstance) *spec {
 	p, ok := b.r.cfg.Registry.Get(in.PluginID)
 	if !ok {
 		return &spec{status: agent.AssignPluginMissing}

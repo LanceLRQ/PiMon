@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
@@ -22,6 +23,16 @@ type job struct {
 	interval time.Duration
 	// timeout 是下发的 timeout_ms，> 0 时优先于 manifest 的超时。
 	timeout time.Duration
+	// reset 非 nil 表示本次下发改变了配置内容：首次运行在持运行锁、读 state 之前执行一次清空。
+	// Assign 里也会立即清空一次；这里兜住新任务协程抢在 Assign 清空之前启动的窗口。
+	reset *sync.Once
+}
+
+// ensureReset 在运行前执行配置变化后的清空（每个 job 至多一次）。调用方持有运行锁。
+func (b *Binding) ensureReset(ctx context.Context, j *job) {
+	if j.reset != nil {
+		j.reset.Do(func() { b.r.reset(ctx, j.id) })
+	}
 }
 
 // errReadState 是读本地 state 失败时的错误（固定文字，不带库路径等细节）。
@@ -41,6 +52,7 @@ type result struct {
 func (b *Binding) collect(ctx context.Context, j *job) result {
 	clk := b.r.cfg.Clock
 	start := clk.Now()
+	b.ensureReset(ctx, j)
 	in := j.in
 	in.Last = b.r.lastFor(j.id)
 	old, err := b.r.cfg.Store.State(ctx, j.id)
@@ -67,12 +79,9 @@ func (b *Binding) collect(ctx context.Context, j *job) result {
 	if err != nil {
 		return res
 	}
-	if rep.State != old {
-		if err := b.r.cfg.Store.PutState(ctx, j.id, j.pluginID, rep.State); err != nil {
-			b.r.cfg.Log.Warn("写入本地 state 失败", "instance_id", clipLog(j.id), "err", err)
-		}
+	if !b.r.commit(ctx, j.id, j.pluginID, old, rep) {
+		return result{canceled: true}
 	}
-	b.r.setLast(j.id, rep)
 	return res
 }
 
@@ -121,6 +130,7 @@ type streamRun struct {
 
 func (s *streamRun) Run(ctx context.Context, in runtime.Input, _ func(*report.Report)) error {
 	b, j := s.b, s.j
+	b.ensureReset(ctx, j)
 	in.Last = b.r.lastFor(j.id)
 	cur, err := b.r.cfg.Store.State(ctx, j.id)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -131,14 +141,10 @@ func (s *streamRun) Run(ctx context.Context, in runtime.Input, _ func(*report.Re
 		if ctx.Err() != nil || rep == nil {
 			return
 		}
-		if rep.State != cur {
-			if err := b.r.cfg.Store.PutState(ctx, j.id, j.pluginID, rep.State); err != nil {
-				b.r.cfg.Log.Warn("写入本地 state 失败", "instance_id", clipLog(j.id), "err", err)
-			} else {
-				cur = rep.State
-			}
+		if !b.r.commit(ctx, j.id, j.pluginID, cur, rep) {
+			return
 		}
-		b.r.setLast(j.id, rep)
+		cur = rep.State
 		now := b.r.cfg.Clock.Now()
 		b.sendReport(j.id, result{rep: rep, start: now}.outcome(j.hash))
 	})

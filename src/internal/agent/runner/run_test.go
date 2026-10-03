@@ -46,8 +46,8 @@ func TestRun_state往返与报告序号(t *testing.T) {
 	// 重新下发（配置变化）后序号继续递增，ConfigHash 换成新值
 	b.Assign(&agent.Assign{Version: 2, Instances: []agent.AssignedInstance{inst("a", "a", "h2")}})
 	third := src.next(t)
-	if third.in.State != "|a|a" {
-		t.Fatalf("第三次运行 state = %q", third.in.State)
+	if third.in.State != "" || third.in.Last != nil {
+		t.Fatalf("配置变化后应清空 state 与上次报告（Ruling 5），state=%q last=%v", third.in.State, third.in.Last)
 	}
 	if r3 := expect[*agent.Report](t, s); r3.Seq != 3 || r3.ConfigHash != "h2" {
 		t.Fatalf("第三份报告 = %+v", r3)
@@ -294,10 +294,69 @@ func TestStream_报告带序号与ConfigHash并写state(t *testing.T) {
 		t.Fatalf("state = %q", v)
 	}
 	b.Assign(&agent.Assign{Version: 2, Instances: []agent.AssignedInstance{inst("a", "a", "h2")}})
-	if in := <-ss.inputs; in.State != "+" {
-		t.Fatalf("重启后的 state = %q", in.State)
+	if in := <-ss.inputs; in.State != "" || in.Last != nil {
+		t.Fatalf("配置变化重启后应清空 state 与上次报告，state=%q last=%v", in.State, in.Last)
 	}
 	if r := expect[*agent.Report](t, s); r.Seq != 2 || r.ConfigHash != "h2" {
 		t.Fatalf("重启后报告 = %+v", r)
+	}
+}
+
+func TestAssign_配置哈希变化清空上次报告与state(t *testing.T) {
+	src := newCountSource(t)
+	f := newFixture(t, 0, src)
+	b, s := f.attach(t)
+
+	b.Assign(&agent.Assign{Version: 1, Instances: []agent.AssignedInstance{inst("a", "a", "ha"), inst("k", "k", "hk")}})
+	expect[*agent.Report](t, s)
+	expect[*agent.Report](t, s)
+	src.next(t)
+	src.next(t)
+
+	// a 的配置变化、k 未变：a 立即按新配置重跑，拿不到旧的上次报告与 state
+	b.Assign(&agent.Assign{Version: 2, Instances: []agent.AssignedInstance{inst("a", "a", "ha2"), inst("k", "k", "hk")}})
+	c := src.next(t)
+	if c.name != "a" || c.in.State != "" || c.in.Last != nil {
+		t.Fatalf("配置变化后的首次运行 = name %q state %q last %v", c.name, c.in.State, c.in.Last)
+	}
+	expect[*agent.Report](t, s)
+
+	// k 未变：下次周期运行仍拿到原来的 state 与上次报告
+	// （a 的新循环可能还没登记下一次计时，这里只看 k）
+	f.clk.Advance(60 * time.Second)
+	for {
+		c := src.next(t)
+		if c.name != "k" {
+			continue
+		}
+		if c.in.State != "|k" || c.in.Last == nil {
+			t.Fatalf("未变的实例应保留 state 与上次报告，state=%q last=%v", c.in.State, c.in.Last)
+		}
+		break
+	}
+}
+
+func TestAssign_配置哈希变化时删除本地state(t *testing.T) {
+	src := newCountSource(t)
+	f := newFixture(t, time.Hour, src) // 周期运行推迟，便于观察删除本身
+	b, s := f.attach(t)
+
+	b.Assign(&agent.Assign{Version: 1, Instances: []agent.AssignedInstance{inst("a", "a", "ha"), inst("k", "k", "hk")}})
+	expect[*agent.AssignResult](t, s)
+	for _, id := range []string{"a", "k"} {
+		b.RunNow(&agent.RunNow{RequestID: id, InstanceID: id})
+		expect[*agent.RunResult](t, s)
+	}
+	b.Assign(&agent.Assign{Version: 2, Instances: []agent.AssignedInstance{inst("a", "a", "ha2"), inst("k", "k", "hk")}})
+	if _, ok := state(t, f.store, "a"); ok {
+		t.Fatal("配置变化后应删除本地 state")
+	}
+	if v, ok := state(t, f.store, "k"); !ok || v != "|k" {
+		t.Fatalf("未变实例的 state = %q %v", v, ok)
+	}
+	// 移出 assign 仍不删 state（Ruling 1）
+	b.Assign(&agent.Assign{Version: 3})
+	if _, ok := state(t, f.store, "k"); !ok {
+		t.Fatal("移出 assign 不应删除 state")
 	}
 }
