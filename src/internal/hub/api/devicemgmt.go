@@ -126,7 +126,11 @@ func (s *server) updateDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cur.Direction == model.DeviceDialOut {
-		fe := s.checkDialOutFields(ctx, &in)
+		fe, err := s.checkDialOutFields(ctx, &in)
+		if err != nil {
+			internalError(w, r, err)
+			return
+		}
 		if len(fe) > 0 {
 			httpx.WriteValidationFailed(w, fe)
 			return
@@ -157,7 +161,7 @@ func (s *server) updateDevice(w http.ResponseWriter, r *http.Request) {
 }
 
 // checkDialOutFields 校验并规范化拨出设备可改的地址与代理（原地改写 in.Address），返回字段错误。
-func (s *server) checkDialOutFields(ctx context.Context, in *model.DeviceInput) model.FieldErrors {
+func (s *server) checkDialOutFields(ctx context.Context, in *model.DeviceInput) (model.FieldErrors, error) {
 	fe := model.FieldErrors{}
 	if in.Address != nil {
 		addr := strings.TrimSpace(*in.Address)
@@ -172,9 +176,11 @@ func (s *server) checkDialOutFields(ctx context.Context, in *model.DeviceInput) 
 	if in.ProxyID != nil && s.Proxies != nil {
 		if _, err := s.Proxies.Resolve(ctx, *in.ProxyID); errors.Is(err, proxies.ErrNotFound) {
 			fe["proxy_id"] = model.FieldInvalid
+		} else if err != nil {
+			return nil, err
 		}
 	}
-	return fe
+	return fe, nil
 }
 
 // revokeDevice 吊销设备：删除设备行，经变更回调断开会话并清除在线状态、插件缓存、停止拨出重连。
@@ -337,6 +343,18 @@ func (s *server) repairDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prefillRepair(&req, dev, det)
+	// 新设备会接替旧设备的实例：改为 VPS 角色时与 PUT 同样检查代理，必须在拨号与写库之前。
+	if req.Role == model.DeviceRoleVPS && dev.Role != model.DeviceRoleVPS && s.Instances != nil {
+		conflicts, err := s.Instances.RoleProxyConflicts(ctx, id, req.Role)
+		if err != nil {
+			internalError(w, r, err)
+			return
+		}
+		if len(conflicts) > 0 {
+			writeConflictingInstances(w, conflicts)
+			return
+		}
+	}
 	if s.DialOut == nil {
 		httpx.WriteError(w, http.StatusServiceUnavailable, httpx.CodeShuttingDown, nil)
 		return

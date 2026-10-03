@@ -398,6 +398,12 @@ func TestDevices吊销等会话断开后才返回(t *testing.T) {
 	dev := e.addDevice("srv", model.DeviceRoleServer)
 	done := e.sessions.add(dev.ID)
 	e.sessions.asked = make(chan string, 4)
+	removed := make(chan struct{}, 4)
+	e.devices.OnChange(func(_ string, gone bool) {
+		if gone {
+			removed <- struct{}{}
+		}
+	})
 
 	type result struct {
 		resp *http.Response
@@ -409,16 +415,7 @@ func TestDevices吊销等会话断开后才返回(t *testing.T) {
 		resCh <- result{resp, data}
 	}()
 	<-e.sessions.asked
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if _, err := e.devices.Get(context.Background(), dev.ID); err != nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("设备行应被删除")
-		}
-		time.Sleep(time.Millisecond)
-	}
+	<-removed
 	select {
 	case r := <-resCh:
 		t.Fatalf("会话未断开时不应返回: %d %s", r.resp.StatusCode, r.data)
@@ -525,5 +522,49 @@ func TestDevices重新配对拨出设备按旧设备预填并带上目标(t *tes
 	er := e.expectError(resp, data, http.StatusBadGateway, "pairing.failed")
 	if er.Error.Details["reason"] != "bad_code" {
 		t.Fatalf("details = %v", er.Error.Details)
+	}
+}
+
+// 重新配对不能绕过角色检查：改为 vps 时，旧设备上走非 any 代理的实例会被拒绝，且不会开始拨号。
+func TestDevices重新配对改为VPS时检查实例代理(t *testing.T) {
+	e := newEnv(t)
+	c := e.setup()
+	ctx := context.Background()
+	dev := e.addDevice("srv", model.DeviceRoleServer)
+	lan, err := e.deps.Proxies.Create(ctx, model.ProxyInput{Name: "lan", Scheme: "http", Address: "10.0.0.1:8080", Location: model.ProxyLocationLAN})
+	must(t, err)
+	resp, data := e.do(c, "POST", "/api/instances", map[string]any{
+		"plugin_id": "remote-probe", "name": "走lan", "runs_on": dev.ID, "config": map[string]any{"host": "a", "via": lan.ID}})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("创建实例 = %d %s", resp.StatusCode, data)
+	}
+	inst := decode[model.InstanceDetail](t, data)
+
+	resp, data = e.do(c, "POST", "/api/devices/"+dev.ID+"/repair", map[string]any{"code": "C", "fingerprint": "SHA256:x", "role": "vps"})
+	er := e.expectError(resp, data, http.StatusUnprocessableEntity, "proxy.location_mismatch")
+	insts, _ := er.Error.Details["instances"].([]any)
+	if len(insts) != 1 || insts[0].(map[string]any)["id"] != inst.ID {
+		t.Fatalf("details = %v", er.Error.Details)
+	}
+	if e.pairer.calls() != 0 {
+		t.Fatal("被拒时不应调用 DialOut.Repair")
+	}
+}
+
+// 校验拨出设备的代理时遇到非「不存在」的错误（这里是认证解密失败）应返回 500，且不写库。
+func TestDevices更新时代理读取失败返回500且不写库(t *testing.T) {
+	e := newEnv(t)
+	c := e.setup()
+	ctx := context.Background()
+	dev := e.addDevice("srv", model.DeviceRoleServer)
+	px, err := e.deps.Proxies.Create(ctx, model.ProxyInput{Name: "p", Scheme: "http", Address: "10.0.0.1:8080",
+		Auth: &model.ProxyAuthInput{Username: "u", Password: "p"}})
+	must(t, err)
+	_, err = e.db.ExecContext(ctx, `UPDATE proxies SET auth_enc = 'broken' WHERE id = ?`, px.ID)
+	must(t, err)
+	resp, data := e.do(c, "PUT", "/api/devices/"+dev.ID, map[string]any{"name": "改名", "role": "server", "proxy_id": px.ID})
+	e.expectError(resp, data, http.StatusInternalServerError, "internal")
+	if d, _ := e.devices.Get(ctx, dev.ID); d.Name != "srv" || d.ProxyID != "" {
+		t.Fatalf("不应写库: %+v", d)
 	}
 }
