@@ -18,6 +18,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
 	"github.com/LanceLRQ/PiMon/src/plugins/internal/cfg"
+	"github.com/LanceLRQ/PiMon/src/plugins/internal/cmdexec"
 )
 
 //go:embed plugin.yaml
@@ -59,7 +60,7 @@ type Plugin struct {
 }
 
 func init() {
-	runtime.Register(New(newSystemSampler(throttleIO{run: runCommand, readFile: os.ReadFile})))
+	runtime.Register(New(newSystemSampler(throttleIO{run: commandRunner(cmdexec.New()), readFile: os.ReadFile})))
 }
 
 // New 用给定取数来源构造插件。

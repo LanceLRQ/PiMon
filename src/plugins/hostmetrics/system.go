@@ -3,6 +3,7 @@ package hostmetrics
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -84,7 +85,7 @@ func (s *systemSampler) Partitions(ctx context.Context) ([]Partition, error) {
 	}
 	out := make([]Partition, 0, len(ps))
 	for _, p := range ps {
-		out = append(out, Partition{Mount: p.Mountpoint, FSType: p.Fstype, Device: p.Device})
+		out = append(out, Partition{Mount: p.Mountpoint, FSType: p.Fstype, Device: p.Device, ReadOnly: slices.Contains(p.Opts, "ro")})
 	}
 	return out, nil
 }
