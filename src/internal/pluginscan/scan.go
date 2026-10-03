@@ -55,15 +55,18 @@ type Exec struct {
 
 // ScanDir 扫描插件目录下的每个子目录。目录不存在视为没有 exec 插件；
 // 根目录读取失败降级为一条 IssueDirUnreadable 并记日志。builtinIDs 里的 id 视为冲突；
-// euid 是运行进程的有效 uid，runner 是属主报错里的进程名（"hub"/"agent"）。
-// 返回顺序按目录名升序（os.ReadDir 的顺序）。
-func ScanDir(dir string, euid int, builtinIDs map[string]bool, runner string) ([]Exec, []Issue) {
+// euid 是运行进程的有效 uid，runner 是属主报错里的进程名（"hub"/"agent"）；
+// log 记录目录读取失败，nil 时用 slog.Default()。返回顺序按目录名升序（os.ReadDir 的顺序）。
+func ScanDir(dir string, euid int, builtinIDs map[string]bool, runner string, log *slog.Logger) ([]Exec, []Issue) {
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
-		slog.Warn("读取插件目录失败，只加载内置插件", "dir", dir, "err", err)
+		if log == nil {
+			log = slog.Default()
+		}
+		log.Warn("读取插件目录失败，只加载内置插件", "dir", dir, "err", err)
 		return nil, []Issue{{Dir: dir, Kind: IssueDirUnreadable, Message: fmt.Sprintf("无法读取插件目录: %v", err)}}
 	}
 	var execs []Exec
