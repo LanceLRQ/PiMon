@@ -33,8 +33,9 @@ const (
 	AuthMaxFailures  = 10
 	AuthLockDuration = 15 * time.Minute
 
-	// limitKeyPrefix 是限流 key 前缀，后面依次拼首帧类型（auth: 或 pair:）与来源 IP。
+	// limitKeyPrefix 是限流 key 前缀，后面依次拼首帧类型（auth: 或 pair:）或 idle:（握手超时计数）与来源 IP。
 	limitKeyPrefix = "agent:"
+	idleKind       = "idle:"
 	maxHeaderBytes = 16 << 10
 )
 
@@ -94,6 +95,10 @@ type ListenerConfig struct {
 	Auth Authenticator
 	// Limiter 为空时用 ratelimit.NewLimiter(Clock, AuthMaxFailures, AuthLockDuration)。
 	Limiter FailLimiter
+	// TimeoutLimiter 对握手超时与首帧读取失败（含对端断开、首帧超限）做宽松计数，key 为 agent:idle:<来源>；
+	// 该 key 锁定期间新连接在升级前直接回 503，认证或配对成功时清零。为空表示不计数（hub 不传，行为不变）。
+	// 与 Limiter 相互独立：握手超时不计入认证失败，认证失败也不计入这里。
+	TimeoutLimiter FailLimiter
 	// Clock 默认 clock.Real{}；握手超时、会话心跳都走它。
 	Clock clock.Clock
 	// Log 默认 slog.Default()。
@@ -248,6 +253,12 @@ func (l *Listener) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	defer l.conns.Done()
 
 	key := sourceKey(r.RemoteAddr)
+	if l.idleLocked(key) {
+		// 被锁来源多为扫描器，降到 Debug 避免刷屏。
+		l.log.Debug("agent 通道来源握手超时次数过多，已锁定，拒绝新连接", "remote_addr", r.RemoteAddr)
+		reject(w)
+		return
+	}
 	if !l.admit(key) {
 		l.log.Warn("agent 通道认证前连接数已满，拒绝新连接", "remote_addr", r.RemoteAddr)
 		reject(w)
@@ -267,6 +278,11 @@ func (l *Listener) serveHTTP(w http.ResponseWriter, r *http.Request) {
 func reject(w http.ResponseWriter) {
 	w.Header().Set("Connection", "close")
 	http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+}
+
+// idleLocked 报告来源 key 是否因握手超时次数过多处于锁定；未配置 TimeoutLimiter 时恒为假。
+func (l *Listener) idleLocked(key string) bool {
+	return l.cfg.TimeoutLimiter != nil && l.cfg.TimeoutLimiter.Locked(limitKeyPrefix+idleKind+key) > 0
 }
 
 // admit 为来源 key 占用一个认证前名额：先看单来源上限，再看全局上限；任一已满返回假。
@@ -359,28 +375,44 @@ func (l *Listener) handshake(fc frameConn, remoteAddr, key string) (Peer, bool) 
 		}
 	}()
 
-	peer, ok := l.doHandshake(ctx, fc, remoteAddr, key)
+	peer, ok, readFailed := l.doHandshake(ctx, fc, remoteAddr, key)
 	close(stop)
 	<-watchDone
 	if timedOut.Load() {
 		l.log.Info("agent 通道握手超时，断开连接", "remote_addr", remoteAddr)
+		l.idleFail(key)
 		return Peer{}, false
+	}
+	// 关停导致的读失败不算对端的问题。
+	if readFailed && l.baseCtx.Err() == nil {
+		l.idleFail(key)
+	}
+	if ok && l.cfg.TimeoutLimiter != nil {
+		l.cfg.TimeoutLimiter.Success(limitKeyPrefix + idleKind + key)
 	}
 	return peer, ok
 }
 
-func (l *Listener) doHandshake(ctx context.Context, fc frameConn, remoteAddr, key string) (Peer, bool) {
+// idleFail 对来源 key 的握手超时计数记一次；未配置 TimeoutLimiter 时不做任何事。
+func (l *Listener) idleFail(key string) {
+	if l.cfg.TimeoutLimiter != nil {
+		l.cfg.TimeoutLimiter.Fail(limitKeyPrefix + idleKind + key)
+	}
+}
+
+// doHandshake 执行握手，返回对端信息、是否成功，以及首帧是否读取失败（对端断开、超时关闭或首帧超限，供调用方计入 idle）。
+func (l *Listener) doHandshake(ctx context.Context, fc frameConn, remoteAddr, key string) (Peer, bool, bool) {
 	log := l.log.With("remote_addr", remoteAddr)
 	fc.SetReadLimit(agent.MaxPreAuthFrame)
 	b, err := fc.Read(ctx)
 	if err != nil {
 		log.Debug("agent 通道握手读首帧失败", "err", err)
-		return Peer{}, false
+		return Peer{}, false, true
 	}
 	msg, err := agent.Decode(b)
 	if err != nil {
 		log.Info("agent 通道首帧不合法，断开连接", "err", err)
-		return Peer{}, false
+		return Peer{}, false, false
 	}
 
 	// 凭据认证与配对分开计数：合法 agent 凭据重连不会清零配对码的猜测次数，配对被锁也不影响凭据认证。
@@ -392,18 +424,18 @@ func (l *Listener) doHandshake(ctx context.Context, fc frameConn, remoteAddr, ke
 		role, kind = m.Role, "pair:"
 	default:
 		log.Info("agent 通道首帧不是认证或配对，断开连接", "type", string(msg.MsgType()))
-		return Peer{}, false
+		return Peer{}, false, false
 	}
 
 	key = limitKeyPrefix + kind + key
 	if l.limiter.Locked(key) > 0 {
 		log.Warn("agent 通道来源 IP 认证失败次数过多，已锁定")
 		l.writeFrame(ctx, fc, &agent.AuthFail{Reason: agent.ReasonRateLimited})
-		return Peer{}, false
+		return Peer{}, false, false
 	}
 	if role != peerRole(l.cfg.Role) {
 		l.fail(ctx, fc, log, key, agent.ReasonBadCredential, "role", role)
-		return Peer{}, false
+		return Peer{}, false, false
 	}
 
 	peer := Peer{RemoteAddr: remoteAddr, Role: role}
@@ -413,7 +445,7 @@ func (l *Listener) doHandshake(ctx context.Context, fc frameConn, remoteAddr, ke
 		id, err := l.cfg.Auth.Authenticate(ctx, *m)
 		if err != nil {
 			l.authError(ctx, fc, log, key, err)
-			return Peer{}, false
+			return Peer{}, false, false
 		}
 		peer.DeviceID = id
 		reply = &agent.AuthOK{DeviceID: id}
@@ -421,16 +453,16 @@ func (l *Listener) doHandshake(ctx context.Context, fc frameConn, remoteAddr, ke
 		ok, err := l.cfg.Auth.Pair(ctx, *m)
 		if err != nil {
 			l.authError(ctx, fc, log, key, err)
-			return Peer{}, false
+			return Peer{}, false, false
 		}
 		peer.DeviceID = ok.DeviceID
 		reply = &ok
 	}
 	l.limiter.Success(key)
 	if !l.writeFrame(ctx, fc, reply) {
-		return Peer{}, false
+		return Peer{}, false, false
 	}
-	return peer, true
+	return peer, true, false
 }
 
 // authError 处理 Authenticator 的错误：*AuthError 回 auth_fail 并按原因计入失败，其他错误直接断开。

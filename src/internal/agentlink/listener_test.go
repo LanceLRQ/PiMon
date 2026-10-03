@@ -19,6 +19,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/LanceLRQ/PiMon/src/internal/certs"
+	"github.com/LanceLRQ/PiMon/src/internal/ratelimit"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/protocol/agent"
 )
@@ -762,5 +763,185 @@ func TestListener_配对被锁时凭据认证仍可成功(t *testing.T) {
 	send(t, c, agentAuth(goodCredential))
 	if _, ok := mustRecv(t, c).(*agent.AuthOK); !ok {
 		t.Fatal("配对被锁不应影响凭据认证")
+	}
+}
+
+// keyLimiter 按 key 记录 Fail 与 Success 次数，Locked 只对 locked 中的 key 返回非零。
+type keyLimiter struct {
+	mu      sync.Mutex
+	fails   map[string]int
+	success map[string]int
+	locked  map[string]bool
+}
+
+func newKeyLimiter() *keyLimiter {
+	return &keyLimiter{fails: map[string]int{}, success: map[string]int{}, locked: map[string]bool{}}
+}
+
+func (l *keyLimiter) Locked(key string) time.Duration {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.locked[key] {
+		return time.Minute
+	}
+	return 0
+}
+
+func (l *keyLimiter) Fail(key string) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.fails[key]++
+	return 1
+}
+
+func (l *keyLimiter) Success(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.success[key]++
+}
+
+func (l *keyLimiter) snapshot() (fails, success map[string]int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	fails, success = map[string]int{}, map[string]int{}
+	for k, v := range l.fails {
+		fails[k] = v
+	}
+	for k, v := range l.success {
+		success[k] = v
+	}
+	return fails, success
+}
+
+const idleKey = "agent:idle:127.0.0.1"
+
+func TestListener_握手超时对idle键记一次且不计认证失败(t *testing.T) {
+	idle, auth := newKeyLimiter(), newKeyLimiter()
+	f := newListenerFixture(t, func(c *ListenerConfig) { c.TimeoutLimiter = idle; c.Limiter = auth })
+	c := f.mustDial()
+	waitFor(t, "握手计时器登记", func() bool { return f.clk.Waiters() == 1 })
+	f.clk.Advance(HandshakeTimeout)
+	expectClosed(t, c)
+	waitFor(t, "idle 计数", func() bool { fails, _ := idle.snapshot(); return fails[idleKey] == 1 })
+	if fails, _ := idle.snapshot(); len(fails) != 1 {
+		t.Fatalf("idle 计数 = %v，期望只有 %s 一次", fails, idleKey)
+	}
+	if fails, _ := auth.snapshot(); len(fails) != 0 {
+		t.Fatalf("握手超时不应计入认证失败：%v", fails)
+	}
+}
+
+func TestListener_首帧读取失败对idle键记一次(t *testing.T) {
+	idle := newKeyLimiter()
+	f := newListenerFixture(t, func(c *ListenerConfig) { c.TimeoutLimiter = idle })
+	c := f.mustDial()
+	waitFor(t, "握手计时器登记", func() bool { return f.clk.Waiters() == 1 })
+	_ = c.CloseNow()
+	waitFor(t, "idle 计数", func() bool { fails, _ := idle.snapshot(); return fails[idleKey] == 1 })
+	// 握手已结束，再推进时钟不应重复计数。
+	f.clk.Advance(HandshakeTimeout)
+	if fails, _ := idle.snapshot(); fails[idleKey] != 1 {
+		t.Fatalf("idle 计数 = %v，期望 1", fails)
+	}
+}
+
+func TestListener_首帧超过4KiB也对idle键记一次(t *testing.T) {
+	idle := newKeyLimiter()
+	f := newListenerFixture(t, func(c *ListenerConfig) { c.TimeoutLimiter = idle })
+	c := f.mustDial()
+	big := `{"type":"auth","role":"agent","credential":"` + strings.Repeat("x", agent.MaxPreAuthFrame) + `"}`
+	sendRaw(t, c, []byte(big))
+	expectClosed(t, c)
+	waitFor(t, "idle 计数", func() bool { fails, _ := idle.snapshot(); return fails[idleKey] == 1 })
+}
+
+func TestListener_认证成功或认证失败不计idle且成功清零idle(t *testing.T) {
+	idle := newKeyLimiter()
+	f := newListenerFixture(t, func(c *ListenerConfig) { c.TimeoutLimiter = idle })
+	c := f.mustDial()
+	send(t, c, agentAuth("wrong"))
+	expectAuthFail(t, c, agent.ReasonBadCredential)
+	c = f.mustDial()
+	sendRaw(t, c, []byte(`{"type":"ping","sent_at":"2026-10-02T08:00:00Z"}`))
+	expectClosed(t, c)
+	c = f.mustDial()
+	send(t, c, agentAuth(goodCredential))
+	if _, ok := mustRecv(t, c).(*agent.AuthOK); !ok {
+		t.Fatal("期望 auth_ok")
+	}
+	fails, success := idle.snapshot()
+	if len(fails) != 0 {
+		t.Fatalf("认证结果与非法首帧不应计 idle：%v", fails)
+	}
+	if success[idleKey] != 1 {
+		t.Fatalf("认证成功应清零 idle 计数：%v", success)
+	}
+}
+
+func TestListener_idle键锁定时直接回503且不占名额(t *testing.T) {
+	idle := newKeyLimiter()
+	idle.locked[idleKey] = true
+	f := newListenerFixture(t, func(c *ListenerConfig) { c.TimeoutLimiter = idle })
+	for i := 0; i < maxPendingPerIP+1; i++ {
+		_, resp, err := f.dial()
+		if err == nil || resp == nil || resp.StatusCode != http.StatusServiceUnavailable || !resp.Close {
+			t.Fatalf("第 %d 次：期望 503 + Connection: close：resp=%v err=%v", i+1, resp, err)
+		}
+	}
+	if n := f.auth.calls.Load(); n != 0 {
+		t.Fatalf("锁定来源不应调用 Authenticator，调用了 %d 次", n)
+	}
+	idle.mu.Lock()
+	idle.locked[idleKey] = false
+	idle.mu.Unlock()
+	c := f.mustDial()
+	send(t, c, agentAuth(goodCredential))
+	if _, ok := mustRecv(t, c).(*agent.AuthOK); !ok {
+		t.Fatal("解锁后应能认证")
+	}
+}
+
+func TestListener_真实限流器握手超时累计后锁定15分钟(t *testing.T) {
+	var lim *ratelimit.Limiter
+	f := newListenerFixture(t, func(c *ListenerConfig) {
+		lim = ratelimit.NewLimiter(c.Clock, 3, 15*time.Minute)
+		c.TimeoutLimiter = lim
+	})
+	for i := 0; i < 3; i++ {
+		c := f.mustDial()
+		waitFor(t, "握手计时器登记", func() bool { return f.clk.Waiters() == 1 })
+		f.clk.Advance(HandshakeTimeout)
+		expectClosed(t, c)
+		waitFor(t, "握手计时器释放", func() bool { return f.clk.Waiters() == 0 })
+	}
+	waitFor(t, "idle 键锁定", func() bool { return lim.Locked(idleKey) > 0 })
+	if _, resp, err := f.dial(); err == nil || resp == nil || resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("锁定后期望 503：resp=%v err=%v", resp, err)
+	}
+	f.clk.Advance(15 * time.Minute)
+	c := f.mustDial()
+	send(t, c, agentAuth(goodCredential))
+	if _, ok := mustRecv(t, c).(*agent.AuthOK); !ok {
+		t.Fatal("15 分钟后应解锁")
+	}
+}
+
+func TestListener_不传TimeoutLimiter时握手超时不计数也不锁定(t *testing.T) {
+	auth := newKeyLimiter()
+	f := newListenerFixture(t, func(c *ListenerConfig) { c.Limiter = auth })
+	for i := 0; i < 40; i++ {
+		c := f.mustDial()
+		waitFor(t, "握手计时器登记", func() bool { return f.clk.Waiters() == 1 })
+		f.clk.Advance(HandshakeTimeout)
+		expectClosed(t, c)
+		waitFor(t, "握手计时器释放", func() bool { return f.clk.Waiters() == 0 })
+	}
+	c := f.mustDial()
+	send(t, c, agentAuth(goodCredential))
+	if _, ok := mustRecv(t, c).(*agent.AuthOK); !ok {
+		t.Fatal("hub 不传 TimeoutLimiter 时不应锁定")
+	}
+	if fails, _ := auth.snapshot(); len(fails) != 0 {
+		t.Fatalf("握手超时不应计入认证失败：%v", fails)
 	}
 }
