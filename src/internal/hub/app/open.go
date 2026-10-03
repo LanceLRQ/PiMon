@@ -312,8 +312,16 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		Devices:      a.devices,
 		DeviceLogs:   a.dispatcher,
 		DialOut:      a.dialout,
-		Web:          webui.New(webui.Embedded(), o.version),
-		WS:           a.ws.Handler(),
+		// 设备视图在 REST 与（之后的）WS 里共用：在线状态读内存，连接错误来自拨出管理器，时钟偏移来自会话。
+		DeviceViews: devices.NewViewer(devices.ViewerConfig{
+			Store: a.devices, Presence: a.presence, ConnError: a.dialout.ConnError, ClockSkew: a.agents.ClockSkew,
+		}),
+		DeviceSessions: a.agents,
+		AgentInfo: func() api.AgentChannel {
+			return api.AgentChannel{Addr: a.AgentAddr(), Fingerprint: a.spki.String(), HubVersion: o.version}
+		},
+		Web: webui.New(webui.Embedded(), o.version),
+		WS:  a.ws.Handler(),
 	})
 	return nil
 }

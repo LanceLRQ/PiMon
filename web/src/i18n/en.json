@@ -150,6 +150,9 @@
       "offline": "The device is offline; the action cannot be performed",
       "incompatible": "The agent on this device is not compatible with the hub. Upgrade the agent."
     },
+    "agent": {
+      "disabled": "The agent channel is disabled, so devices cannot be paired. Set a listen address with --agent-addr."
+    },
     "layout": {
       "conflict": "The layout was updated elsewhere. Reload before saving.",
       "invalid": "The layout is invalid: overlapping, out-of-bounds or disallowed sizes"

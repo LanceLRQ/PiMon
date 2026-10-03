@@ -489,3 +489,69 @@ func TestRemoteNil时远程实例只是不调度(t *testing.T) {
 		t.Fatal("远程实例不应进入调度器")
 	}
 }
+
+// 设备改角色前的检查：只有改为 vps 时，设备上代理不是 any 的实例才冲突；无代理的实例不受影响。
+func TestRoleProxyConflicts列出不能留在VPS上的实例(t *testing.T) {
+	mf := newMachineFx(t)
+	px, _ := proxy.Parse("http://127.0.0.1:8080")
+	for id, loc := range map[string]string{"p-lan": model.ProxyLocationLAN, "p-any": model.ProxyLocationAny} {
+		mf.px.known[id] = px
+		mf.px.locs = mapPut(mf.px.locs, id, loc)
+	}
+	lan, err := mf.createOn(devServer, "dual", "走lan", map[string]any{"host": "a", "via": "p-lan"})
+	must(t, err)
+	_, err = mf.createOn(devServer, "dual", "走any", map[string]any{"host": "a", "via": "p-any"})
+	must(t, err)
+	_, err = mf.createOn(devServer, "dual", "直连", map[string]any{"host": "a"})
+	must(t, err)
+	_, err = mf.createOn("hub", "dual", "本机", map[string]any{"host": "a", "via": "p-lan"})
+	must(t, err)
+
+	got, err := mf.svc.RoleProxyConflicts(bg, devServer, model.DeviceRoleVPS)
+	must(t, err)
+	if len(got) != 1 || got[0].ID != lan.ID || got[0].Name != "走lan" {
+		t.Fatalf("改为 vps 的冲突 = %+v", got)
+	}
+	got, err = mf.svc.RoleProxyConflicts(bg, devServer, model.DeviceRoleNAS)
+	must(t, err)
+	if len(got) != 0 {
+		t.Fatalf("改为 nas 不应冲突: %+v", got)
+	}
+}
+
+// 代理改窄前的检查：只看运行在设备上的实例，规则与创建实例时一致；hub 上的实例不受限。
+func TestProxyNarrowConflicts按设备角色判断(t *testing.T) {
+	mf := newMachineFx(t)
+	px, _ := proxy.Parse("http://127.0.0.1:8080")
+	mf.px.known["p1"] = px
+	cfg := map[string]any{"host": "a", "via": "p1"}
+	onSrv, err := mf.createOn(devServer, "dual", "服务器上", cfg)
+	must(t, err)
+	onVPS, err := mf.createOn(devVPS, "dual", "VPS上", cfg)
+	must(t, err)
+	_, err = mf.createOn("hub", "dual", "本机", cfg)
+	must(t, err)
+
+	ids := func(loc string) []string {
+		t.Helper()
+		got, err := mf.svc.ProxyLocationConflicts(bg, "p1", loc)
+		must(t, err)
+		var out []string
+		for _, r := range got {
+			out = append(out, r.ID)
+		}
+		slices.Sort(out)
+		return out
+	}
+	if got := ids(model.ProxyLocationAny); len(got) != 0 {
+		t.Fatalf("any 不应冲突: %v", got)
+	}
+	if got, want := ids(model.ProxyLocationLAN), []string{onVPS.ID}; !slices.Equal(got, want) {
+		t.Fatalf("改为 lan 的冲突 = %v，期望 %v", got, want)
+	}
+	want := []string{onSrv.ID, onVPS.ID}
+	slices.Sort(want)
+	if got := ids(model.ProxyLocationHub); !slices.Equal(got, want) {
+		t.Fatalf("改为 hub 的冲突 = %v，期望 %v", got, want)
+	}
+}

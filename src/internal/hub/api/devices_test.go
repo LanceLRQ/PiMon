@@ -19,14 +19,25 @@ import (
 type fakePairer struct {
 	mu   sync.Mutex
 	reqs []model.DialOutRequest
-	dev  model.Device
-	err  error
+	// repairs 记录重新配对的目标设备 ID，与 reqs 一一对应（普通配对为空串）。
+	repairs []string
+	dev     model.Device
+	err     error
 }
 
 func (f *fakePairer) Pair(_ context.Context, req model.DialOutRequest) (model.Device, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.reqs = append(f.reqs, req)
+	f.repairs = append(f.repairs, "")
+	return f.dev, f.err
+}
+
+func (f *fakePairer) Repair(_ context.Context, oldID string, req model.DialOutRequest) (model.Device, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.reqs = append(f.reqs, req)
+	f.repairs = append(f.repairs, oldID)
 	return f.dev, f.err
 }
 

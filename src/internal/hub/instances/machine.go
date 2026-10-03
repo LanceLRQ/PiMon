@@ -168,13 +168,88 @@ func (s *Service) checkProxyLocation(ctx context.Context, machine string, fields
 	if !ok {
 		return &MachineInvalidError{Reason: ReasonDeviceNotFound}
 	}
-	switch {
-	case loc == model.ProxyLocationAny:
-		return nil
-	case loc == model.ProxyLocationLAN && dev.Role != model.DeviceRoleVPS:
+	if locationAllowed(loc, dev.Role) {
 		return nil
 	}
 	return &ProxyLocationError{Field: proxyKey(fields), Location: loc}
+}
+
+// locationAllowed 是代理可用位置规则（设备上的实例）：any 随处可用；lan 只给非 VPS 设备；hub 只给中枢本机，设备上不可用。
+func locationAllowed(loc, role string) bool {
+	switch loc {
+	case model.ProxyLocationAny:
+		return true
+	case model.ProxyLocationLAN:
+		return role != model.DeviceRoleVPS
+	}
+	return false
+}
+
+// RoleProxyConflicts 列出运行在设备 machine 上、所选代理不能在 role 角色的设备上使用的实例
+// （设备改角色前检查，如改为 vps 后只有 any 代理可用）。没有冲突时为空列表。
+func (s *Service) RoleProxyConflicts(ctx context.Context, machine, role string) ([]model.InstanceRef, error) {
+	out := []model.InstanceRef{}
+	if s.proxies == nil {
+		return out, nil
+	}
+	rows, err := s.proxyRefs(ctx, `machine = ? AND proxy_id <> ''`, machine)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		loc, err := s.proxies.Location(ctx, r.proxyID)
+		if err != nil {
+			if isProxyNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+		if !locationAllowed(loc, role) {
+			out = append(out, r.ref)
+		}
+	}
+	return out, nil
+}
+
+// ProxyLocationConflicts 列出引用代理 proxyID、运行在设备上、且不能在 newLocation 可用位置下继续使用该代理的实例
+// （代理改窄前检查）；各设备的角色取其当前值，hub 上的实例不受限，设备已不存在的实例（本就显示引用失效）跳过。
+// 没有冲突时为空列表。
+func (s *Service) ProxyLocationConflicts(ctx context.Context, proxyID, newLocation string) ([]model.InstanceRef, error) {
+	out := []model.InstanceRef{}
+	rows, err := s.proxyRefs(ctx, `proxy_id = ? AND machine <> 'hub'`, proxyID)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		dev, ok := s.device(r.machine)
+		if ok && !locationAllowed(newLocation, dev.Role) {
+			out = append(out, r.ref)
+		}
+	}
+	return out, nil
+}
+
+type proxyRef struct {
+	ref              model.InstanceRef
+	proxyID, machine string
+}
+
+// proxyRefs 按条件（单个参数）读取实例的 id、名称、代理与运行位置，按名称排序。
+func (s *Service) proxyRefs(ctx context.Context, where, arg string) ([]proxyRef, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, proxy_id, machine FROM plugin_instances WHERE `+where+` ORDER BY name, id`, arg)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []proxyRef
+	for rows.Next() {
+		var r proxyRef
+		if err := rows.Scan(&r.ref.ID, &r.ref.Name, &r.proxyID, &r.machine); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 // machineChanged 通知远程下发器该设备需要重新下发；hub 与未接入下发器时什么也不做。

@@ -78,6 +78,9 @@ type env struct {
 	pairer    *fakePairer
 	devices   *devices.Store
 	devLogs   *fakeDeviceLogs
+	pres      *devices.Presence
+	sessions  *fakeSessions
+	agentCh   *AgentChannel
 }
 
 // deviceFacts 把设备仓库适配为实例服务的 DeviceStates（与 app 中的适配器相同）。
@@ -131,6 +134,11 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 	hist := history.New(history.Config{DB: db, Clock: clk, Retention: func() model.RetentionSettings { return st.Get().Retention }})
 	inst := instances.New(instances.Config{DB: db, Box: box, Clock: clk, Plugins: reg, History: hist})
 	ring := logging.NewRing(5)
+	devs := devices.New(devices.Config{DB: db, Box: box, Clock: clk})
+	pres := devices.NewPresence(clk, clk.Now(), nil)
+	t.Cleanup(pres.Close)
+	sessions := &fakeSessions{done: map[string]chan struct{}{}}
+	agentCh := &AgentChannel{Addr: "0.0.0.0:31418", Fingerprint: "SHA256:testfp", HubVersion: "v-test", Platforms: []string{"linux-amd64"}}
 	deps := Deps{
 		System: system.New(system.Config{
 			Clock: clk, Version: "v-test", DataDir: dir, Plugins: reg, Ring: ring,
@@ -153,10 +161,13 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 			DB: db, Clock: clk, SecretPath: keyPath,
 			Dir: filepath.Join(dir, "backups"), Settings: st.Get,
 		}),
-		Proxies:    proxies.New(proxies.Config{DB: db, Box: box, Clock: clk, Referrers: refs}),
-		DialOut:    &fakePairer{},
-		DeviceLogs: &fakeDeviceLogs{},
-		Devices:    devices.New(devices.Config{DB: db, Box: box, Clock: clk}),
+		Proxies:        proxies.New(proxies.Config{DB: db, Box: box, Clock: clk, Referrers: refs}),
+		DialOut:        &fakePairer{},
+		DeviceLogs:     &fakeDeviceLogs{},
+		Devices:        devs,
+		DeviceViews:    devices.NewViewer(devices.ViewerConfig{Store: devs, Presence: pres}),
+		DeviceSessions: sessions,
+		AgentInfo:      func() AgentChannel { return *agentCh },
 	}
 	inst.UseProxies(deps.Proxies)
 	inst.UseDevices(deviceFacts{deps.Devices})
@@ -172,7 +183,8 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 	srv := httptest.NewServer(New(deps))
 	t.Cleanup(srv.Close)
 	e := &env{t: t, clk: clk, deps: deps, db: db, refs: refs, plugins: reg, pluginDir: pluginDir, hasher: hasher, srv: srv, tokenFn: tokenPath, ring: ring,
-		pairer: deps.DialOut.(*fakePairer), devices: deps.Devices, devLogs: deps.DeviceLogs.(*fakeDeviceLogs)}
+		pairer: deps.DialOut.(*fakePairer), devices: deps.Devices, devLogs: deps.DeviceLogs.(*fakeDeviceLogs),
+		pres: pres, sessions: sessions, agentCh: agentCh}
 	e.client = e.newClient()
 	return e
 }

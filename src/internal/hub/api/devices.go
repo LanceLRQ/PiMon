@@ -15,9 +15,10 @@ import (
 )
 
 // DialOutPairer 是拨出配对服务（agentsrv.DialOut）：成功返回设备；请求不合法返回 model.FieldErrors；
-// 配对失败返回 *agentsrv.PairingError。
+// 配对失败返回 *agentsrv.PairingError。Repair 是重新配对，新设备确认后接替 oldID 指向的旧设备。
 type DialOutPairer interface {
 	Pair(ctx context.Context, req model.DialOutRequest) (model.Device, error)
+	Repair(ctx context.Context, oldID string, req model.DialOutRequest) (model.Device, error)
 }
 
 // DeviceLogger 经 agent 通道拉取设备日志（agentsrv.Dispatcher）：limit ≤ agentsrv.MaxLogLimit，minLevel 为空不过滤；
@@ -28,6 +29,7 @@ type DeviceLogger interface {
 }
 
 func (s *server) registerDevices(mux *http.ServeMux) {
+	s.registerDeviceManagement(mux)
 	if s.DialOut != nil {
 		mux.HandleFunc("POST /api/devices/dial-out", s.admin(s.dialOut))
 	}
@@ -111,6 +113,11 @@ func (s *server) dialOut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dev, err := s.DialOut.Pair(r.Context(), in)
+	s.writePairResult(w, r, dev, err)
+}
+
+// writePairResult 写出拨出配对（含重新配对）的结果：成功 201 与设备，失败按错误类型映射。
+func (s *server) writePairResult(w http.ResponseWriter, r *http.Request, dev model.Device, err error) {
 	var fe model.FieldErrors
 	var pe *agentsrv.PairingError
 	switch {

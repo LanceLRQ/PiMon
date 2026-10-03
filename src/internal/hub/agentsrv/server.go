@@ -133,6 +133,16 @@ func (s *Server) Session(deviceID string) (*agentlink.Session, bool) {
 	return sess, ok
 }
 
+// SessionDone 返回设备当前会话（hello 已被接受）的结束信号；没有会话时 ok 为假。
+// 吊销接口据此等待会话真正断开。
+func (s *Server) SessionDone(deviceID string) (done <-chan struct{}, ok bool) {
+	sess, ok := s.Session(deviceID)
+	if !ok {
+		return nil, false
+	}
+	return sess.Done(), true
+}
+
 // ClockSkew 返回设备当前会话最近 5 个时钟偏移样本（对端时钟 − hub 时钟）的中位数；
 // 设备不在线或还没有样本时 ok 为假。只在内存中，不入库。
 func (s *Server) ClockSkew(deviceID string) (time.Duration, bool) {

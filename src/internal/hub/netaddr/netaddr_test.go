@@ -36,3 +36,30 @@ func TestCandidateURLs(t *testing.T) {
 		t.Fatalf("无端口: %v", got)
 	}
 }
+
+func TestAgentURLs(t *testing.T) {
+	ips := []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("192.168.1.20"), net.ParseIP("fe80::1"), net.ParseIP("10.0.0.5")}
+	got := AgentURLs("", "31418", ips)
+	if want := []string{"wss://192.168.1.20:31418", "wss://10.0.0.5:31418"}; !slices.Equal(got, want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+	// 对外访问地址的主机名排第一（只取主机名，换成 agent 通道端口），与本机 IP 去重、总数有上限
+	got = AgentURLs("https://pimon.home:8443/x", "31418", ips)
+	if want := []string{"wss://pimon.home:31418", "wss://192.168.1.20:31418", "wss://10.0.0.5:31418"}; !slices.Equal(got, want) {
+		t.Fatalf("access_url 主机名: got %v want %v", got, want)
+	}
+	got = AgentURLs("http://192.168.1.20:31415", "31418", ips)
+	if want := []string{"wss://192.168.1.20:31418", "wss://10.0.0.5:31418"}; !slices.Equal(got, want) {
+		t.Fatalf("access_url 为 IP 时去重: got %v want %v", got, want)
+	}
+	// 无法解析的访问地址被忽略；IPv6 主机名要加方括号
+	if got := AgentURLs("::bad", "31418", nil); len(got) != 0 {
+		t.Fatalf("非法访问地址应忽略: %v", got)
+	}
+	if got := AgentURLs("http://[2001:db8::1]:31415", "31418", nil); !slices.Equal(got, []string{"wss://[2001:db8::1]:31418"}) {
+		t.Fatalf("IPv6: %v", got)
+	}
+	if got := AgentURLs("", "31418", []net.IP{net.ParseIP("127.0.0.1")}); len(got) != 0 {
+		t.Fatalf("无可用地址: %v", got)
+	}
+}

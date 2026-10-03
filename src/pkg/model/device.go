@@ -121,3 +121,16 @@ type DeviceImpact struct {
 	Screens   []ScreenRef   `json:"screens"`
 	Rules     []RuleRef     `json:"rules"`
 }
+
+// AgentInfo 是 GET /api/agent/info 的响应：agent 通道的接入信息。
+type AgentInfo struct {
+	// AgentPort 是通道实际监听的端口；通道未启用时为 0。
+	AgentPort int `json:"agent_port"`
+	// Fingerprint 是中枢证书公钥的 SPKI 指纹（SHA256:...）。
+	Fingerprint          string `json:"fingerprint"`
+	HubVersion           string `json:"hub_version"`
+	ProtocolVersion      int    `json:"protocol_version"`
+	MinCompatibleVersion int    `json:"min_compatible_version"`
+	// Platforms 是中枢内嵌的 agent 平台（如 linux-amd64），没有内嵌时为空数组。
+	Platforms []string `json:"platforms"`
+}

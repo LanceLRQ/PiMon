@@ -171,6 +171,9 @@ func resolveAllowOffline(role string, v *bool) bool {
 	return role == model.DeviceRoleDev
 }
 
+// ValidRole 判断 r 是否是合法的设备角色。
+func ValidRole(r string) bool { return validRole(r) }
+
 func validRole(r string) bool {
 	switch r {
 	case model.DeviceRoleServer, model.DeviceRoleNAS, model.DeviceRoleDev, model.DeviceRoleVPS:
@@ -663,7 +666,7 @@ func (s *Store) TakeAutoHostMetrics(ctx context.Context, id string) (bool, error
 }
 
 // Confirm 在设备的首个 hello 被接受时确认占位：写入 confirmed_at；若是重新配对（replaces 非空），
-// 在同一事务内把旧设备的实例 machine 与 manifest 行迁移到新 ID、删除旧设备行并清空 replaces。
+// 在同一事务内把旧设备的实例 machine 与 manifest 行迁移到新 ID、继承旧设备的维护模式、删除旧设备行并清空 replaces。
 // 返回被替换的旧设备 ID（无则为空串），供上层通知实例重新下发、关闭旧会话。
 // 已确认的设备重复调用是空操作；设备不存在返回 ErrNotFound。
 func (s *Store) Confirm(ctx context.Context, newID string) (string, error) {
@@ -688,9 +691,10 @@ func (s *Store) Confirm(ctx context.Context, newID string) (string, error) {
 	}
 	now := store.FormatTime(s.clk.Now())
 	oldID := ""
+	oldMaintenance := 0
 	if replaces != "" && replaces != newID {
 		var oldName string
-		err := tx.QueryRowContext(ctx, `SELECT name FROM devices WHERE id = ?`, replaces).Scan(&oldName)
+		err := tx.QueryRowContext(ctx, `SELECT name, maintenance FROM devices WHERE id = ?`, replaces).Scan(&oldName, &oldMaintenance)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			// 旧设备已不存在，无需迁移。
@@ -719,9 +723,11 @@ func (s *Store) Confirm(ctx context.Context, newID string) (string, error) {
 	}
 	// 重新配对时实例已随旧设备迁入，不再自动创建 host-metrics 实例。
 	autoOff := boolInt(oldID != "")
+	// 维护模式不在配对码里预填，重新配对时在迁移处继承旧设备的值。
 	if _, err := tx.ExecContext(ctx, `UPDATE devices SET name = ?, replaces = '', confirmed_at = ?, updated_at = ?,
-		auto_host_metrics = CASE WHEN ? = 1 THEN 0 ELSE auto_host_metrics END WHERE id = ?`,
-		name, now, now, autoOff, newID); err != nil {
+		auto_host_metrics = CASE WHEN ? = 1 THEN 0 ELSE auto_host_metrics END,
+		maintenance = CASE WHEN ? = 1 THEN ? ELSE maintenance END WHERE id = ?`,
+		name, now, now, autoOff, autoOff, oldMaintenance, newID); err != nil {
 		return "", err
 	}
 	if err := tx.Commit(); err != nil {

@@ -150,6 +150,9 @@
       "offline": "设备不在线，无法执行该操作",
       "incompatible": "设备上的 agent 版本与中枢不兼容，请升级 agent"
     },
+    "agent": {
+      "disabled": "agent 通道未启用，无法配对设备。请在启动参数 --agent-addr 中指定监听地址。"
+    },
     "layout": {
       "conflict": "布局已被他人更新，请刷新后再保存",
       "invalid": "布局不合法，存在重叠、越界或不被允许的尺寸"

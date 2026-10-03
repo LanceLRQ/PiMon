@@ -528,6 +528,8 @@ type dialOutInput struct {
 	pin                                certs.SPKI
 	allowOffline                       *bool
 	autoHostMetrics                    bool
+	// replaces 非空表示重新配对：新设备在首个 hello 被接受时接替该旧设备。
+	replaces string
 }
 
 // validateDialOut 校验拨出配对请求，失败返回 model.FieldErrors（代理是否存在另查）。
@@ -585,10 +587,22 @@ func validateDialOut(req model.DialOutRequest) (dialOutInput, error) {
 //
 // 流程不继承 ctx 的取消（客户端断开时照常跑完，凭据照常入库），只受 PairTimeout 与 Close 约束。
 func (d *DialOut) Pair(ctx context.Context, req model.DialOutRequest) (model.Device, error) {
+	return d.pair(ctx, req, "")
+}
+
+// Repair 是重新配对：流程与 Pair 相同，保存的新设备带上 replaces=oldID，首个 hello 被接受时
+// 在设备仓库里把旧设备的实例、manifest 与维护模式迁到新设备并删除旧设备行。
+// 配对失败时不留占位，旧设备保持原样。名称、角色等缺省值由调用方按旧设备预填。
+func (d *DialOut) Repair(ctx context.Context, oldID string, req model.DialOutRequest) (model.Device, error) {
+	return d.pair(ctx, req, oldID)
+}
+
+func (d *DialOut) pair(ctx context.Context, req model.DialOutRequest, replaces string) (model.Device, error) {
 	in, err := validateDialOut(req)
 	if err != nil {
 		return model.Device{}, err
 	}
+	in.replaces = replaces
 	p, err := d.prox.Resolve(ctx, in.proxyID)
 	if errors.Is(err, proxies.ErrNotFound) {
 		return model.Device{}, model.FieldErrors{"proxy_id": model.FieldInvalid}
@@ -704,6 +718,7 @@ func (d *DialOut) saveDialOut(in dialOutInput, ok agent.PairOK) error {
 	_, err := d.srv.devs.CreateDialOut(ctx, devices.DialOutDevice{
 		Name: name, Role: in.role, Address: in.address, Pin: in.pin.String(), ProxyID: in.proxyID,
 		Credential: ok.Credential, AllowOffline: in.allowOffline, AutoHostMetrics: in.autoHostMetrics,
+		Replaces: in.replaces,
 	})
 	if err != nil {
 		d.mu.Lock()

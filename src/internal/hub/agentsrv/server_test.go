@@ -430,3 +430,28 @@ func TestClose停止后台循环并关闭会话(t *testing.T) {
 		t.Fatalf("关停后的新会话应以 shutdown 断开，得到 %+v", r)
 	}
 }
+
+func TestSessionDone随会话断开关闭(t *testing.T) {
+	e := newEnv(t)
+	if _, ok := e.srv.SessionDone("ghost"); ok {
+		t.Fatal("没有会话的设备不应有结束信号")
+	}
+	p, err := e.pair(t, e.newCode(t, devices.PairingOptions{}))
+	must(t, err)
+	p.helloOK(t)
+	done, ok := e.srv.SessionDone(p.id)
+	if !ok {
+		t.Fatal("hello 被接受后应有结束信号")
+	}
+	select {
+	case <-done:
+		t.Fatal("会话未断开时信号不应关闭")
+	default:
+	}
+	must(t, e.devs.Delete(context.Background(), p.id))
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("吊销后结束信号应关闭")
+	}
+}

@@ -184,6 +184,26 @@ export interface DeviceImpact {
   screens: ScreenRef[];
   rules: RuleRef[];
 }
+/**
+ * AgentInfo 是 GET /api/agent/info 的响应：agent 通道的接入信息。
+ */
+export interface AgentInfo {
+  /**
+   * AgentPort 是通道实际监听的端口；通道未启用时为 0。
+   */
+  agent_port: number /* int */;
+  /**
+   * Fingerprint 是中枢证书公钥的 SPKI 指纹（SHA256:...）。
+   */
+  fingerprint: string;
+  hub_version: string;
+  protocol_version: number /* int */;
+  min_compatible_version: number /* int */;
+  /**
+   * Platforms 是中枢内嵌的 agent 平台（如 linux-amd64），没有内嵌时为空数组。
+   */
+  platforms: string[];
+}
 
 //////////
 // source: errors.go

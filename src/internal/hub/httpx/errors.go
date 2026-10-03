@@ -25,7 +25,8 @@ package httpx
 //	proxy.not_found          代理不存在                            404
 //	proxy.in_use             代理被实例引用，details.instances     409
 //	proxy.location_mismatch  所选代理不能在该运行位置使用，details.field 为代理字段的键、
-//	                         location 为代理的可用位置                                   422
+//	                         location 为代理的可用位置；设备改为 VPS 角色、代理可用位置改窄
+//	                         导致已有实例违规时，改带 details.instances（违规实例的 id 与名称）  422
 //	instance.not_found       实例不存在                            404
 //	instance.in_use          实例被 screen 引用，details.screens    409
 //	instance.machine_invalid 运行位置不合法，details.reason：device_not_found /
@@ -34,6 +35,7 @@ package httpx
 //	device.offline           设备不在线，无法执行（测试运行、拉日志）  409
 //	device.incompatible      设备 agent 版本不兼容，details.reason（version_too_old /
 //	                         version_too_new）、required_min、hub_version                 409
+//	agent.disabled           agent 通道未启用（--agent-addr 为空），无法生成配对码  409
 //	layout.conflict          布局版本冲突，details.latest_version 为服务端最新版本    409
 //	layout.invalid           布局不合法，details.problems 列出碰撞、越界、尺寸与结构问题  400
 //	schedule.invalid         时段计划不合法，details.problems 列出格式、主题、重叠与缺口（带区间）  400
@@ -74,6 +76,7 @@ const (
 	CodeDeviceNotFound        = "device.not_found"
 	CodeDeviceOffline         = "device.offline"
 	CodeDeviceIncompatible    = "device.incompatible"
+	CodeAgentDisabled         = "agent.disabled"
 	CodeLayoutConflict        = "layout.conflict"
 	CodeLayoutInvalid         = "layout.invalid"
 	CodeScheduleInvalid       = "schedule.invalid"

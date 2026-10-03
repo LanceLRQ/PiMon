@@ -607,3 +607,50 @@ func TestErrAttrs截断对端给的原因(t *testing.T) {
 		t.Fatalf("attrs = %v", attrs)
 	}
 }
+
+// 重新配对：新凭据的设备确认后接替旧设备（名称、维护模式、实例引用随之迁移），旧设备行删除。
+func TestDialOut重新配对接替旧设备(t *testing.T) {
+	e := newOutEnv(t)
+	ctx := context.Background()
+	a1 := startFakeAgent(t, "PAIR-OLD")
+	old := e.pairOK(t, a1, "PAIR-OLD")
+	_, err := e.devs.Update(ctx, old.ID, model.DeviceInput{Name: old.Name, Role: old.Role, AllowOffline: old.AllowOffline, Maintenance: true})
+	must(t, err)
+
+	a2 := startFakeAgent(t, "PAIR-NEW")
+	req := dialReq(a2, "PAIR-NEW")
+	req.Name = old.Name
+	req.Role = old.Role
+	dev, err := e.d.Repair(ctx, old.ID, req)
+	if err != nil {
+		t.Fatalf("重新配对应成功: %v", err)
+	}
+	if dev.ID == old.ID || dev.Presence != model.PresenceOnline {
+		t.Fatalf("设备 = %+v", dev)
+	}
+	got, err := e.devs.Get(ctx, dev.ID)
+	must(t, err)
+	if got.Name != old.Name || !got.Maintenance {
+		t.Fatalf("应保留旧名称与维护模式: %+v", got)
+	}
+	if _, err := e.devs.Get(ctx, old.ID); !errors.Is(err, devices.ErrNotFound) {
+		t.Fatalf("旧设备应被替换: %v", err)
+	}
+	if det, _ := e.devs.Detail(ctx, dev.ID); det.Replaces != "" || !det.Confirmed {
+		t.Fatalf("detail = %+v", det)
+	}
+}
+
+// 重新配对失败时（配对码错误）不留占位，旧设备保持原样。
+func TestDialOut重新配对失败保留旧设备(t *testing.T) {
+	e := newOutEnv(t)
+	ctx := context.Background()
+	a1 := startFakeAgent(t, "PAIR-OLD")
+	old := e.pairOK(t, a1, "PAIR-OLD")
+	a2 := startFakeAgent(t, "PAIR-NEW")
+	_, err := e.d.Repair(ctx, old.ID, dialReq(a2, "WRONG"))
+	pairingErr(t, err, agent.ReasonBadCode)
+	if n := e.deviceCount(t); n != 1 {
+		t.Fatalf("设备数 = %d，旧设备应保持原样且无占位", n)
+	}
+}

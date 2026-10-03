@@ -54,6 +54,13 @@ type Deps struct {
 	LocalIPs func() []net.IP
 	// Web 是前端 SPA 处理器，挂在 "/" 兜底；为 nil 时不提供前端（测试用）。
 	Web http.Handler
+	// DeviceViews 提供带在线状态等运行时值的设备视图，设备 REST 接口据此读取；为 nil 时不注册设备读写接口。
+	DeviceViews DeviceViewer
+	// DeviceSessions 查询设备会话的结束信号，吊销时据此等待会话断开；为 nil 时吊销不等待。
+	DeviceSessions DeviceSessions
+	// AgentInfo 返回 agent 通道的接入信息（实际监听地址、指纹等），挂在 GET /api/agent/info 并用于生成配对命令；
+	// 为 nil 时不注册这些接口。
+	AgentInfo func() AgentChannel
 	// DialOut 是拨出配对服务，挂在 POST /api/devices/dial-out；为 nil 时不注册该路由（测试用）。
 	DialOut DialOutPairer
 	// DeviceLogs 经 agent 通道拉取设备日志，挂在 GET /api/devices/{id}/logs；为 nil 时不注册该路由。
