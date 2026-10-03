@@ -486,3 +486,51 @@ func TestUninstall_删除install写入的sudoers(t *testing.T) {
 	}
 	assertContains(t, e.out.String(), "[完成] 删除 sudoers 文件 "+sudoersPath)
 }
+
+func TestSudoers_内容相同但权限不符_重写并报告(t *testing.T) {
+	e := newEnv(t, "linux", 0)
+	allStorageCmds(e)
+	want := wantSudoers(t, allPaths)
+	for name, f := range map[string]struct {
+		mode     fs.FileMode
+		uid, gid int
+	}{"0644": {0o644, 0, 0}, "非root属主": {0o440, 1000, 1000}} {
+		t.Run(name, func(t *testing.T) {
+			e.reset()
+			e.fs.put(sudoersPath, want, f.mode, f.uid, f.gid)
+			e.tty, e.in = true, "" // 不应询问
+			e.mustInstall(t, dialOut())
+			assertSudoersWritten(t, e, want)
+			assertContains(t, e.out.String(), "已修正 sudoers 权限")
+			assertNotContains(t, e.out.String(), "[y/N]")
+		})
+	}
+}
+
+func TestSudoers_内容相同且权限正确_跳过(t *testing.T) {
+	e := newEnv(t, "linux", 0)
+	allStorageCmds(e)
+	e.fs.put(sudoersPath, wantSudoers(t, allPaths), 0o440, 0, 0)
+	e.mustInstall(t, dialOut())
+	for _, op := range e.fs.ops {
+		if strings.Contains(op, "/etc/sudoers.d/") {
+			t.Fatalf("不应写文件: %v", e.fs.ops)
+		}
+	}
+	assertContains(t, e.out.String(), "[已存在] sudoers 白名单")
+}
+
+func TestSudoers_目标已落地后删除暂存失败_只警告(t *testing.T) {
+	e := newEnv(t, "linux", 0)
+	allStorageCmds(e)
+	e.fs.failOn = map[string]error{"rm " + sudoersCheck: errBoom}
+	e.mustInstall(t, withSudoers(dialOut()))
+	f := e.file(t, sudoersPath)
+	if f.data != wantSudoers(t, allPaths) || f.mode != 0o440 {
+		t.Fatal("目标应已落地")
+	}
+	assertContains(t, e.out.String(), "[警告] sudoers", "已写入")
+	if !e.runner.active {
+		t.Fatal("不应阻止服务启动")
+	}
+}

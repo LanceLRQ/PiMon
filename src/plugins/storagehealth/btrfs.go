@@ -3,7 +3,9 @@ package storagehealth
 import (
 	"context"
 	"fmt"
+	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -123,13 +125,10 @@ func (p *Plugin) collectBtrfs(ctx context.Context, now time.Time, last *report.R
 		case envErr != "":
 			stats, scrub = failedState(envErr), failedState(envErr)
 		default:
-			stats = p.btrfsDeviceStats(ctx, env, fsys.dev)
-			if ctx.Err() != nil {
-				return checkResult{}, fmt.Errorf("检查被中断（Btrfs）/ Btrfs check interrupted: %w", ctx.Err())
-			}
-			scrub = p.btrfsScrub(ctx, env, fsys.dev, now, c.scrubMaxAgeDays)
-			if ctx.Err() != nil {
-				return checkResult{}, fmt.Errorf("检查被中断（Btrfs）/ Btrfs check interrupted: %w", ctx.Err())
+			var err error
+			stats, scrub, err = p.checkBtrfsFS(ctx, env, fsys.dev, now, c.scrubMaxAgeDays)
+			if err != nil {
+				return checkResult{}, err
 			}
 		}
 		res.items = append(res.items,
@@ -149,6 +148,123 @@ func (p *Plugin) collectBtrfs(ctx context.Context, now time.Time, last *report.R
 	res.summary = fmt.Sprintf("Btrfs %d 个：正常 %d，异常 %d，未知 %d / Btrfs filesystems: %d, OK %d, abnormal %d, unknown %d",
 		n.total, n.ok, n.abnormal, n.unknown, n.total, n.ok, n.abnormal, n.unknown)
 	return res, nil
+}
+
+// sysfsBtrfs 是内核导出的 Btrfs 文件系统目录，下面每个 fsid 的 devices/ 列出全部成员设备。
+const sysfsBtrfs = "/sys/fs/btrfs"
+
+// btrfsMembers 用规范设备的名字在 sysfs 里找到所属文件系统，返回全部成员的 /dev 路径（已排序）。
+// 不需要 root。失败时返回原因，调用方退回只检查传入的设备。
+func (p *Plugin) btrfsMembers(dev string) ([]string, string) {
+	base := path.Base(dev)
+	fsids, err := p.readDir(sysfsBtrfs)
+	if err != nil {
+		return nil, "无法读取 " + sysfsBtrfs + "：" + err.Error()
+	}
+	sort.Strings(fsids)
+	for _, id := range fsids {
+		names, err := p.readDir(path.Join(sysfsBtrfs, id, "devices"))
+		if err != nil || !slices.Contains(names, base) {
+			continue
+		}
+		sorted := slices.Clone(names)
+		sort.Strings(sorted)
+		members := make([]string, 0, len(sorted))
+		for _, n := range sorted {
+			members = append(members, "/dev/"+n)
+		}
+		return members, ""
+	}
+	return nil, "在 " + sysfsBtrfs + " 下找不到 " + base + " 所属的文件系统"
+}
+
+// stateRank 给 state 条目的合并排序：critical > warning > unknown > ok。
+// 合并多个成员时 unknown 高于 ok，保证拿不到结果的成员不会被其他成员的 ok 掩盖。
+func stateRank(s report.Status) int {
+	switch s {
+	case report.StatusCritical:
+		return 3
+	case report.StatusWarning:
+		return 2
+	case report.StatusOK:
+		return 0
+	}
+	return 1
+}
+
+// mergeMembers 把各成员的同类结果合成一条：状态取最差；有失败成员时带 error 并写明是哪个成员；
+// 多个成员时文字逐个列出（含各自 scrub 时间）。
+func mergeMembers(members []string, rs []stateResult, tail string) stateResult {
+	out := stateResult{state: report.StatusOK}
+	var texts, errs []string
+	for i, r := range rs {
+		if stateRank(r.state) > stateRank(out.state) {
+			out.state = r.state
+		}
+		if r.err != "" {
+			errs = append(errs, members[i]+"："+r.err)
+			continue
+		}
+		if len(rs) == 1 {
+			texts = append(texts, r.text)
+		} else {
+			texts = append(texts, members[i]+"："+r.text)
+		}
+	}
+	out.err = strings.Join(errs, "；")
+	out.text = strings.Join(texts, "；")
+	if len(members) > 1 {
+		out.text = "已检查成员 " + strings.Join(members, "、") + " / Checked members；" + out.text
+	}
+	if tail != "" {
+		out.text += tail
+	}
+	return out
+}
+
+// checkBtrfsFS 检查一个文件系统的全部成员设备并汇总。无法枚举成员时退回只检查 dev，
+// 文字注明「仅检查了」，且把本会判 ok 的结果改为 unknown。
+func (p *Plugin) checkBtrfsFS(ctx context.Context, env toolEnv, dev string, now time.Time, maxAgeDays float64) (stateResult, stateResult, error) {
+	interrupted := func() error {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("检查被中断（Btrfs）/ Btrfs check interrupted: %w", err)
+		}
+		return nil
+	}
+	members, reason := p.btrfsMembers(dev)
+	var tail string
+	degraded := reason != ""
+	if degraded {
+		members = []string{dev}
+		tail = "；仅检查了 " + dev + "，无法枚举全部成员（" + reason + "）/ Only checked " + dev + ", cannot enumerate all members"
+	}
+	stats := make([]stateResult, len(members))
+	scrub := make([]stateResult, len(members))
+	for i, m := range members {
+		canon, err := sudocmd.Canonicalize(m, p.evalSymlinks)
+		if err != nil || !sudocmd.MatchDevice(sudocmd.OpBtrfsDeviceStats, canon) || !sudocmd.MatchDevice(sudocmd.OpBtrfsScrubStatus, canon) {
+			msg := "成员设备不在 sudoers 白名单范围内，未检查 / Member device is outside the sudoers allowlist, not checked"
+			stats[i], scrub[i] = failedState(msg), failedState(msg)
+			continue
+		}
+		stats[i] = p.btrfsDeviceStats(ctx, env, canon)
+		if err := interrupted(); err != nil {
+			return stateResult{}, stateResult{}, err
+		}
+		scrub[i] = p.btrfsScrub(ctx, env, canon, now, maxAgeDays)
+		if err := interrupted(); err != nil {
+			return stateResult{}, stateResult{}, err
+		}
+	}
+	st, sc := mergeMembers(members, stats, tail), mergeMembers(members, scrub, tail)
+	if degraded {
+		for _, r := range []*stateResult{&st, &sc} {
+			if r.state == report.StatusOK {
+				r.state = report.StatusUnknown
+			}
+		}
+	}
+	return st, sc, nil
 }
 
 func isAbnormal(s report.Status) bool {
@@ -341,7 +457,7 @@ func (p *Plugin) btrfsScrub(ctx context.Context, env toolEnv, dev string, now ti
 		days := age.Hours() / 24
 		if age > time.Duration(maxAgeDays*24*float64(time.Hour)) {
 			st = worse(st, report.StatusWarning)
-			notes = append(notes, fmt.Sprintf("距上次 scrub 已 %.0f 天，超过 %.0f 天 / Last scrub %.0f days ago, over %.0f days", days, maxAgeDays, days, maxAgeDays))
+			notes = append(notes, fmt.Sprintf("上次 scrub %s，已 %.0f 天，超过 %.0f 天 / Last scrub %s, %.0f days ago, over %.0f days", started.Format("2006-01-02 15:04"), days, maxAgeDays, started.Format("2006-01-02 15:04"), days, maxAgeDays))
 		} else if st == report.StatusOK {
 			notes = append(notes, fmt.Sprintf("上次 scrub %s，无错误 / Last scrub %s, no errors", started.Format("2006-01-02 15:04"), started.Format("2006-01-02 15:04")))
 		}

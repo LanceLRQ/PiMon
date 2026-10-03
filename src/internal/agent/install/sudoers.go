@@ -51,7 +51,15 @@ func (r *run) ensureSudoers(ctx context.Context) error {
 		return nil
 	}
 	if old, err := r.FS.ReadFile(sudoersPath); err == nil && string(old) == content {
-		r.rep.Existed("sudoers 白名单", sudoersPath)
+		if sudoersPermOK(r.FS, sudoersPath) {
+			r.rep.Existed("sudoers 白名单", sudoersPath)
+			return nil
+		}
+		// 内容已是用户认可过的白名单，只是权限或属主不对：不再询问，直接校验后重写。
+		if err := r.writeSudoers(ctx, content); err != nil {
+			return err
+		}
+		r.rep.Done("已修正 sudoers 权限为 0440 root:root", sudoersPath)
 		return nil
 	}
 	if !r.o.Sudoers {
@@ -72,6 +80,12 @@ func (r *run) ensureSudoers(ctx context.Context) error {
 		}
 	}
 	return r.writeSudoers(ctx, content)
+}
+
+// sudoersPermOK 判断 sudoers 文件的权限为 0440 且属主为 root:root；取不到信息时按不符处理。
+func sudoersPermOK(fsys sysinstall.FS, path string) bool {
+	fi, err := fsys.Stat(path)
+	return err == nil && fi.Mode == 0o440 && fi.UID == rootOwner.UID && fi.GID == rootOwner.GID
 }
 
 // sudoersUnusable 检查 sudoers.d 下的文件能否生效与校验，返回不能写入的原因；可以写入时返回空串。
@@ -121,7 +135,9 @@ func (r *run) writeSudoers(ctx context.Context, content string) error {
 		return fmt.Errorf("写入 %s: %w", sudoersPath, err)
 	}
 	if err := r.removeSudoersCheck(); err != nil {
-		return err
+		// 目标已落地；暂存文件名带 .，不会被 includedir 读入，残留无害，只警告。
+		r.rep.Warn("sudoers", fmt.Sprintf("%s 已写入，但%v", sudoersPath, err))
+		return nil
 	}
 	r.rep.Done("写入 sudoers 白名单", sudoersPath)
 	return nil

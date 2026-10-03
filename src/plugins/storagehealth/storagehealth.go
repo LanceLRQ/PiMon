@@ -41,6 +41,7 @@ type Plugin struct {
 	resolve      func(string) (string, error)
 	evalSymlinks func(string) (string, error)
 	readFile     func(string) ([]byte, error)
+	readDir      func(string) ([]string, error) // 返回目录下的条目名，用于从 sysfs 枚举 Btrfs 成员设备
 	loc          *time.Location // btrfs scrub 输出里本地时间的时区
 	cmdTimeout   time.Duration
 }
@@ -63,6 +64,7 @@ func New(runner cmdexec.Runner) *Plugin {
 		resolve:      func(name string) (string, error) { return sudocmd.Resolve(sudocmd.SystemFS(), name) },
 		evalSymlinks: filepath.EvalSymlinks,
 		readFile:     os.ReadFile,
+		readDir:      readDirNames,
 		loc:          time.Local,
 		cmdTimeout:   defaultCmdTimeout,
 	}
@@ -203,4 +205,17 @@ func raise(cur, s report.Status) report.Status {
 		return s
 	}
 	return cur
+}
+
+// readDirNames 返回目录下的条目名（含符号链接条目，不跟随）。
+func readDirNames(name string) ([]string, error) {
+	ents, err := os.ReadDir(name)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(ents))
+	for _, e := range ents {
+		names = append(names, e.Name())
+	}
+	return names, nil
 }

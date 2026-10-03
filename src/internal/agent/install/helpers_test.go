@@ -142,6 +142,9 @@ func (f *fakeFS) SetOwnerMode(name string, perm fs.FileMode, own sysinstall.Owne
 }
 
 func (f *fakeFS) Remove(name string) error {
+	if err := f.fail("rm", name); err != nil {
+		return err
+	}
 	if _, ok := f.files[name]; !ok {
 		return fmt.Errorf("remove %s: %w", name, fs.ErrNotExist)
 	}

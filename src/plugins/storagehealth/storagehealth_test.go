@@ -82,6 +82,7 @@ func newLinux(f *cmdexec.Fake) *Plugin {
 	}
 	p.evalSymlinks = evalLinks
 	p.readFile = fakeFiles{"/proc/mounts": ""}.read
+	p.readDir = fakeDirs{}.read
 	p.loc = time.UTC
 	return p
 }

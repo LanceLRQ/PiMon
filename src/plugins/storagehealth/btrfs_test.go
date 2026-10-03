@@ -2,6 +2,7 @@ package storagehealth
 
 import (
 	"context"
+	"io/fs"
 	"strings"
 	"testing"
 	"time"
@@ -50,9 +51,20 @@ func fnosBtrfs(t *testing.T, f *cmdexec.Fake, stats, scrub string) *Plugin {
 		}
 		return base(s)
 	}
+	p.readDir = fakeDirs{"/sys/fs/btrfs": {"features", "aaaa-fsid"}, "/sys/fs/btrfs/aaaa-fsid/devices": {"dm-0"}}.read
 	setBtrfs(t, f, sudocmd.OpBtrfsDeviceStats, "/dev/dm-0", sample(t, stats, 0), nil)
 	setBtrfs(t, f, sudocmd.OpBtrfsScrubStatus, "/dev/dm-0", sample(t, scrub, 0), nil)
 	return p
+}
+
+// fakeDirs 模拟 sysfs 目录；未登记的路径视为不存在。
+type fakeDirs map[string][]string
+
+func (d fakeDirs) read(name string) ([]string, error) {
+	if v, ok := d[name]; ok {
+		return v, nil
+	}
+	return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 }
 
 func TestBtrfs挂载去重取最短路径(t *testing.T) {
@@ -350,5 +362,177 @@ func TestParseScrubStatus(t *testing.T) {
 	}
 	if tm, ok := parseScrubTime("Tue Sep  2 03:00:01 2025", time.UTC); !ok || tm.Day() != 2 {
 		t.Errorf("单位数日期 = %v %v", tm, ok)
+	}
+}
+
+// multiBtrfs 返回挂载 /dev/sda1 于 /data 的插件，sysfs 里该文件系统有 members 列出的成员。
+func multiBtrfs(f *cmdexec.Fake, members ...string) *Plugin {
+	p := newLinux(f)
+	p.readFile = fakeFiles{"/proc/mounts": "/dev/sda1 /data btrfs rw 0 0\n"}.read
+	p.readDir = fakeDirs{
+		"/sys/fs/btrfs":                    {"features", "other-fsid", "bbbb-fsid"},
+		"/sys/fs/btrfs/other-fsid/devices": {"sdz1"},
+		"/sys/fs/btrfs/bbbb-fsid/devices":  members,
+	}.read
+	return p
+}
+
+func setMember(t *testing.T, f *cmdexec.Fake, dev, stats, scrub string) {
+	t.Helper()
+	setBtrfs(t, f, sudocmd.OpBtrfsDeviceStats, dev, sample(t, stats, 0), nil)
+	setBtrfs(t, f, sudocmd.OpBtrfsScrubStatus, dev, sample(t, scrub, 0), nil)
+}
+
+func collectMulti(t *testing.T, p *Plugin, now time.Time) *report.Report {
+	t.Helper()
+	rep, err := p.Collect(context.Background(), btrfsInput(t, nil, now, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plugintest.AssertValidAgainstManifest(t, p.Manifest(), rep)
+	return rep
+}
+
+func TestBtrfs多成员全部检查且正常为ok(t *testing.T) {
+	f := cmdexec.NewFake()
+	p := multiBtrfs(f, "sda1", "sdb1")
+	setMember(t, f, "/dev/sda1", "btrfs-device-stats-clean.txt", "btrfs-scrub-new-ok.txt")
+	setMember(t, f, "/dev/sdb1", "btrfs-device-stats-clean.txt", "btrfs-scrub-new-ok.txt")
+	rep := collectMulti(t, p, scrubStart.Add(24*time.Hour))
+	m := items(rep)
+	if it := m["btrfs[/data]"]; it.State != report.StatusOK || it.Error != "" || !strings.Contains(it.Text, "/dev/sda1、/dev/sdb1") {
+		t.Errorf("btrfs = %+v", it)
+	}
+	if it := m["scrub[/data]"]; it.State != report.StatusOK || it.Error != "" {
+		t.Errorf("scrub = %+v", it)
+	}
+	if rep.Status != report.StatusOK || len(f.Calls()) != 4 {
+		t.Errorf("status=%s calls=%d", rep.Status, len(f.Calls()))
+	}
+}
+
+func TestBtrfs多成员其中一个计数非0为critical(t *testing.T) {
+	f := cmdexec.NewFake()
+	p := multiBtrfs(f, "sda1", "sdb1")
+	setMember(t, f, "/dev/sda1", "btrfs-device-stats-clean.txt", "btrfs-scrub-new-ok.txt")
+	setMember(t, f, "/dev/sdb1", "btrfs-device-stats-errors.txt", "btrfs-scrub-new-ok.txt")
+	rep := collectMulti(t, p, scrubStart.Add(time.Hour))
+	it := items(rep)["btrfs[/data]"]
+	if it.State != report.StatusCritical || !strings.Contains(it.Text, "/dev/sdb1：设备错误计数非 0") {
+		t.Errorf("btrfs = %+v", it)
+	}
+	if rep.Status != report.StatusCritical {
+		t.Errorf("status = %s", rep.Status)
+	}
+}
+
+func TestBtrfs多成员scrub一个有错一个过期(t *testing.T) {
+	f := cmdexec.NewFake()
+	p := multiBtrfs(f, "sda1", "sdb1")
+	setMember(t, f, "/dev/sda1", "btrfs-device-stats-clean.txt", "btrfs-scrub-new-errors.txt")
+	setMember(t, f, "/dev/sdb1", "btrfs-device-stats-clean.txt", "btrfs-scrub-new-ok.txt")
+	rep := collectMulti(t, p, scrubStart.Add(time.Hour))
+	if it := items(rep)["scrub[/data]"]; it.State != report.StatusCritical || !strings.Contains(it.Text, "/dev/sda1：") {
+		t.Errorf("有错 = %+v", it)
+	}
+
+	f = cmdexec.NewFake()
+	p = multiBtrfs(f, "sda1", "sdb1")
+	setMember(t, f, "/dev/sda1", "btrfs-device-stats-clean.txt", "btrfs-scrub-new-ok.txt")
+	setMember(t, f, "/dev/sdb1", "btrfs-device-stats-clean.txt", "btrfs-scrub-never.txt")
+	rep = collectMulti(t, p, scrubStart.Add(time.Hour))
+	if it := items(rep)["scrub[/data]"]; it.State != report.StatusWarning || !strings.Contains(it.Text, "从未执行") {
+		t.Errorf("从未执行 = %+v", it)
+	}
+
+	// 一个成员 scrub 已过期（相对阈值），另一个较新：整体 warning，文字里有各自时间。
+	f = cmdexec.NewFake()
+	p = multiBtrfs(f, "sda1", "sdb1")
+	setMember(t, f, "/dev/sda1", "btrfs-device-stats-clean.txt", "btrfs-scrub-new-ok.txt")
+	setMember(t, f, "/dev/sdb1", "btrfs-device-stats-clean.txt", "btrfs-scrub-new-ok.txt")
+	setBtrfs(t, f, sudocmd.OpBtrfsScrubStatus, "/dev/sdb1", cmdexec.Result{Stdout: []byte("Scrub started:    Mon Jan  1 03:00:01 2024\nStatus:           finished\nError summary:    no errors found\n")}, nil)
+	rep = collectMulti(t, p, scrubStart.Add(time.Hour))
+	if it := items(rep)["scrub[/data]"]; it.State != report.StatusWarning || !strings.Contains(it.Text, "2024-01-01") {
+		t.Errorf("过期 = %+v", it)
+	}
+}
+
+func TestBtrfs成员不在白名单为条目error(t *testing.T) {
+	f := cmdexec.NewFake()
+	p := multiBtrfs(f, "sda1", "loop7")
+	setMember(t, f, "/dev/sda1", "btrfs-device-stats-clean.txt", "btrfs-scrub-new-ok.txt")
+	rep := collectMulti(t, p, scrubStart.Add(time.Hour))
+	m := items(rep)
+	for _, k := range []string{"btrfs[/data]", "scrub[/data]"} {
+		if it := m[k]; it.State == report.StatusOK || !strings.Contains(it.Error, "/dev/loop7") || !strings.Contains(it.Error, "白名单") {
+			t.Errorf("%s = %+v", k, it)
+		}
+	}
+	if rep.Status != report.StatusWarning {
+		t.Errorf("status = %s", rep.Status)
+	}
+	if len(f.Calls()) != 2 {
+		t.Errorf("白名单外成员不应执行命令: %v", f.Calls())
+	}
+}
+
+func TestBtrfs成员命令失败说明是哪个成员(t *testing.T) {
+	f := cmdexec.NewFake()
+	p := multiBtrfs(f, "sda1", "sdb1")
+	setMember(t, f, "/dev/sda1", "btrfs-device-stats-clean.txt", "btrfs-scrub-new-ok.txt")
+	setBtrfs(t, f, sudocmd.OpBtrfsDeviceStats, "/dev/sdb1", cmdexec.Result{ExitCode: 1, Stderr: "ERROR: boom"}, nil)
+	setBtrfs(t, f, sudocmd.OpBtrfsScrubStatus, "/dev/sdb1", sample(t, "btrfs-scrub-new-ok.txt", 0), nil)
+	rep := collectMulti(t, p, scrubStart.Add(time.Hour))
+	it := items(rep)["btrfs[/data]"]
+	if it.State == report.StatusOK || !strings.Contains(it.Error, "/dev/sdb1：") || rep.Status != report.StatusWarning {
+		t.Errorf("btrfs = %+v status=%s", it, rep.Status)
+	}
+}
+
+func TestBtrfsSysfs不可读时仅检查单设备且不报ok(t *testing.T) {
+	cases := map[string]fakeDirs{
+		"sysfs 不存在":  {},
+		"找不到所属 fsid": {"/sys/fs/btrfs": {"x"}, "/sys/fs/btrfs/x/devices": {"sdq1"}},
+	}
+	for name, dirs := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := cmdexec.NewFake()
+			p := multiBtrfs(f, "sda1")
+			p.readDir = dirs.read
+			setMember(t, f, "/dev/sda1", "btrfs-device-stats-clean.txt", "btrfs-scrub-new-ok.txt")
+			rep := collectMulti(t, p, scrubStart.Add(time.Hour))
+			m := items(rep)
+			for _, k := range []string{"btrfs[/data]", "scrub[/data]"} {
+				if it := m[k]; it.State != report.StatusUnknown || it.Error != "" || !strings.Contains(it.Text, "仅检查了 /dev/sda1") {
+					t.Errorf("%s = %+v", k, it)
+				}
+			}
+			if !strings.Contains(rep.Summary, "未知 1") {
+				t.Errorf("summary = %q", rep.Summary)
+			}
+		})
+	}
+}
+
+func TestBtrfsSysfs不可读时有问题照旧上报(t *testing.T) {
+	f := cmdexec.NewFake()
+	p := multiBtrfs(f, "sda1")
+	p.readDir = fakeDirs{}.read
+	setMember(t, f, "/dev/sda1", "btrfs-device-stats-errors.txt", "btrfs-scrub-never.txt")
+	rep := collectMulti(t, p, scrubStart.Add(time.Hour))
+	m := items(rep)
+	if m["btrfs[/data]"].State != report.StatusCritical || m["scrub[/data]"].State != report.StatusWarning {
+		t.Errorf("items = %+v", m)
+	}
+}
+
+func TestBtrfs单成员正常为ok(t *testing.T) {
+	f := cmdexec.NewFake()
+	p := multiBtrfs(f, "sda1")
+	setMember(t, f, "/dev/sda1", "btrfs-device-stats-clean.txt", "btrfs-scrub-new-ok.txt")
+	rep := collectMulti(t, p, scrubStart.Add(24*time.Hour))
+	m := items(rep)
+	if m["btrfs[/data]"].State != report.StatusOK || m["scrub[/data]"].State != report.StatusOK || strings.Contains(m["btrfs[/data]"].Text, "已检查成员") {
+		t.Errorf("items = %+v", m)
 	}
 }
