@@ -151,7 +151,8 @@
       "incompatible": "设备上的 agent 版本与中枢不兼容，请升级 agent"
     },
     "agent": {
-      "disabled": "agent 通道未启用，无法配对设备。请在启动参数 --agent-addr 中指定监听地址。"
+      "disabled": "agent 通道未启用，无法配对设备。请在启动参数 --agent-addr 中指定监听地址。",
+      "binary_unavailable": "hub 没有内嵌这个平台的 agent，无法下载。请使用 make build 构建的发布版 hub，或从 GitHub Releases 获取 agent。"
     },
     "layout": {
       "conflict": "布局已被他人更新，请刷新后再保存",

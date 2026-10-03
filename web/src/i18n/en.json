@@ -151,7 +151,8 @@
       "incompatible": "The agent on this device is not compatible with the hub. Upgrade the agent."
     },
     "agent": {
-      "disabled": "The agent channel is disabled, so devices cannot be paired. Set a listen address with --agent-addr."
+      "disabled": "The agent channel is disabled, so devices cannot be paired. Set a listen address with --agent-addr.",
+      "binary_unavailable": "This hub has no embedded agent for the requested platform. Use a release hub built with make build, or get the agent from GitHub Releases."
     },
     "layout": {
       "conflict": "The layout was updated elsewhere. Reload before saving.",

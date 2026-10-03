@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/internal/certs"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/agentdist"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/agentsrv"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/api"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
@@ -298,7 +299,8 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		a.screenState.Refresh()
 	})
 	a.handler = api.New(api.Deps{
-		DataDir: a.cfg.DataDir,
+		AgentDist: agentdist.Embedded(),
+		DataDir:   a.cfg.DataDir,
 		ListenAddr: func() string {
 			v, _ := a.listenAddr.Load().(string)
 			return v

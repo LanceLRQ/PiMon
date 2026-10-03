@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/LanceLRQ/PiMon/src/internal/hub/agentdist"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/devices"
@@ -65,6 +66,9 @@ type Deps struct {
 	DialOut DialOutPairer
 	// DeviceLogs 经 agent 通道拉取设备日志，挂在 GET /api/devices/{id}/logs；为 nil 时不注册该路由。
 	DeviceLogs DeviceLogger
+	// AgentDist 是内嵌的 agent 分发数据，供 /agent/download、/agent/checksums 使用；
+	// 为 nil 时这些路由一律 404 agent.binary_unavailable。
+	AgentDist *agentdist.Dist
 	// WS 是 UI WebSocket 的握手处理器，挂在 GET /ws；为 nil 时不提供（测试用）。
 	// 它自己校验 Origin 与会话，不经 s.admin：管理员会话与屏幕会话都可以连。
 	WS http.Handler
@@ -99,6 +103,7 @@ func New(d Deps) http.Handler {
 	s.registerSystem(mux)
 	s.registerLogos(mux)
 	s.registerDevices(mux)
+	s.registerAgentDist(mux)
 	if d.WS != nil {
 		mux.Handle("GET /ws", d.WS)
 	}

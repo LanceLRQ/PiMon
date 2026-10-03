@@ -4,7 +4,11 @@ PKG     := github.com/LanceLRQ/PiMon/src
 LDFLAGS := -s -w -X $(PKG)/pkg/version.Version=$(VERSION)
 BIN     := $(CURDIR)/bin
 
-.PHONY: generate check-generated web build build-go test test-go test-web test-e2e lint lint-go lint-web dev clean
+# agent 目标平台（<os>/<arch>）与内嵌分发目录
+AGENT_PLATFORMS := linux/amd64 linux/arm64 darwin/arm64
+AGENT_DIST      := $(CURDIR)/src/internal/hub/agentdist/dist
+
+.PHONY: generate check-generated web build build-go build-agent agent-dist test test-go test-web test-e2e lint lint-go lint-web dev clean
 
 TYGO_VERSION := v0.2.21
 
@@ -25,7 +29,30 @@ web:
 
 build: web build-go
 
-build-go:
+# 交叉编译 agent 到 bin/pimon-agent-<os>-<arch>
+build-agent:
+	@set -e; for p in $(AGENT_PLATFORMS); do \
+		os=$${p%/*}; arch=$${p#*/}; \
+		echo "build pimon-agent-$$os-$$arch"; \
+		(cd src && CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN)/pimon-agent-$$os-$$arch ./cmd/pimon-agent); \
+	done
+
+# 生成 hub 内嵌的 agent 分发物：gzip 二进制、SHA256SUMS（对未压缩二进制计算，文件名列不带 .gz）与 VERSION
+agent-dist: build-agent
+	@set -e; mkdir -p $(AGENT_DIST); \
+	find $(AGENT_DIST) -mindepth 1 ! -name .gitkeep -delete; \
+	names=""; \
+	for p in $(AGENT_PLATFORMS); do \
+		os=$${p%/*}; arch=$${p#*/}; n=pimon-agent-$$os-$$arch; \
+		gzip -9 -n -c $(BIN)/$$n > $(AGENT_DIST)/$$n.gz; \
+		names="$$names $$n"; \
+	done; \
+	if command -v sha256sum >/dev/null 2>&1; then sum="sha256sum"; else sum="shasum -a 256"; fi; \
+	(cd $(BIN) && $$sum $$names) > $(AGENT_DIST)/SHA256SUMS; \
+	printf '%s\n' '$(VERSION)' > $(AGENT_DIST)/VERSION
+
+# 发布构建的 hub 内嵌 agent，所以先生成分发物
+build-go: agent-dist
 	cd src && CGO_ENABLED=0 GOOS=linux  GOARCH=arm64 go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN)/pimon-hub-linux-arm64  ./cmd/pimon-hub
 	cd src && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN)/pimon-hub-darwin-arm64 ./cmd/pimon-hub
 
