@@ -1199,7 +1199,32 @@
       "backupNow": "立即备份",
       "backingUp": "备份中…",
       "created": "已生成备份「{{name}}」",
-      "loadFailed": "无法加载备份列表"
+      "loadFailed": "无法加载备份列表",
+      "remote": {
+        "title": "异地备份",
+        "disabled": "异地备份未启用",
+        "goSettings": "前往设置启用",
+        "target": "目标",
+        "lastResult": "最近一次",
+        "never": "尚无上传记录",
+        "ok": "成功",
+        "failed": "失败",
+        "canceled": "已取消",
+        "uploadNow": "立即上传",
+        "uploading": "上传中…",
+        "uploaded": "已上传「{{name}}」",
+        "maybeRunning": "请求中断，上传可能仍在后台进行，请稍后刷新上传记录",
+        "loadFailed": "无法加载异地备份状态",
+        "uploadsTitle": "最近上传记录",
+        "noUploads": "暂无上传记录",
+        "unknownReason": "未知原因",
+        "cols": {
+          "time": "时间",
+          "file": "文件",
+          "size": "大小",
+          "result": "结果"
+        }
+      }
     }
   },
   "screenThemes": {

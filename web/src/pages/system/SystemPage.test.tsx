@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiError, defaultPlugins, json, mockApi, renderWithApp, type Req } from '@/pages/instances/test-utils'
 import { formatClockInZone, formatDateTime } from '@/lib/time'
 import { liveStore } from '@/store/live-store'
-import type { BackupInfo, KioskIdleCheck, KioskStatus, LogEntry, LogList, PluginList, ScreenStatus, SystemInfo } from '@/types/generated'
+import type { BackupInfo, BackupRemote, KioskIdleCheck, KioskStatus, LogEntry, LogList, PluginList, ScreenStatus, SystemInfo } from '@/types/generated'
 import { SystemPage } from './SystemPage'
 
 beforeEach(() => liveStore.reset())
@@ -52,6 +52,25 @@ const backups: BackupInfo[] = [
   { name: 'pimon-backup-20260925-183100-pre-upgrade.tar.gz', reason: 'pre-upgrade', created_at: '2026-09-25T18:31:00Z', size: 3_900_000 },
 ]
 
+const remoteOff: BackupRemote = {
+  enabled: false,
+  type: 'smb',
+  smb_host: '',
+  smb_port: 445,
+  smb_share: '',
+  smb_dir: '',
+  smb_username: '',
+  smb_password: { set: false },
+  smb_domain: '',
+  webdav_url: '',
+  webdav_dir: '',
+  webdav_username: '',
+  webdav_password: { set: false },
+  passphrase: { set: false },
+  keep: 30,
+  passphrase_changed: false,
+}
+
 interface Opts {
   info?: SystemInfo
   extra?: (req: Req) => Response | undefined | Promise<Response | undefined>
@@ -65,6 +84,8 @@ async function setup({ info = sysInfo(), extra }: Opts = {}) {
     if (req.method === 'GET' && req.url.startsWith('/api/system/logs')) return json(200, logsFor(req.url))
     if (req.method === 'GET' && req.url.startsWith('/api/plugins')) return json(200, execPlugins)
     if (req.method === 'GET' && req.url === '/api/backups') return json(200, backups)
+    if (req.method === 'GET' && req.url === '/api/backups/remote') return json(200, remoteOff)
+    if (req.method === 'GET' && req.url.startsWith('/api/backups/remote/uploads')) return json(200, [])
     return undefined
   })
   await renderWithApp(<SystemPage />)

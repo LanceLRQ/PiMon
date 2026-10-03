@@ -1199,7 +1199,32 @@
       "backupNow": "Back up now",
       "backingUp": "Backing up…",
       "created": "Created backup \"{{name}}\"",
-      "loadFailed": "Could not load the backup list"
+      "loadFailed": "Could not load the backup list",
+      "remote": {
+        "title": "Off-site backup",
+        "disabled": "Off-site backup is not enabled",
+        "goSettings": "Enable it in Settings",
+        "target": "Target",
+        "lastResult": "Latest",
+        "never": "No uploads yet",
+        "ok": "Succeeded",
+        "failed": "Failed",
+        "canceled": "Canceled",
+        "uploadNow": "Upload now",
+        "uploading": "Uploading…",
+        "uploaded": "Uploaded \"{{name}}\"",
+        "maybeRunning": "The request was interrupted; the upload may still be running in the background. Refresh the upload list later",
+        "loadFailed": "Could not load the off-site backup status",
+        "uploadsTitle": "Recent uploads",
+        "noUploads": "No uploads yet",
+        "unknownReason": "Unknown reason",
+        "cols": {
+          "time": "Time",
+          "file": "File",
+          "size": "Size",
+          "result": "Result"
+        }
+      }
     }
   },
   "screenThemes": {

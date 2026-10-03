@@ -14,6 +14,7 @@ import { Note } from '@/ui/note'
 import { Section } from '@/ui/section'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ui/table'
 import { useToast } from '@/ui/toast'
+import { RemoteBackupSection } from './RemoteBackupSection'
 
 export function BackupsPanel() {
   const { t, i18n } = useTranslation()
@@ -119,6 +120,7 @@ export function BackupsPanel() {
             {busy ? t('system.backups.backingUp') : t('system.backups.backupNow')}
           </Button>
         </div>
+        <RemoteBackupSection />
       </div>
       <BackupDownloadDialog backup={downloading} onClose={() => setDownloading(null)} />
     </Section>
