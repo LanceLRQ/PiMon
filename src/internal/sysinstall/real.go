@@ -68,7 +68,7 @@ func statInfo(fi os.FileInfo, err error) (FileInfo, error) {
 	if err != nil {
 		return FileInfo{}, err
 	}
-	out := FileInfo{IsDir: fi.IsDir(), IsSymlink: fi.Mode()&os.ModeSymlink != 0, Mode: fi.Mode().Perm(), ModTime: fi.ModTime(), UID: -1, GID: -1}
+	out := FileInfo{IsDir: fi.IsDir(), IsSymlink: fi.Mode()&os.ModeSymlink != 0, IsRegular: fi.Mode().IsRegular(), Mode: fi.Mode().Perm(), ModTime: fi.ModTime(), UID: -1, GID: -1}
 	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
 		out.UID, out.GID = int(st.Uid), int(st.Gid)
 	}

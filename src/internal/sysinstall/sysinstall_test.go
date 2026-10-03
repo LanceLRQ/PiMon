@@ -67,8 +67,22 @@ func TestOSFSMkdir与Lstat(t *testing.T) {
 	if fi, err := fsys.Lstat(link); err != nil || !fi.IsSymlink {
 		t.Fatalf("%+v %v", fi, err)
 	}
-	if fi, err := fsys.Stat(link); err != nil || !fi.IsDir || fi.Mode != 0o750 {
+	if fi, err := fsys.Stat(link); err != nil || !fi.IsDir || fi.Mode != 0o750 || fi.IsRegular {
 		t.Fatalf("%+v %v", fi, err)
+	}
+	file := filepath.Join(dir, "f")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	flink := filepath.Join(dir, "flink")
+	if err := os.Symlink(file, flink); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := fsys.Lstat(file); err != nil || !fi.IsRegular {
+		t.Fatalf("普通文件应 IsRegular: %+v %v", fi, err)
+	}
+	if fi, err := fsys.Lstat(flink); err != nil || fi.IsRegular || !fi.IsSymlink {
+		t.Fatalf("指向文件的符号链接不应 IsRegular: %+v %v", fi, err)
 	}
 }
 

@@ -12,7 +12,8 @@ import (
 // 紧接着 bootstrap 偶尔会以 EIO 失败。
 const bootstrapAttempts = 5
 
-// startLaunchd：未加载则 bootstrap；plist 变化则先 bootout 再 bootstrap；只有二进制或配置变化则 kickstart -k。
+// startLaunchd：未加载则 bootstrap；plist 变化则先 bootout 再 bootstrap；只有二进制或配置变化则发 SIGTERM，
+// 让 run 优雅退出后由 KeepAlive 拉起（见 launchdRestart）。
 func (r *run) startLaunchd(ctx context.Context) error {
 	svc := launchdService(r.Deps)
 	why := r.restartWhy()
@@ -31,7 +32,7 @@ func (r *run) startLaunchd(ctx context.Context) error {
 		}
 		r.rep.Done("重新加载 LaunchAgent "+LaunchdLabel, "plist 已变化")
 	case why != "":
-		if _, err := r.Runner.Run(ctx, cmdLaunchctl, "kickstart", "-k", svc); err != nil {
+		if err := launchdRestart(ctx, r.Deps); err != nil {
 			return fmt.Errorf("重启 LaunchAgent: %w", err)
 		}
 		r.rep.Done("重启 LaunchAgent "+LaunchdLabel, why)

@@ -85,8 +85,9 @@ func (c Config) LogValue() slog.Value {
 		slog.String("name", c.Name), slog.String("role", c.Role))
 }
 
-// Load 读取并校验配置。权限含属组或其他用户位（mode&0o077 != 0）、
-// 或属主既不是 euid 也不是 root 时拒绝。
+// Load 读取并校验配置。权限含属组或其他用户位（mode&0o077 != 0）时拒绝；
+// 非 root 读取时属主既不是 euid 也不是 root 也拒绝。root（euid 0）接受任意属主：
+// 系统模式下配置属主是 pimon，root 执行的 status 等命令要能读。
 func Load(path string, euid int) (Config, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -95,7 +96,7 @@ func Load(path string, euid int) (Config, error) {
 	if info.Mode().Perm()&0o077 != 0 {
 		return Config{}, fmt.Errorf("配置文件 %s 权限过宽（%04o），请执行: chmod 600 %s", path, info.Mode().Perm(), path)
 	}
-	if uid, ok := ownerUID(info); ok && int(uid) != euid && uid != 0 {
+	if uid, ok := ownerUID(info); ok && euid != 0 && int(uid) != euid && uid != 0 {
 		return Config{}, fmt.Errorf("配置文件 %s 的属主（uid %d）既不是当前用户（uid %d）也不是 root", path, uid, euid)
 	}
 	data, err := os.ReadFile(path)

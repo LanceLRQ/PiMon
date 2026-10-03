@@ -66,7 +66,10 @@ func Install(ctx context.Context, d Deps, o Options) error {
 		return fmt.Errorf("install 在「检测运行环境」失败: %w", err)
 	}
 	r.t = t
-	r.loadExisting()
+	if err := r.loadExisting(); err != nil {
+		r.rep.Failure("读取已有配置", err)
+		return fmt.Errorf("install 在「读取已有配置」失败: %w", err)
+	}
 	if err := r.validate(); err != nil {
 		return err
 	}
@@ -119,16 +122,39 @@ func (r *run) envText() string {
 }
 
 // loadExisting 读取已有配置。系统模式下配置属主是 pimon，config.Load 的属主校验会拒绝 root，所以这里直接解析。
-func (r *run) loadExisting() {
-	raw, err := r.FS.ReadFile(r.t.paths.Config)
+// 配置目录归 pimon 所有：读之前先 Lstat，不是普通文件（含符号链接）就拒绝，防止被诱导读出其他文件。
+func (r *run) loadExisting() error {
+	path := r.t.paths.Config
+	if err := r.requireRegular(path); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	raw, err := r.FS.ReadFile(path)
 	if err != nil {
-		return
+		return fmt.Errorf("读取 %s: %w", path, err)
 	}
 	r.existingRaw = raw
 	var c config.Config
 	if json.Unmarshal(raw, &c) == nil && c.Validate() == nil {
 		r.existing = &c
 	}
+	return nil
+}
+
+// requireRegular 用 Lstat（不跟随链接）确认 path 是普通文件；不存在时返回包装了 fs.ErrNotExist 的错误。
+func (r *run) requireRegular(path string) error {
+	fi, err := r.FS.Lstat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return err
+	case err != nil:
+		return fmt.Errorf("检查 %s: %w", path, err)
+	case !fi.IsRegular:
+		return fmt.Errorf("%s 不是普通文件（可能是符号链接），拒绝读取或改写；请检查后删除它再重试", path)
+	}
+	return nil
 }
 
 // validateStatic 校验不依赖本机状态的参数，在检测运行环境之前执行（参数错误不触碰系统）。
@@ -447,27 +473,34 @@ func describeListeners(ls []sysinstall.Listener) string {
 	return strings.Join(parts, "、")
 }
 
-// writeConfig 以 0600 写入配置；内容相同只核对属主与权限。
+// writeConfig 以 0600 原子写入配置；内容相同且属主、权限正确时记「已存在」。
+// 属主或权限不对时以正确属主重写（临时文件 + rename），不对可能被换成链接的路径做 chown。
 func (r *run) writeConfig(c config.Config) error {
 	data, err := config.Marshal(c)
 	if err != nil {
 		return err
 	}
 	path := r.t.paths.Config
-	if string(data) == string(r.existingRaw) {
-		fi, err := r.FS.Stat(path)
+	err = r.requireRegular(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	exists := err == nil
+	if exists && string(data) == string(r.existingRaw) {
+		fi, err := r.FS.Lstat(path)
 		if err != nil {
 			return fmt.Errorf("检查 %s: %w", path, err)
 		}
 		own := r.dirOwner()
-		if fi.Mode != 0o600 || fi.UID != own.UID || fi.GID != own.GID {
-			if err := r.FS.SetOwnerMode(path, 0o600, own); err != nil {
-				return fmt.Errorf("修正 %s 的属主与权限: %w", path, err)
-			}
-			r.rep.Done("修正配置 "+path, "属主与权限已改为 0600")
+		// 用户模式下新文件的属组随系统规则（macOS 继承目录属组），只核对属主。
+		if fi.Mode == 0o600 && fi.UID == own.UID && (r.t.kind != kindSystem || fi.GID == own.GID) {
+			r.rep.Existed("配置 "+path, "内容相同")
 			return nil
 		}
-		r.rep.Existed("配置 "+path, "内容相同")
+		if err := r.FS.WriteFile(path, data, 0o600, r.confOwn); err != nil {
+			return fmt.Errorf("重写 %s: %w", path, err)
+		}
+		r.rep.Done("修正配置 "+path, "属主与权限已改为 0600")
 		return nil
 	}
 	if err := r.FS.WriteFile(path, data, 0o600, r.confOwn); err != nil {

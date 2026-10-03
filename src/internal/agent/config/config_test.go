@@ -86,6 +86,26 @@ func TestLoad属主不符拒绝(t *testing.T) {
 	}
 }
 
+func TestLoad_root接受任意属主但仍校验权限(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root 下文件属主即 root，无法构造「属主不是 root」")
+	}
+	path := filepath.Join(t.TempDir(), "agent.json")
+	if err := Save(path, sample()); err != nil {
+		t.Fatal(err)
+	}
+	// 文件属主为当前非 root 用户，以 euid=0 读取（系统模式下 root 读 pimon 属主的配置）
+	if _, err := Load(path, 0); err != nil {
+		t.Fatalf("root 应接受任意属主: %v", err)
+	}
+	if err := os.Chmod(path, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path, 0); err == nil || !strings.Contains(err.Error(), "chmod 600") {
+		t.Fatalf("root 也应拒绝过宽权限: %v", err)
+	}
+}
+
 func TestLoad缺失与非法(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := Load(filepath.Join(dir, "none.json"), os.Geteuid()); !os.IsNotExist(unwrapAll(err)) {

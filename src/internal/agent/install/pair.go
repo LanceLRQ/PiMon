@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 
 	"github.com/LanceLRQ/PiMon/src/internal/agent/config"
 	"github.com/LanceLRQ/PiMon/src/internal/agent/daemon/link"
@@ -59,7 +60,7 @@ func (r *run) configure(ctx context.Context) error {
 		if rerr := r.rollbackConfig(); rerr != nil {
 			return fmt.Errorf("%w；撤销刚保存的凭据也失败了: %v", err, rerr)
 		}
-		return fmt.Errorf("%w；已撤销刚保存的凭据，请在网页重新生成配对码后重试", err)
+		return fmt.Errorf("%w；已撤销刚保存的凭据，请在网页重新生成配对码后重试（若网页上已出现该设备，请先吊销再重试）", err)
 	}
 	return fmt.Errorf("%w%s", err, pairHint(err))
 }
@@ -68,6 +69,14 @@ func (r *run) configure(ctx context.Context) error {
 func (r *run) rollbackConfig() error {
 	path := r.t.paths.Config
 	r.confChanged = false
+	if err := r.requireRegular(path); err != nil {
+		if errors.Is(err, fs.ErrNotExist) && r.existingRaw == nil {
+			return nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
 	if r.existingRaw == nil {
 		return r.FS.Remove(path)
 	}

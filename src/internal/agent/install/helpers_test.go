@@ -36,6 +36,7 @@ type fakeFile struct {
 	uid, gid int
 	dir      bool
 	mtime    time.Time
+	link     string // 非空表示符号链接，指向该路径
 }
 
 type fakeFS struct {
@@ -44,6 +45,7 @@ type fakeFS struct {
 	ops     []string // 写入、建目录、改属主、删除的记录
 	failOn  map[string]error
 	uptimeS float64
+	reads   []string // ReadFile 读过的路径（跟随符号链接后的实际路径）
 	// creator 是 own 为 nil 时新文件的属主（真实系统里为当前进程的 euid/egid）。
 	creator sysinstall.Owner
 }
@@ -60,9 +62,14 @@ func (f *fakeFS) ReadFile(name string) ([]byte, error) {
 		return []byte(fmt.Sprintf("%.2f 0.00\n", f.uptimeS)), nil
 	}
 	e, ok := f.files[name]
+	if ok && e.link != "" { // 与真实系统一样跟随符号链接
+		name = e.link
+		e, ok = f.files[name]
+	}
 	if !ok || e.dir {
 		return nil, fmt.Errorf("open %s: %w", name, fs.ErrNotExist)
 	}
+	f.reads = append(f.reads, name)
 	return []byte(e.data), nil
 }
 
@@ -78,14 +85,25 @@ func (f *fakeFS) ReadDir(name string) ([]string, error) {
 }
 
 func (f *fakeFS) Stat(name string) (sysinstall.FileInfo, error) {
+	if e, ok := f.files[name]; ok && e.link != "" {
+		name = e.link
+	}
+	return f.Lstat(name)
+}
+
+func (f *fakeFS) Lstat(name string) (sysinstall.FileInfo, error) {
 	e, ok := f.files[name]
 	if !ok {
 		return sysinstall.FileInfo{}, fmt.Errorf("stat %s: %w", name, fs.ErrNotExist)
 	}
-	return sysinstall.FileInfo{IsDir: e.dir, Mode: e.mode, ModTime: e.mtime, UID: e.uid, GID: e.gid}, nil
+	return sysinstall.FileInfo{IsDir: e.dir, IsSymlink: e.link != "", IsRegular: !e.dir && e.link == "",
+		Mode: e.mode, ModTime: e.mtime, UID: e.uid, GID: e.gid}, nil
 }
 
-func (f *fakeFS) Lstat(name string) (sysinstall.FileInfo, error) { return f.Stat(name) }
+// symlink 在 name 处放一个指向 target 的符号链接。
+func (f *fakeFS) symlink(name, target string) {
+	f.files[name] = &fakeFile{link: target, mode: 0o777}
+}
 
 func (f *fakeFS) WriteFile(name string, data []byte, perm fs.FileMode, own *sysinstall.Owner) error {
 	if err := f.fail("write", name); err != nil {
@@ -263,15 +281,16 @@ type testEnv struct {
 	euid, egid int
 	home       string
 
-	pairReqs  []link.PairRequest
-	pairErr   error  // 拨号阶段失败（不调用 Save）
-	pairAfter error  // Save 之后返回的错误
-	pairCred  string // pair_ok 里的凭据
-	statusErr error  // Status 恒返回的错误
-	statusN   int    // Status 调用次数
-	selfData  string // 当前可执行文件内容
-	ctxCancel func() // 非空时在配对时调用
-	ctx       context.Context
+	pairReqs   []link.PairRequest
+	pairErr    error  // 拨号阶段失败（不调用 Save）
+	pairAfter  error  // Save 之后返回的错误
+	pairCred   string // pair_ok 里的凭据
+	statusErr  error  // Status 恒返回的错误
+	statusN    int    // Status 调用次数
+	selfData   string // 当前可执行文件内容
+	afterSave  func() // 非空时在配对的 Save 成功之后调用
+	beforeSave func() // 非空时在配对的 Save 之前调用
+	ctx        context.Context
 }
 
 const selfPath = "/tmp/dl/pimon-agent"
@@ -325,12 +344,15 @@ func (e *testEnv) deps() Deps {
 			if e.pairErr != nil {
 				return link.PairResult{}, e.pairErr
 			}
+			if e.beforeSave != nil {
+				e.beforeSave()
+			}
 			ok := agent.PairOK{Credential: e.pairCred, DeviceID: "dev123", ListenerInfo: agent.ListenerInfo{Hostname: "pimon", Version: "1.0"}}
 			if err := req.Save(ok); err != nil {
 				return link.PairResult{}, err
 			}
-			if e.ctxCancel != nil {
-				e.ctxCancel()
+			if e.afterSave != nil {
+				e.afterSave()
 			}
 			return link.PairResult{DeviceID: "dev123", HubHostname: "pimon", HubVersion: "1.0"}, e.pairAfter
 		},

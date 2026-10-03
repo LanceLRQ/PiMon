@@ -101,8 +101,11 @@ func readPingRange(fsys FS) (lo, hi int, ok bool, err error) {
 	return lo, hi, true, nil
 }
 
+// pingRangeAll 是写入 sysctl 文件的范围，与 hub install（/etc/sysctl.d/99-pimon.conf）一致：
+// 两个文件开机按字母序加载，取值相同才不会后加载的把先加载的缩小；它也是最大范围，只扩大不缩小。
+const pingRangeAll = "0 2147483647"
+
 // ensureSysctl 让 ping 插件能用非特权 ICMP：当前范围不含 pimon 组时写 sysctl 文件并立即应用。
-// 新范围为 0 到 max(现有上限, pimon gid)，只扩大不缩小。
 func (r *run) ensureSysctl(ctx context.Context) error {
 	gid := r.pimon.GID
 	lo, hi, ok, err := readPingRange(r.FS)
@@ -113,18 +116,14 @@ func (r *run) ensureSysctl(ctx context.Context) error {
 		r.rep.Existed("net.ipv4.ping_group_range", "已包含 pimon 组")
 		return nil
 	}
-	newHi := gid
-	if ok && hi > newHi {
-		newHi = hi
-	}
-	conf := fmt.Sprintf("net.ipv4.ping_group_range = 0 %d\n", newHi)
+	conf := "net.ipv4.ping_group_range = " + pingRangeAll + "\n"
 	if err := r.FS.WriteFile(sysctlPath, []byte(conf), 0o644, nil); err != nil {
 		return fmt.Errorf("写入 %s: %w", sysctlPath, err)
 	}
 	if _, err := r.Runner.Run(ctx, cmdSysctl, "-p", sysctlPath); err != nil {
 		return fmt.Errorf("应用 %s: %w", sysctlPath, err)
 	}
-	r.rep.Done("放开 ping_group_range", fmt.Sprintf("0 %d，写入 %s", newHi, sysctlPath))
+	r.rep.Done("放开 ping_group_range", pingRangeAll+"，写入 "+sysctlPath)
 	return nil
 }
 
@@ -138,12 +137,8 @@ func (r *run) pingHint(_ context.Context) error {
 		r.rep.Existed("net.ipv4.ping_group_range", "已包含你的组")
 		return nil
 	}
-	newHi := r.EGID
-	if ok && hi > newHi {
-		newHi = hi
-	}
 	r.rep.Warn("net.ipv4.ping_group_range", fmt.Sprintf(
-		"当前范围不含你的组（gid %d），ping 插件将不可用；如需使用请执行 sudo sysctl -w net.ipv4.ping_group_range=\"0 %d\"，并写入 /etc/sysctl.d/ 持久化",
-		r.EGID, newHi))
+		"当前范围不含你的组（gid %d），ping 插件将不可用；如需使用请执行 sudo sysctl -w net.ipv4.ping_group_range=\"%s\"，并写入 /etc/sysctl.d/ 持久化",
+		r.EGID, pingRangeAll))
 	return nil
 }

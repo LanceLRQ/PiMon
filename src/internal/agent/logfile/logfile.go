@@ -10,6 +10,12 @@ import (
 // DefaultMaxBytes 是默认的单文件上限。
 const DefaultMaxBytes = 5 << 20
 
+// 测试替换点。
+var (
+	rename   = os.Rename
+	openFile = os.OpenFile
+)
+
 // Writer 是带大小上限的日志文件，可并发写。
 type Writer struct {
 	path string
@@ -32,9 +38,14 @@ func Open(path string, max int64) (*Writer, error) {
 	return w, nil
 }
 
+// open 打开（必要时创建）日志文件，并把已存在文件的宽松权限收紧为 0600。
 func (w *Writer) open() error {
-	f, err := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := openFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
+		return err
+	}
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
 		return err
 	}
 	fi, err := f.Stat()
@@ -50,30 +61,49 @@ func (w *Writer) open() error {
 func (w *Writer) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.f == nil {
+		return 0, os.ErrClosed
+	}
 	if w.size > 0 && w.size+int64(len(p)) > w.max {
 		w.rotate()
+		if w.f == nil {
+			return 0, os.ErrClosed
+		}
 	}
 	n, err := w.f.Write(p)
 	w.size += int64(n)
 	return n, err
 }
 
+// rotate 把当前文件改名为 .1 再重开。失败时把计数清零，再写满一个上限才重试，避免每条日志都重试：
+// 改名失败继续写当前文件；改名成功但重开失败则改回原名继续写原路径，改回也失败就停止写入（不写已改名的文件）。
 func (w *Writer) rotate() {
-	if err := os.Rename(w.path, w.path+".1"); err != nil {
+	if err := rename(w.path, w.path+".1"); err != nil {
+		w.size = 0
 		return
 	}
 	old := w.f
-	if err := w.open(); err != nil {
-		// 新文件打不开时继续写已改名的旧句柄，避免丢日志。
-		w.f = old
+	if err := w.open(); err == nil {
+		_ = old.Close()
 		return
 	}
-	_ = old.Close()
+	w.size = 0
+	if err := rename(w.path+".1", w.path); err != nil {
+		_ = old.Close()
+		w.f = nil
+		return
+	}
+	w.f = old
 }
 
 // Close 关闭文件。
 func (w *Writer) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.f.Close()
+	if w.f == nil {
+		return nil
+	}
+	err := w.f.Close()
+	w.f = nil
+	return err
 }

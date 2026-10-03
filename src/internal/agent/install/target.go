@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/LanceLRQ/PiMon/src/internal/agent/config"
 	"github.com/LanceLRQ/PiMon/src/internal/sysinstall"
@@ -101,15 +102,24 @@ func launchdLoaded(ctx context.Context, d Deps) (bool, error) {
 	return false, err
 }
 
-// cliHint 返回本形态下执行子命令的写法（系统模式加 sudo，Linux 用户模式加 --user）。
+// cliHint 返回本形态下执行子命令的写法：系统模式二进制在 PATH 里（/usr/local/bin），加 sudo；
+// 用户模式的二进制在 ~/.pimon/bin，通常不在 PATH，打印完整路径（Linux 再加 --user）。
 func (t target) cliHint(sub string) string {
 	switch t.kind {
 	case kindSystem:
 		return "sudo pimon-agent " + sub
 	case kindUser:
-		return "pimon-agent " + sub + " --user"
+		return shellQuote(t.paths.Bin) + " " + sub + " --user"
 	}
-	return "pimon-agent " + sub
+	return shellQuote(t.paths.Bin) + " " + sub
+}
+
+// shellQuote 在路径含 shell 特殊字符时用单引号包起来，便于直接复制执行。
+func shellQuote(s string) string {
+	if !strings.ContainsAny(s, " \t'\"\\$`!*?[]{}()<>|&;#~%") {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // logHint 返回查看守护进程日志的方法。

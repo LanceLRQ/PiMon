@@ -40,6 +40,8 @@ type Owner struct{ UID, GID int }
 type FileInfo struct {
 	IsDir     bool
 	IsSymlink bool
+	// IsRegular 表示普通文件（不是目录、符号链接、设备、FIFO、套接字）。
+	IsRegular bool
 	Mode      fs.FileMode
 	ModTime   time.Time
 	UID       int

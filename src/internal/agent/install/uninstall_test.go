@@ -121,7 +121,7 @@ func TestRestart_三种模式(t *testing.T) {
 	}{
 		{"系统", "linux", 0, false, "/usr/bin/systemctl restart pimon-agent.service"},
 		{"Linux用户", "linux", 1000, true, "/usr/bin/systemctl --user restart pimon-agent.service"},
-		{"macOS", "darwin", 501, false, "/bin/launchctl kickstart -k gui/501/io.github.lancelrq.pimon-agent"},
+		{"macOS", "darwin", 501, false, "/bin/launchctl kill SIGTERM gui/501/io.github.lancelrq.pimon-agent"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t, tc.goos, tc.euid)

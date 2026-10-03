@@ -107,7 +107,7 @@ func TestSystem_拨入全新安装_命令序列与文件(t *testing.T) {
 	if got := e.file(t, "/etc/systemd/system/pimon-agent.service").data; got != wantSystemUnit {
 		t.Fatalf("单元内容不符:\n%s", got)
 	}
-	if got := e.file(t, "/etc/sysctl.d/99-pimon-agent.conf").data; got != "net.ipv4.ping_group_range = 0 990\n" {
+	if got := e.file(t, "/etc/sysctl.d/99-pimon-agent.conf").data; got != "net.ipv4.ping_group_range = 0 2147483647\n" {
 		t.Fatalf("sysctl 内容不符: %q", got)
 	}
 	c := readConf(t, e, "/etc/pimon-agent/agent.json")
@@ -271,12 +271,12 @@ func TestSystem_目录与配置属主不符时修正(t *testing.T) {
 			t.Fatalf("%s 未修正: %04o %d:%d", d.name, f.mode, f.uid, f.gid)
 		}
 	}
-	// 配置内容相同但属主被改坏：只修属主与权限，不重写
+	// 配置内容相同但属主被改坏：以正确属主原子重写（不对可能被换成链接的路径 chown）
 	e.fs.files["/etc/pimon-agent/agent.json"].uid = 0
 	e.fs.files["/etc/pimon-agent/agent.json"].mode = 0o644
 	e.reset()
 	e.mustInstall(t, dialOut())
-	assertLines(t, "修正操作", e.fs.ops, []string{"chown /etc/pimon-agent/agent.json 0600 990:990"})
+	assertLines(t, "修正操作", e.fs.ops, []string{"write /etc/pimon-agent/agent.json 0600 990:990"})
 }
 
 func TestSystem_已有用户时跳过创建(t *testing.T) {
@@ -419,24 +419,23 @@ func TestDocker_无Docker时不询问(t *testing.T) {
 
 // ---- ping sysctl ----
 
-func TestSysctl_只扩大不缩小(t *testing.T) {
-	for _, tc := range []struct{ cur, want string }{
-		{"1\t0", "0 990"},
-		{"100\t200", "0 990"},
-		{"1000\t2000", "0 2000"},
-	} {
+func TestSysctl_与hub取值统一且只扩大不缩小(t *testing.T) {
+	// 取值与 hub install 一致（0 2147483647）：两个 sysctl 文件开机按字母序加载时不会互相缩小
+	for _, cur := range []string{"1\t0", "100\t200", "1000\t2000"} {
 		e := newEnv(t, "linux", 0)
-		e.fs.files["/proc/sys/net/ipv4/ping_group_range"].data = tc.cur + "\n"
+		e.fs.files[pingRangeProc].data = cur + "\n"
 		e.mustInstall(t, dialOut())
-		if got := e.file(t, "/etc/sysctl.d/99-pimon-agent.conf").data; got != "net.ipv4.ping_group_range = "+tc.want+"\n" {
-			t.Fatalf("当前 %s：写入 %q，期望 %s", tc.cur, got, tc.want)
+		if got := e.file(t, sysctlPath).data; got != "net.ipv4.ping_group_range = 0 2147483647\n" {
+			t.Fatalf("当前 %s：写入 %q", cur, got)
 		}
 	}
-	e := newEnv(t, "linux", 0)
-	e.fs.files["/proc/sys/net/ipv4/ping_group_range"].data = "0\t2147483647\n"
-	e.mustInstall(t, dialOut())
-	if _, ok := e.fs.files["/etc/sysctl.d/99-pimon-agent.conf"]; ok || hasCmd(e.runner.log, cmdSysctl) {
-		t.Fatal("已包含时不应写入")
+	for _, cur := range []string{"0\t2147483647", "900\t1000"} { // 已包含 pimon 组（gid 990）
+		e := newEnv(t, "linux", 0)
+		e.fs.files[pingRangeProc].data = cur + "\n"
+		e.mustInstall(t, dialOut())
+		if _, ok := e.fs.files[sysctlPath]; ok || hasCmd(e.runner.log, cmdSysctl) {
+			t.Fatalf("当前 %s 已包含时不应写入", cur)
+		}
 	}
 }
 
@@ -471,6 +470,7 @@ func TestPair_hub断开_回滚配置不启用(t *testing.T) {
 	if _, ok := e.fs.files["/etc/pimon-agent/agent.json"]; ok {
 		t.Fatal("应回滚刚写入的配置")
 	}
+	assertContains(t, e.out.String(), "若网页上已出现该设备，请先吊销再重试")
 	if hasCmd(e.runner.log, "/usr/bin/systemctl enable") {
 		t.Fatal("不应启用服务")
 	}
@@ -604,7 +604,8 @@ func TestUser_拨出全新安装_命令序列与文件(t *testing.T) {
 		t.Fatalf("用户单元不符:\n%s", got)
 	}
 	out := e.out.String()
-	assertContains(t, out, "loginctl enable-linger alice", "ping_group_range", "pimon-agent pair --user")
+	assertContains(t, out, "loginctl enable-linger alice", "ping_group_range",
+		"/home/alice/.pimon/bin/pimon-agent pair --user", "/home/alice/.pimon/bin/pimon-agent status --user")
 	assertNotContains(t, out, "近似授予")
 	if hasCmd(e.runner.log, "loginctl") || hasCmd(e.runner.log, cmdSysctl) {
 		t.Fatal("用户模式不应自动执行 loginctl 或 sysctl")
@@ -637,6 +638,7 @@ func TestUser_家目录含空格与百分号时单元正确转义(t *testing.T) 
 	e.mustInstall(t, o)
 	unit := e.file(t, "/home/a b%c/.config/systemd/user/pimon-agent.service").data
 	assertContains(t, unit, `ExecStart="/home/a b%%c/.pimon/bin/pimon-agent" run --user`)
+	assertContains(t, e.out.String(), `'/home/a b%c/.pimon/bin/pimon-agent' pair --user`)
 }
 
 // ---- macOS ----
@@ -660,7 +662,7 @@ func TestDarwin_拨出全新安装_命令序列与plist(t *testing.T) {
 	if got := e.file(t, "/Users/alice/Library/LaunchAgents/io.github.lancelrq.pimon-agent.plist").data; got != wantPlist {
 		t.Fatalf("plist 不符:\n%s", got)
 	}
-	assertContains(t, e.out.String(), "pimon-agent pair", "~/.pimon/agent.log")
+	assertContains(t, e.out.String(), "/Users/alice/.pimon/bin/pimon-agent pair", "/Users/alice/.pimon/bin/pimon-agent status", "~/.pimon/agent.log")
 	assertNotContains(t, e.out.String(), "--user", "loginctl")
 }
 
@@ -682,13 +684,13 @@ func TestDarwin_重跑与plist变化(t *testing.T) {
 		"/bin/launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.lancelrq.pimon-agent.plist",
 	})
 
-	// 二进制升级：kickstart -k
+	// 二进制升级：SIGTERM 后由 KeepAlive 拉起
 	e.reset()
 	e.selfData = "BINARY-v3"
 	e.mustInstall(t, dialIn())
 	assertLines(t, "二进制升级", e.runner.log, []string{
 		"/bin/launchctl print gui/501/io.github.lancelrq.pimon-agent",
-		"/bin/launchctl kickstart -k gui/501/io.github.lancelrq.pimon-agent",
+		"/bin/launchctl kill SIGTERM gui/501/io.github.lancelrq.pimon-agent",
 	})
 }
 
@@ -777,5 +779,72 @@ func TestOptions_名称写进配对帧(t *testing.T) {
 	e.mustInstall(t, o)
 	if e.pairReqs[0].Name != "nas" {
 		t.Fatalf("名称 %q", e.pairReqs[0].Name)
+	}
+}
+
+// ---- 配置路径上的符号链接（pimon 被攻破后诱导 root 读写其他文件）----
+
+const shadow = "root:$6$secret:19000:0:99999:7:::\n"
+
+func shadowHost(t *testing.T) *testEnv {
+	t.Helper()
+	e := newEnv(t, "linux", 0)
+	e.users.users["pimon"] = sysinstall.User{UID: 990, GID: 990}
+	e.fs.put("/etc/shadow", shadow, 0o640, 0, 42)
+	e.fs.dir("/etc/pimon-agent", 0o700, 990, 990)
+	return e
+}
+
+func assertShadowIntact(t *testing.T, e *testEnv) {
+	t.Helper()
+	f := e.file(t, "/etc/shadow")
+	if f.data != shadow || f.uid != 0 || f.gid != 42 || f.mode != 0o640 {
+		t.Fatalf("/etc/shadow 被改动: %+v", f)
+	}
+	for _, r := range e.fs.reads {
+		if r == "/etc/shadow" {
+			t.Fatal("不应读取 /etc/shadow")
+		}
+	}
+}
+
+func TestSymlink_已有配置是符号链接_拒绝读取(t *testing.T) {
+	e := shadowHost(t)
+	e.fs.symlink("/etc/pimon-agent/agent.json", "/etc/shadow")
+	err := e.install(t, dialOut())
+	if err == nil {
+		t.Fatal("应失败")
+	}
+	assertContains(t, e.out.String(), "不是普通文件")
+	assertShadowIntact(t, e)
+	if len(e.runner.log) != 0 || len(e.fs.ops) != 0 {
+		t.Fatalf("不应有改动: %v %v", e.runner.log, e.fs.ops)
+	}
+}
+
+func TestSymlink_配对前配置被换成符号链接_拒绝写入且不启用(t *testing.T) {
+	e := shadowHost(t)
+	e.beforeSave = func() { e.fs.symlink("/etc/pimon-agent/agent.json", "/etc/shadow") }
+	if err := e.install(t, dialIn()); err == nil {
+		t.Fatal("应失败")
+	}
+	assertContains(t, e.out.String(), "不是普通文件")
+	assertShadowIntact(t, e)
+	if hasCmd(e.runner.log, "/usr/bin/systemctl enable") {
+		t.Fatal("不应启用服务")
+	}
+}
+
+func TestSymlink_回滚时配置被换成符号链接_拒绝回滚(t *testing.T) {
+	e := shadowHost(t)
+	e.afterSave = func() { e.fs.symlink("/etc/pimon-agent/agent.json", "/etc/shadow") }
+	e.pairAfter = &link.HelloRejectedError{Kind: agentlink.CloseKind("bye"), Bye: "revoked"}
+	if err := e.install(t, dialIn()); err == nil {
+		t.Fatal("应失败")
+	}
+	assertContains(t, e.out.String(), "撤销刚保存的凭据也失败了", "不是普通文件")
+	assertShadowIntact(t, e)
+	if f := e.file(t, "/etc/pimon-agent/agent.json"); f.link != "/etc/shadow" {
+		t.Fatal("不应动这个符号链接")
 	}
 }
