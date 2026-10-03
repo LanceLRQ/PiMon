@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -168,7 +169,14 @@ func TestBindPorts无权限错误可判断(t *testing.T) {
 	if os.Geteuid() == 0 || runtime.GOOS == "darwin" {
 		t.Skip("仅非 root 的 Linux 上 <1024 端口无权限")
 	}
-	_, err := BindPorts{}.Listeners(1)
+	b, err := os.ReadFile("/proc/sys/net/ipv4/ip_unprivileged_port_start")
+	if err != nil {
+		t.Skip("读不到 ip_unprivileged_port_start: ", err)
+	}
+	if start, err := strconv.Atoi(strings.TrimSpace(string(b))); err != nil || start <= 1 {
+		t.Skipf("ip_unprivileged_port_start=%q，非 root 也能绑定低端口", strings.TrimSpace(string(b)))
+	}
+	_, err = BindPorts{}.Listeners(1)
 	if err == nil || !errors.Is(err, fs.ErrPermission) {
 		t.Fatalf("应为无权限错误: %v", err)
 	}
