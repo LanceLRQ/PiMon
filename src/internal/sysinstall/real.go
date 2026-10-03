@@ -15,6 +15,7 @@ import (
 	"syscall"
 )
 
+// ExecRunner 是 Runner 的真实实现，用 os/exec 执行命令；非零退出返回 *ExitError。
 type ExecRunner struct{}
 
 func (r ExecRunner) Run(ctx context.Context, argv ...string) (string, error) {
@@ -42,6 +43,7 @@ func (ExecRunner) run(ctx context.Context, setEnv []string, own bool, argv []str
 	return out.String(), nil
 }
 
+// OSFS 是 FS 的真实实现；WriteFile 先写同目录临时文件再 rename，保证原子。
 type OSFS struct{}
 
 func (OSFS) ReadFile(name string) ([]byte, error) { return os.ReadFile(name) }
@@ -118,6 +120,7 @@ func (OSFS) SetOwnerMode(name string, perm fs.FileMode, own Owner) error {
 	return os.Chmod(name, perm)
 }
 
+// OSUsers 是 Users 的真实实现，基于 os/user；用户不存在时返回 ErrNotFound。
 type OSUsers struct{}
 
 func (OSUsers) Lookup(name string) (User, error) {

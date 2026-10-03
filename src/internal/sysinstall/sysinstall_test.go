@@ -2,9 +2,12 @@ package sysinstall
 
 import (
 	"bytes"
+	"errors"
+	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -143,5 +146,30 @@ func TestReport输出格式(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Fatalf("缺少 %q:\n%s", want, s)
 		}
+	}
+}
+
+func TestBindPorts只监听回环也判占用(t *testing.T) {
+	for _, host := range []string{"127.0.0.1", "::1"} {
+		ln, err := net.Listen("tcp", net.JoinHostPort(host, "0"))
+		if err != nil {
+			t.Skipf("无法监听 %s: %v", host, err)
+		}
+		port := ln.Addr().(*net.TCPAddr).Port
+		got, err := BindPorts{}.Listeners(port)
+		_ = ln.Close()
+		if err != nil || len(got) != 1 {
+			t.Fatalf("%s 占用应判占用: %+v %v", host, got, err)
+		}
+	}
+}
+
+func TestBindPorts无权限错误可判断(t *testing.T) {
+	if os.Geteuid() == 0 || runtime.GOOS == "darwin" {
+		t.Skip("仅非 root 的 Linux 上 <1024 端口无权限")
+	}
+	_, err := BindPorts{}.Listeners(1)
+	if err == nil || !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("应为无权限错误: %v", err)
 	}
 }
