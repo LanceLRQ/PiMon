@@ -1794,5 +1794,17 @@
       "touchUnknown": "尚未上报",
       "touchSub": "有触摸时点屏幕即亮"
     }
+  },
+  "backup": {
+    "upload_reason": {
+      "connect": "连不上远端",
+      "auth": "用户名或密码错误",
+      "not_writable": "目录无法创建或没有写入权限",
+      "io": "读写远端时出错或长时间没有进展",
+      "canceled": "中枢关停，上传已取消",
+      "config": "远端配置不合法",
+      "no_local": "本地备份缺失或不可读",
+      "cleanup_failed": "上传成功，但清理远端过期备份失败"
+    }
   }
 }

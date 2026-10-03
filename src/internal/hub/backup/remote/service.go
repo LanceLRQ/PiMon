@@ -53,12 +53,13 @@ type ServiceConfig struct {
 	Stall time.Duration
 }
 
-// Status 是远端备份的运行状态摘要，供 hub-self 判定「异地备份」数据项。时间取上传结束时间。
+// Status 是远端备份的运行状态摘要，供 hub-self 判定「异地备份」数据项。时间取上传结束时间；
+// LastAttempt 与 LastFailed 取最近一条非取消记录（被取消的上传不算失败）。
 type Status struct {
 	Enabled     bool
 	LastAttempt *time.Time
 	LastSuccess *time.Time
-	// LastFailed 表示最近一次上传尝试失败。
+	// LastFailed 表示最近一次（非取消的）上传失败。
 	LastFailed bool
 }
 
@@ -75,6 +76,8 @@ type Service struct {
 	life     context.Context
 	closed   bool
 	inflight sync.WaitGroup
+	// queued 是正在锁上排队的上传数，供测试与排障观察。
+	queued int
 }
 
 // NewService 构造服务；须调用 Start 后才接受上传。
@@ -139,6 +142,19 @@ func (s *Service) begin() (context.Context, error) {
 
 // lock 获取上传锁，ctx 结束时放弃等待。
 func (s *Service) lock(ctx context.Context) error {
+	select {
+	case s.sem <- struct{}{}:
+		return nil
+	default:
+	}
+	s.mu.Lock()
+	s.queued++
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.queued--
+		s.mu.Unlock()
+	}()
 	select {
 	case s.sem <- struct{}{}:
 		return nil
@@ -210,6 +226,9 @@ func (s *Service) uploadLatest(ctx context.Context) (model.BackupUpload, error) 
 	// 拿到锁后重新读取：排队期间配置可能被改、可能刚生成了新的本地备份。
 	cfg, info, err := s.pick(ctx)
 	if err != nil {
+		if ctx.Err() != nil {
+			return model.BackupUpload{}, ErrShuttingDown
+		}
 		return model.BackupUpload{}, err
 	}
 	u, err := s.upload(ctx, cfg, info)
@@ -239,37 +258,61 @@ func (s *Service) pick(ctx context.Context) (Config, model.BackupInfo, error) {
 }
 
 // upload 执行一次上传（调用方已持有上传锁），写入上传记录与 hub 日志，返回记录。
-// 上传成功但清理远端过期备份失败时仍记为成功，原因里注明清理失败。
-// 记录与日志只含分类原因与已脱敏的消息，不含密码与口令。
+// 记录的原因为「<机器码>:<说明>」（model.UploadReason*）：本地备份缺失或不可读记 no_local 并返回 ErrNoLocal；
+// 配置不合法记 config 并返回字段错误；服务 ctx 结束导致的中止记 canceled（不算失败）并返回 ctx 的错误；
+// 远端失败记分类原因并返回 *Error；上传成功但清理远端过期备份失败记 cleanup_failed，仍为成功。
+// 记录与日志只含机器码与已脱敏的说明，不含密码与口令。
 func (s *Service) upload(ctx context.Context, cfg Config, info model.BackupInfo) (model.BackupUpload, error) {
 	remoteName, _ := backup.RemoteName(info.Name)
 	rec := model.BackupUpload{Name: remoteName, TargetType: cfg.Type, StartedAt: s.cfg.Clock.Now()}
 	var (
-		res   Result
-		upErr error
+		res          Result
+		code, detail string
+		retErr       error
 	)
 	if path, err := s.cfg.Local.Path(info.Name); err != nil {
-		upErr = fmt.Errorf("本地备份 %s 不可读: %w", info.Name, err)
+		code, detail, retErr = model.UploadReasonNoLocal, info.Name, ErrNoLocal
 	} else if tg, err := s.cfg.NewTarget(cfg); err != nil {
-		upErr = err
+		code, detail, retErr = model.UploadReasonConfig, err.Error(), err
+		var ce *ConfigError
+		if errors.As(err, &ce) {
+			retErr = ce.FieldErrors()
+		}
 	} else {
 		u := &Uploader{Clock: s.cfg.Clock, Passphrase: cfg.Passphrase, WorkFactor: s.cfg.WorkFactor, Stall: s.cfg.Stall}
+		var upErr error
 		res, upErr = u.Upload(ctx, tg, path, info.Name, cfg.Keep)
 		_ = tg.Close()
+		var le *LocalError
+		switch {
+		case upErr == nil:
+			if res.CleanupErr != nil {
+				re := Classify(res.CleanupErr)
+				code, detail = model.UploadReasonCleanupFailed, string(re.Reason)+": "+re.Message
+			}
+		case ctx.Err() != nil:
+			// 只看服务 ctx：它结束才算取消（中枢关停）；目标自身的超时仍按远端失败归类。
+			code, retErr = model.UploadReasonCanceled, ctx.Err()
+		case errors.As(upErr, &le):
+			code, detail, retErr = model.UploadReasonNoLocal, scrub(le.Error()), ErrNoLocal
+		default:
+			re := Classify(upErr)
+			code, detail, retErr = string(re.Reason), re.Message, re
+		}
 	}
 	rec.FinishedAt = s.cfg.Clock.Now()
 	rec.Size = res.Bytes
+	rec.Success = retErr == nil
+	rec.Reason = model.FormatUploadReason(code, detail)
 	switch {
-	case upErr != nil:
-		rec.Reason = describe(upErr)
-		slog.Warn("远端备份上传失败", "name", rec.Name, "type", rec.TargetType, "reason", rec.Reason)
-	case res.CleanupErr != nil:
-		rec.Success = true
-		rec.Reason = "上传成功，但清理远端过期备份失败：" + describe(res.CleanupErr)
+	case code == model.UploadReasonCanceled:
+		slog.Info("远端备份上传已取消（中枢关停）", "name", rec.Name, "type", rec.TargetType)
+	case !rec.Success:
+		slog.Warn("远端备份上传失败", "name", rec.Name, "type", rec.TargetType, "reason", code, "detail", detail)
+	case code == model.UploadReasonCleanupFailed:
 		slog.Warn("远端备份已上传，但清理远端过期备份失败", "name", rec.Name, "type", rec.TargetType,
-			"bytes", rec.Size, "reason", describe(res.CleanupErr))
+			"bytes", rec.Size, "detail", detail)
 	default:
-		rec.Success = true
 		slog.Info("远端备份已上传", "name", rec.Name, "type", rec.TargetType, "bytes", rec.Size)
 	}
 	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), recordTimeout)
@@ -278,33 +321,9 @@ func (s *Service) upload(ctx context.Context, cfg Config, info model.BackupInfo)
 	if err != nil {
 		slog.Error("写入远端备份上传记录失败", "name", rec.Name, "err", err)
 		saved = rec
+		saved.FillReason()
 	}
-	var ce *ConfigError
-	if errors.As(upErr, &ce) {
-		return saved, ce.FieldErrors()
-	}
-	if upErr != nil && !errors.Is(upErr, context.Canceled) && !errors.Is(upErr, context.DeadlineExceeded) {
-		return saved, Classify(upErr)
-	}
-	return saved, upErr
-}
-
-// describe 把上传错误转成写入记录与日志的原因文本：分类错误为「<reason>：<消息>」，消息已脱敏。
-func describe(err error) string {
-	var (
-		re *Error
-		ce *ConfigError
-	)
-	switch {
-	case errors.As(err, &ce):
-		return "配置无效：" + ce.Message
-	case errors.As(err, &re):
-		return string(re.Reason) + "：" + re.Message
-	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-		return "已取消（中枢关停）"
-	default:
-		return scrub(err.Error())
-	}
+	return saved, retErr
 }
 
 // Test 用请求体中的配置（密钥留空用已保存的值，不落库，未启用也可测）测试连接：
@@ -357,7 +376,8 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 	if !st.Enabled {
 		return st, nil
 	}
-	last, err := s.cfg.Repo.LastUpload(ctx, false)
+	// 「最近一次结果」跳过因关停被取消的记录：例行重启不应让屏幕变红。
+	last, err := s.cfg.Repo.LastResult(ctx)
 	if err != nil {
 		return Status{}, err
 	}

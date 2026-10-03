@@ -52,23 +52,23 @@ type App struct {
 	cfg  config.Config
 	opts options
 
-	db          *store.DB
-	box         *secret.Box
-	settings    *settings.Service
-	admins      *auth.Admins
-	setupCodes  *auth.SetupCodes
-	sessions    *auth.Sessions
-	screen      *auth.ScreenTokens
-	backups     *backup.Service
+	db         *store.DB
+	box        *secret.Box
+	settings   *settings.Service
+	admins     *auth.Admins
+	setupCodes *auth.SetupCodes
+	sessions   *auth.Sessions
+	screen     *auth.ScreenTokens
+	backups    *backup.Service
 	// remote 是远端（NAS）备份服务；backupAfterDaily 是每日备份成功后的回调，在装配远端服务后赋值。
 	remote           *remote.Service
 	backupAfterDaily func(ctx context.Context, info model.BackupInfo)
-	plugins     *plugins.Registry
-	instances   *instances.Service
-	screens     *screens.Service
-	screenState *screenstate.Service
-	devices     *devices.Store
-	presence    *devices.Presence
+	plugins          *plugins.Registry
+	instances        *instances.Service
+	screens          *screens.Service
+	screenState      *screenstate.Service
+	devices          *devices.Store
+	presence         *devices.Presence
 	// deviceViews 是设备的对外视图，REST 与 WS 共用。
 	deviceViews *devices.Viewer
 	// machineNotes 把设备状态变化转成其上实例的变化通知。

@@ -314,3 +314,36 @@ func TestUploadsRetentionAndLookup(t *testing.T) {
 		t.Errorf("时间应往返一致: %v", suc.FinishedAt)
 	}
 }
+
+func TestUploadReasonFieldsAndLastResultSkipsCanceled(t *testing.T) {
+	r, _, clk := newRepo(t)
+	ctx := context.Background()
+	if got, err := r.LastResult(ctx); err != nil || got != nil {
+		t.Fatalf("空表：%v %v", got, err)
+	}
+	rec := func(success bool, code, detail string) model.BackupUpload {
+		u, err := r.RecordUpload(ctx, model.BackupUpload{Name: "a.age", TargetType: "smb", StartedAt: clk.Now(), FinishedAt: clk.Now(),
+			Success: success, Reason: model.FormatUploadReason(code, detail)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u
+	}
+	ok := rec(true, "", "")
+	if ok.Reason != "" || ok.ReasonCode != "" || ok.ReasonDetail != "" {
+		t.Fatalf("成功无附注：%+v", ok)
+	}
+	failed := rec(false, model.UploadReasonAuth, "用户名或密码错误: 被拒")
+	if failed.ReasonCode != "auth" || failed.ReasonDetail != "用户名或密码错误: 被拒" {
+		t.Fatalf("解析：%+v", failed)
+	}
+	rec(false, model.UploadReasonCanceled, "")
+	got, err := r.LastResult(ctx)
+	if err != nil || got == nil || got.ID != failed.ID || got.ReasonCode != "auth" {
+		t.Fatalf("应跳过取消记录取到失败记录：%+v %v", got, err)
+	}
+	list, _ := r.Uploads(ctx, 0)
+	if list[0].ReasonCode != model.UploadReasonCanceled || list[1].ReasonDetail == "" {
+		t.Fatalf("列表应带解析字段：%+v", list[:2])
+	}
+}

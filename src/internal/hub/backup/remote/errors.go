@@ -67,6 +67,11 @@ func Classify(err error) *Error {
 	if errors.As(err, &re) {
 		return re
 	}
+	var le *LocalError
+	if errors.As(err, &le) {
+		// 本地文件的权限错误不是远端「不可写」。
+		return NewError(ReasonIO, err.Error(), err)
+	}
 	var ne net.Error
 	switch {
 	case errors.As(err, &ne):
@@ -94,3 +99,11 @@ func (e *ConfigError) FieldErrors() model.FieldErrors { return model.FieldErrors
 func configErr(field, code, msg string) *ConfigError {
 	return &ConfigError{Field: field, Code: code, Message: msg}
 }
+
+// LocalError 是读取本地备份时的错误（文件缺失、不可读），与远端错误分开，由调用方映射为「没有可上传的本地备份」。
+type LocalError struct{ Err error }
+
+func (e *LocalError) Error() string { return e.Err.Error() }
+
+// Unwrap 返回底层错误。
+func (e *LocalError) Unwrap() error { return e.Err }

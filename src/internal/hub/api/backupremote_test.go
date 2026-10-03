@@ -184,7 +184,7 @@ func TestBackupRemoteTestFailureHidesSecrets(t *testing.T) {
 	assertNoDavSecrets(t, "上传失败响应", data)
 	_, data = e.do(admin, "GET", "/api/backups/remote/uploads", nil)
 	var ups []model.BackupUpload
-	if err := json.Unmarshal(data, &ups); err != nil || len(ups) != 1 || ups[0].Success || !strings.HasPrefix(ups[0].Reason, "auth：") {
+	if err := json.Unmarshal(data, &ups); err != nil || len(ups) != 1 || ups[0].Success || ups[0].ReasonCode != model.UploadReasonAuth {
 		t.Fatalf("记录 = %s", data)
 	}
 	assertNoDavSecrets(t, "上传记录", data)

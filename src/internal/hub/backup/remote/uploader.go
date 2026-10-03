@@ -47,7 +47,7 @@ type Result struct {
 // Upload 把 localPath（本地备份，文件名 name 须符合本项目备份命名）加密后上传到 target，
 // 远端正式名为 name + ".age"，同名已存在时覆盖。keep 是远端保留的份数（含本次，至少 1）。
 // 清理只涉及符合本项目命名的加密备份与自己的 .pimon-upload-*.part 残留，不碰目录里的其他文件。
-// 调用方取消 ctx 时返回 ctx 的错误；其余失败返回 *Error。上传阶段及之后失败时，Result 仍带远端名与
+// 调用方取消 ctx 时返回 ctx 的错误；本地备份打不开返回 *LocalError；其余失败返回 *Error。上传阶段及之后失败时，Result 仍带远端名与
 // 已写入的密文字节数，供上传记录使用。
 func (u *Uploader) Upload(ctx context.Context, target Target, localPath, name string, keep int) (Result, error) {
 	remoteName, ok := backup.RemoteName(name)
@@ -59,7 +59,7 @@ func (u *Uploader) Upload(ctx context.Context, target Target, localPath, name st
 	}
 	f, err := os.Open(localPath)
 	if err != nil {
-		return Result{}, fmt.Errorf("打开本地备份: %w", err)
+		return Result{}, &LocalError{Err: fmt.Errorf("打开本地备份: %w", err)}
 	}
 	defer func() { _ = f.Close() }()
 

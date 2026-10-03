@@ -117,11 +117,51 @@ export interface BackupUpload {
   size: number /* int64 */;
   success: boolean;
   /**
-   * Reason 在失败时给出原因「<connect|auth|not_writable|io>：<消息>」（不含密码与口令）；
-   * 成功时通常为空，上传成功但清理远端过期备份失败时注明清理失败。
+   * Reason 是入库的原文「<机器码>:<说明>」（见 UploadReason* 常量），成功且无附注时为空；说明不含密码与口令。
+   * 前端用 ReasonCode 翻译（i18n 键 backup.upload_reason.<code>），ReasonDetail 作为补充说明显示。
    */
   reason: string;
+  /**
+   * ReasonCode 是从 Reason 解析出的机器码；成功且无附注时为空。
+   */
+  reason_code: string;
+  /**
+   * ReasonDetail 是从 Reason 解析出的说明（可为空）。
+   */
+  reason_detail: string;
 }
+/**
+ * 上传记录的原因机器码（两端契约，不可随意改名）。前 4 个与 backup.remote_failed 的 details.reason 相同。
+ */
+export const UploadReasonConnect = "connect";
+/**
+ * 上传记录的原因机器码（两端契约，不可随意改名）。前 4 个与 backup.remote_failed 的 details.reason 相同。
+ */
+export const UploadReasonAuth = "auth";
+/**
+ * 上传记录的原因机器码（两端契约，不可随意改名）。前 4 个与 backup.remote_failed 的 details.reason 相同。
+ */
+export const UploadReasonNotWritable = "not_writable";
+/**
+ * 上传记录的原因机器码（两端契约，不可随意改名）。前 4 个与 backup.remote_failed 的 details.reason 相同。
+ */
+export const UploadReasonIO = "io";
+/**
+ * UploadReasonCanceled 表示上传被取消（中枢关停）；它不算失败，hub-self 判定时跳过。
+ */
+export const UploadReasonCanceled = "canceled";
+/**
+ * UploadReasonConfig 表示配置不合法，未能构造目标。
+ */
+export const UploadReasonConfig = "config";
+/**
+ * UploadReasonNoLocal 表示本地备份缺失或不可读。
+ */
+export const UploadReasonNoLocal = "no_local";
+/**
+ * UploadReasonCleanupFailed 表示上传成功（Success 仍为 true），但清理远端过期备份失败。
+ */
+export const UploadReasonCleanupFailed = "cleanup_failed";
 /**
  * BackupRemoteTest 是测试连接成功时的响应；失败走错误码 backup.remote_failed。
  */

@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -18,12 +20,18 @@ import (
 
 // fakeLocal 是只含一份（或零份）本地备份的 LocalBackups。
 type fakeLocal struct {
-	dir  string
-	list []model.BackupInfo
+	dir     string
+	list    []model.BackupInfo
+	pathErr error
 }
 
 func (f *fakeLocal) List() ([]model.BackupInfo, error) { return f.list, nil }
-func (f *fakeLocal) Path(name string) (string, error) { return filepath.Join(f.dir, name), nil }
+func (f *fakeLocal) Path(name string) (string, error) {
+	if f.pathErr != nil {
+		return "", f.pathErr
+	}
+	return filepath.Join(f.dir, name), nil
+}
 
 type svcFixture struct {
 	svc     *Service
@@ -114,7 +122,8 @@ func TestAfterDailyUploadsWhenEnabled(t *testing.T) {
 		t.Fatalf("远端文件 = %v", got)
 	}
 	ups := f.uploads(t)
-	if len(ups) != 1 || !ups[0].Success || ups[0].Name != localNew+".age" || ups[0].TargetType != "smb" || ups[0].Size <= 0 || ups[0].Reason != "" {
+	if len(ups) != 1 || !ups[0].Success || ups[0].Name != localNew+".age" || ups[0].TargetType != "smb" || ups[0].Size <= 0 ||
+		ups[0].Reason != "" || ups[0].ReasonCode != "" {
 		t.Fatalf("记录 = %+v", ups)
 	}
 	if !strings.Contains(logs(), "远端备份已上传") {
@@ -137,7 +146,8 @@ func TestAfterDailyFailureRecordedAndLoggedWithoutSecrets(t *testing.T) {
 	f.mem.putErr = NewError(ReasonAuth, "用户名或密码错误（smb://u:smb-secret-pw@nas.lan）", nil)
 	f.svc.AfterDaily(context.Background(), f.local.list[0])
 	ups := f.uploads(t)
-	if len(ups) != 1 || ups[0].Success || !strings.HasPrefix(ups[0].Reason, "auth：") || ups[0].Size <= 0 {
+	if len(ups) != 1 || ups[0].Success || ups[0].ReasonCode != model.UploadReasonAuth || !strings.HasPrefix(ups[0].Reason, "auth:") ||
+		ups[0].ReasonDetail == "" || ups[0].Size <= 0 {
 		t.Fatalf("记录 = %+v", ups)
 	}
 	assertNoSecrets(t, "记录", ups[0].Reason)
@@ -166,7 +176,7 @@ func TestCleanupFailureRecordedAsSuccessWithNote(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !u.Success || !strings.Contains(u.Reason, "清理远端过期备份失败") || !strings.Contains(u.Reason, "not_writable") {
+	if !u.Success || u.ReasonCode != model.UploadReasonCleanupFailed || !strings.Contains(u.ReasonDetail, "not_writable") {
 		t.Fatalf("记录 = %+v", u)
 	}
 	if !strings.Contains(logs(), "清理远端过期备份失败") {
@@ -214,7 +224,7 @@ func TestUploadNowConfigErrorBecomesFieldErrors(t *testing.T) {
 	if fe["smb_host"] != model.FieldInvalid {
 		t.Fatalf("fe = %v", fe)
 	}
-	if ups := f.uploads(t); len(ups) != 1 || ups[0].Success || !strings.HasPrefix(ups[0].Reason, "配置无效") {
+	if ups := f.uploads(t); len(ups) != 1 || ups[0].Success || ups[0].ReasonCode != model.UploadReasonConfig {
 		t.Fatalf("记录 = %+v", ups)
 	}
 }
@@ -355,7 +365,7 @@ func TestShutdownCancelsInflightUploadAndWaits(t *testing.T) {
 		t.Fatalf("关停取消的上传应返回 ErrShuttingDown：%v", err)
 	}
 	ups := f.uploads(t)
-	if len(ups) != 1 || ups[0].Success || !strings.Contains(ups[0].Reason, "已取消") {
+	if len(ups) != 1 || ups[0].Success || ups[0].ReasonCode != model.UploadReasonCanceled {
 		t.Fatalf("取消也应写入失败记录：%+v", ups)
 	}
 }
@@ -428,5 +438,134 @@ func TestStatus(t *testing.T) {
 	st, _ = f.svc.Status(ctx)
 	if !st.LastFailed || st.LastSuccess == nil {
 		t.Fatalf("失败后：%+v", st)
+	}
+}
+
+func TestLocalBackupMissingOrUnreadableIsNoLocal(t *testing.T) {
+	f := newSvc(t)
+	f.enable(t)
+	// Path 报错（文件已被清理）。
+	f.local.pathErr = errors.New("备份不存在")
+	if _, err := f.svc.UploadNow(context.Background()); !errors.Is(err, ErrNoLocal) {
+		t.Fatalf("Path 失败：%v", err)
+	}
+	f.local.pathErr = nil
+	// 本地文件不可读（权限）：不能被归为远端 not_writable。
+	p := filepath.Join(f.local.dir, localNew)
+	if err := os.Chmod(p, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(p, 0o600) })
+	if fh, err := os.Open(p); err == nil {
+		_ = fh.Close()
+		t.Skip("以 root 运行，无法模拟不可读")
+	}
+	if _, err := f.svc.UploadNow(context.Background()); !errors.Is(err, ErrNoLocal) {
+		t.Fatalf("本地不可读：%v", err)
+	}
+	ups := f.uploads(t)
+	if len(ups) != 2 {
+		t.Fatalf("应有 2 条记录：%+v", ups)
+	}
+	for _, u := range ups {
+		if u.Success || u.ReasonCode != model.UploadReasonNoLocal {
+			t.Fatalf("记录 = %+v", u)
+		}
+	}
+	if f.mem.putSeen != nil {
+		t.Fatalf("本地失败不应上传：%v", f.mem.putSeen)
+	}
+}
+
+func TestClassifyLocalPermissionIsNotRemoteNotWritable(t *testing.T) {
+	err := &LocalError{Err: &fs.PathError{Op: "open", Path: "/x", Err: fs.ErrPermission}}
+	if got := Classify(err).Reason; got == ReasonNotWritable {
+		t.Fatalf("本地权限错误被归为 %s", got)
+	}
+}
+
+func TestCanceledUploadDoesNotCountAsFailure(t *testing.T) {
+	ctx := context.Background()
+	// 从未成功：取消后仍是「从未成功」，LastFailed 为假（hub-self 判 warning，而不是 critical）。
+	f := newSvc(t)
+	f.enable(t)
+	b := newBlocking(f.mem)
+	go func() { _, _ = f.svc.UploadNow(ctx) }()
+	waitStarted(t, b)
+	f.cancel()
+	<-f.done
+	st, err := f.svc.Status(ctx)
+	if err != nil || !st.Enabled || st.LastFailed || st.LastSuccess != nil || st.LastAttempt != nil {
+		t.Fatalf("从未成功后取消：%+v %v", st, err)
+	}
+
+	// 之前成功：取消后最近结果仍是那次成功（≤48h 时 hub-self 判 ok）。
+	f2 := newSvc(t)
+	f2.enable(t)
+	ok, err := f2.svc.UploadNow(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b2 := newBlocking(f2.mem)
+	go func() { _, _ = f2.svc.UploadNow(ctx) }()
+	waitStarted(t, b2)
+	f2.cancel()
+	<-f2.done
+	st, _ = f2.svc.Status(ctx)
+	if st.LastFailed || st.LastSuccess == nil || st.LastAttempt == nil || !st.LastAttempt.Equal(ok.FinishedAt) {
+		t.Fatalf("成功后取消：%+v", st)
+	}
+	if ups := f2.uploads(t); len(ups) != 2 || ups[0].ReasonCode != model.UploadReasonCanceled {
+		t.Fatalf("取消仍应写记录：%+v", ups)
+	}
+}
+
+func TestQueuedUploadOnShutdownReturnsShuttingDownWithoutRecord(t *testing.T) {
+	f := newSvc(t)
+	f.enable(t)
+	b := newBlocking(f.mem)
+	first := make(chan error, 1)
+	go func() { _, err := f.svc.UploadNow(context.Background()); first <- err }()
+	waitStarted(t, b)
+	queued := make(chan error, 1)
+	go func() { _, err := f.svc.UploadNow(context.Background()); queued <- err }()
+	// 等第二个请求登记为进行中（在锁上排队）。
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		f.svc.mu.Lock()
+		n := f.svc.queued
+		f.svc.mu.Unlock()
+		if n == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("第二个上传没有排队")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	f.cancel()
+	<-f.done
+	for _, c := range []chan error{first, queued} {
+		if err := <-c; !errors.Is(err, ErrShuttingDown) {
+			t.Fatalf("关停后应返回 ErrShuttingDown：%v", err)
+		}
+	}
+	// 只有进行中的那个写了取消记录，排队的不写。
+	if ups := f.uploads(t); len(ups) != 1 || ups[0].ReasonCode != model.UploadReasonCanceled {
+		t.Fatalf("记录 = %+v", ups)
+	}
+	if n := len(f.mem.putSeen); n != 1 {
+		t.Fatalf("排队的上传不应开始 Put：%d", n)
+	}
+}
+
+func TestAfterDailyAfterShutdownReturnsImmediately(t *testing.T) {
+	f := newSvc(t)
+	f.enable(t)
+	f.cancel()
+	<-f.done
+	f.svc.AfterDaily(context.Background(), f.local.list[0])
+	if f.targets.Load() != 0 || len(f.uploads(t)) != 0 {
+		t.Fatalf("关停后不应上传：targets=%d", f.targets.Load())
 	}
 }

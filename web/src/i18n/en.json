@@ -1794,5 +1794,17 @@
       "touchUnknown": "not reported yet",
       "touchSub": "Tap the screen to light it when touch is present"
     }
+  },
+  "backup": {
+    "upload_reason": {
+      "connect": "Cannot reach the remote",
+      "auth": "Wrong username or password",
+      "not_writable": "Directory cannot be created or is not writable",
+      "io": "Read/write error on the remote, or no progress for too long",
+      "canceled": "Upload canceled because the hub was shutting down",
+      "config": "Invalid remote configuration",
+      "no_local": "Local backup missing or unreadable",
+      "cleanup_failed": "Uploaded, but removing expired remote backups failed"
+    }
   }
 }

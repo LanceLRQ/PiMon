@@ -330,6 +330,7 @@ func (r *Repo) RecordUpload(ctx context.Context, u model.BackupUpload) (model.Ba
 		return model.BackupUpload{}, fmt.Errorf("清理上传记录: %w", err)
 	}
 	u.StartedAt, u.FinishedAt = u.StartedAt.UTC(), u.FinishedAt.UTC()
+	u.FillReason()
 	return u, nil
 }
 
@@ -354,6 +355,7 @@ func scanUpload(s rowScanner) (model.BackupUpload, error) {
 		return u, err
 	}
 	u.Success = ok == 1
+	u.FillReason()
 	return u, nil
 }
 
@@ -376,6 +378,19 @@ func (r *Repo) Uploads(ctx context.Context, limit int) ([]model.BackupUpload, er
 		out = append(out, u)
 	}
 	return out, rows.Err()
+}
+
+// LastResult 返回最近一条有结果的上传记录，跳过因中枢关停被取消的记录（取消不算失败）。没有记录时返回 nil。
+func (r *Repo) LastResult(ctx context.Context) (*model.BackupUpload, error) {
+	u, err := scanUpload(r.db.QueryRowContext(ctx, `SELECT `+uploadCols+` FROM backup_uploads
+ WHERE NOT (success = 0 AND reason LIKE ?) ORDER BY id DESC LIMIT 1`, model.UploadReasonCanceled+":%"))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("读取最近上传结果: %w", err)
+	}
+	return &u, nil
 }
 
 // LastUpload 返回最近一次上传记录；successOnly 为 true 时只看成功的。没有记录时返回 nil。
