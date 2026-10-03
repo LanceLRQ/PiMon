@@ -76,6 +76,10 @@ outputs:
   - {key: "smart_realloc[*]", type: number, title: {zh: 重映射扇区, en: Reallocated sectors}}
   - {key: "smart_pending[*]", type: number, title: {zh: 待定扇区, en: Pending sectors}}
   - {key: "smart_hours[*]",   type: number, title: {zh: 通电时长, en: Power-on hours}}
+  - {key: "raid[*]",          type: state,  title: {zh: 阵列状态, en: Array state}}
+  - {key: "raid_sync[*]",     type: gauge,  title: {zh: 阵列同步进度, en: Array sync progress}}
+  - {key: "btrfs[*]",         type: state,  title: {zh: Btrfs 设备错误, en: Btrfs device errors}}
+  - {key: "scrub[*]",         type: state,  title: {zh: Btrfs scrub, en: Btrfs scrub}}
 widgets:
   - id: disks
     name: {zh: 磁盘健康灯组, en: Disk health lights}
@@ -92,3 +96,23 @@ widgets:
     sizes:
       2x2: {template: list, bind: {items: {item: "smart_temp[*]"}}}
       4x2: {template: list, bind: {items: {item: "smart_temp[*]"}}}
+  - id: raid
+    name: {zh: 阵列状态, en: Array state}
+    sizes:
+      2x2: {template: list, bind: {items: {item: "raid[*]"}}}
+      4x2: {template: list, bind: {items: {item: "raid[*]"}}}
+  - id: raid-sync
+    name: {zh: 阵列同步进度, en: Array sync progress}
+    sizes:
+      2x2: {template: list, bind: {items: {item: "raid_sync[*]"}}}
+      4x2: {template: list, bind: {items: {item: "raid_sync[*]"}}}
+  - id: btrfs
+    name: {zh: Btrfs 设备错误, en: Btrfs device errors}
+    sizes:
+      2x2: {template: list, bind: {items: {item: "btrfs[*]"}}}
+      4x2: {template: list, bind: {items: {item: "btrfs[*]"}}}
+  - id: scrub
+    name: {zh: Btrfs scrub, en: Btrfs scrub}
+    sizes:
+      2x2: {template: list, bind: {items: {item: "scrub[*]"}}}
+      4x2: {template: list, bind: {items: {item: "scrub[*]"}}}

@@ -1,0 +1,29 @@
+/dev/md0:
+           Version : 1.2
+     Creation Time : Sat Mar  1 10:12:44 2025
+        Raid Level : raid1
+        Array Size : 976630336 (931.39 GiB 1000.07 GB)
+      Raid Devices : 2
+     Total Devices : 2
+       Persistence : Superblock is persistent
+
+     Intent Bitmap : Internal
+
+       Update Time : Fri Oct  3 07:31:02 2025
+             State : clean, degraded 
+    Active Devices : 1
+   Working Devices : 1
+    Failed Devices : 1
+     Spare Devices : 0
+
+Consistency Policy : bitmap
+
+              Name : fnOS:0  (local to host fnOS)
+              UUID : 5d1a0f0e:7c3b2a19:8f4e6d21:0a9b3c77
+            Events : 4902
+
+    Number   Major   Minor   RaidDevice State
+       0       8        1        0      active sync   /dev/sda1
+       -       0        0        1      removed
+
+       1       8       17        -      faulty   /dev/sdb1

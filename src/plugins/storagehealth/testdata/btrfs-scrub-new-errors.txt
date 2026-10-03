@@ -1,0 +1,10 @@
+UUID:             5d1a0f0e-7c3b-2a19-8f4e-6d210a9b3c77
+Scrub started:    Tue Sep 30 03:00:01 2025
+Status:           finished
+Duration:         0:04:37
+Total to scrub:   44.01GiB
+Rate:             162.76MiB/s
+Error summary:    csum=2
+  Corrected:      0
+  Uncorrectable:  2
+  Unverified:     0

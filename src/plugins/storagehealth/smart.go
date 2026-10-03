@@ -44,25 +44,26 @@ const (
 	protoOther = "other"
 )
 
-// smartEnv 是执行 smartctl 所需的绝对路径。
-type smartEnv struct {
-	sudo, smartctl string
+// toolEnv 是经 sudo 执行某个命令所需的绝对路径。
+type toolEnv struct {
+	sudo, path, name string
 }
 
-// smartEnvironment 解析 sudo 与 smartctl；失败时返回面向用户的双语原因。
-func (p *Plugin) smartEnvironment() (smartEnv, string) {
+// toolEnvironment 解析 sudo 与命令 name（smartctl、mdadm、btrfs）；失败时返回面向用户的双语原因。
+func (p *Plugin) toolEnvironment(name string) (toolEnv, string) {
 	sudo, err := p.lookPath("sudo")
 	if err != nil {
-		return smartEnv{}, "未安装 sudo / sudo is not installed"
+		return toolEnv{}, "未安装 sudo / sudo is not installed"
 	}
-	sc, err := p.resolve(sudocmd.Smartctl)
+	path, err := p.resolve(name)
 	switch {
 	case errors.Is(err, sudocmd.ErrNotFound):
-		return smartEnv{}, "未安装 smartctl（smartmontools）/ smartctl (smartmontools) is not installed"
+		pkg := map[string]string{sudocmd.Smartctl: "smartmontools", sudocmd.Mdadm: "mdadm", sudocmd.Btrfs: "btrfs-progs"}[name]
+		return toolEnv{}, fmt.Sprintf("未安装 %s（%s）/ %s (%s) is not installed", name, pkg, name, pkg)
 	case err != nil:
-		return smartEnv{}, "smartctl 的属主或权限不安全，拒绝经 sudo 执行 / smartctl has unsafe ownership or permissions: " + err.Error()
+		return toolEnv{}, fmt.Sprintf("%s 的属主或权限不安全，拒绝经 sudo 执行 / %s has unsafe ownership or permissions: %s", name, name, err.Error())
 	}
-	return smartEnv{sudo: sudo, smartctl: sc}, ""
+	return toolEnv{sudo: sudo, path: path, name: name}, ""
 }
 
 // disk 是一块待检查的盘。
@@ -73,22 +74,23 @@ type disk struct {
 	err   string // 不执行命令、直接给出的条目错误
 }
 
-// smartSummary 统计各类盘的数量，用于 summary。
-type smartSummary struct {
-	total, ok, abnormal, standby int
+// counts 统计一类对象的数量，用于 summary。
+type counts struct {
+	total, ok, abnormal, unknown, standby int
 }
 
-func (s smartSummary) String() string {
-	if s.total == 0 {
+func (n counts) smartText() string {
+	if n.total == 0 {
 		return "未发现磁盘 / No disks found"
 	}
-	return fmt.Sprintf("磁盘 %d 块：正常 %d，异常 %d，休眠 %d / Disks: %d, OK %d, abnormal %d, standby %d",
-		s.total, s.ok, s.abnormal, s.standby, s.total, s.ok, s.abnormal, s.standby)
+	return fmt.Sprintf("磁盘 %d 块：正常 %d，异常 %d，未知 %d，休眠 %d / Disks: %d, OK %d, abnormal %d, unknown %d, standby %d",
+		n.total, n.ok, n.abnormal, n.unknown, n.standby, n.total, n.ok, n.abnormal, n.unknown, n.standby)
 }
 
-// collectSMART 采集全部盘的 SMART 条目。只有 ctx 结束、或自动发现失败且 last 里没有可沿用的盘时返回 error。
-func (p *Plugin) collectSMART(ctx context.Context, last *report.Report, c config) ([]report.Item, smartSummary, error) {
-	env, envErr := p.smartEnvironment()
+// collectSMART 采集全部盘的 SMART 条目。只有 ctx 结束时返回 error；
+// 自动发现失败且 last 里没有可沿用的盘时没有任何条目，以 failed 说明原因，由 Collect 汇总处理。
+func (p *Plugin) collectSMART(ctx context.Context, last *report.Report, c config) (checkResult, error) {
+	env, envErr := p.toolEnvironment(sudocmd.Smartctl)
 	var disks []disk
 	if len(c.smartDevices) > 0 {
 		disks = p.configuredDisks(c)
@@ -100,7 +102,7 @@ func (p *Plugin) collectSMART(ctx context.Context, last *report.Report, c config
 			var err error
 			disks, err = p.discover(ctx, env, last)
 			if ctx.Err() != nil {
-				return nil, smartSummary{}, fmt.Errorf("SMART 设备发现被中断 / SMART discovery interrupted: %w", ctx.Err())
+				return checkResult{}, fmt.Errorf("SMART 设备发现被中断 / SMART discovery interrupted: %w", ctx.Err())
 			}
 			if err != nil {
 				discErr = err.Error()
@@ -110,7 +112,7 @@ func (p *Plugin) collectSMART(ctx context.Context, last *report.Report, c config
 			// 发现失败：沿用上次的设备集合，避免盘被当成「消失」而关闭其告警。
 			keys := lastMembers(last, prefixSmart)
 			if len(keys) == 0 {
-				return nil, smartSummary{}, fmt.Errorf("SMART 设备发现失败 / SMART discovery failed: %s", discErr)
+				return checkResult{failed: "SMART 设备发现失败 / SMART discovery failed: " + discErr}, nil
 			}
 			disks = nil
 			for _, k := range keys {
@@ -121,10 +123,10 @@ func (p *Plugin) collectSMART(ctx context.Context, last *report.Report, c config
 	p.markSat(disks, c.satDevices)
 
 	var items []report.Item
-	var sum smartSummary
+	var n counts
 	for _, d := range disks {
 		if err := ctx.Err(); err != nil {
-			return nil, smartSummary{}, fmt.Errorf("SMART 检查被中断 / SMART check interrupted: %w", err)
+			return checkResult{}, fmt.Errorf("SMART 检查被中断 / SMART check interrupted: %w", err)
 		}
 		var r smartResult
 		switch {
@@ -135,24 +137,26 @@ func (p *Plugin) collectSMART(ctx context.Context, last *report.Report, c config
 		default:
 			r = p.checkDisk(ctx, env, d, c)
 			if ctx.Err() != nil {
-				return nil, smartSummary{}, fmt.Errorf("SMART 检查被中断 / SMART check interrupted: %w", ctx.Err())
+				return checkResult{}, fmt.Errorf("SMART 检查被中断 / SMART check interrupted: %w", ctx.Err())
 			}
 			if d.canon != d.key && r.err == "" {
 				r.text += "（" + d.canon + "）"
 			}
 		}
 		items = append(items, r.items(d.key, last)...)
-		sum.total++
+		n.total++
 		switch {
 		case r.standby:
-			sum.standby++
+			n.standby++
 		case r.err != "" || r.state == report.StatusWarning || r.state == report.StatusCritical:
-			sum.abnormal++
+			n.abnormal++
 		case r.state == report.StatusOK:
-			sum.ok++
+			n.ok++
+		default:
+			n.unknown++
 		}
 	}
-	return items, sum, nil
+	return checkResult{items: items, summary: n.smartText()}, nil
 }
 
 // configuredDisks 把用户填写的设备解析为规范设备名；解析失败或不在白名单内的条目带 error，不执行 sudo。
@@ -168,12 +172,22 @@ func (p *Plugin) configuredDisks(c config) []disk {
 		d := disk{key: key}
 		canon, err := sudocmd.Canonicalize(key, p.evalSymlinks)
 		if err != nil || !sudocmd.MatchDevice(sudocmd.OpSmart, canon) {
-			d.err = "不支持的设备路径，只支持 /dev/sdX、/dev/nvmeN 及指向它们的链接 / Unsupported device path; only /dev/sdX, /dev/nvmeN or links to them"
+			d.err = deviceError(err, "只支持 /dev/sdX、/dev/nvmeN 及指向它们的链接", "only /dev/sdX, /dev/nvmeN or links to them")
 		}
 		d.canon = canon
 		out = append(out, d)
 	}
 	return out
+}
+
+// deviceError 区分设备路径无法解析（不存在或链接断裂）与解析后不在白名单内两种情况。
+// err 是 sudocmd.Canonicalize 的结果：解析失败时它包着 EvalSymlinks 的原始错误，其余格式问题没有包装；
+// zh、en 说明该用途允许的设备范围。
+func deviceError(err error, zh, en string) string {
+	if err != nil && errors.Unwrap(err) != nil {
+		return "设备不存在或无法解析 / Device does not exist or cannot be resolved"
+	}
+	return "不支持的设备路径，" + zh + " / Unsupported device path; " + en
 }
 
 // markSat 把出现在「-d sat」列表里的盘（按规范设备名比对）标记为 sat。
@@ -193,7 +207,7 @@ func (p *Plugin) markSat(disks []disk, satDevices []string) {
 
 // discover 经 `sudo -n smartctl --scan-open` 自动发现磁盘。白名单外的设备（如 RAID 卡直通）跳过；
 // 打开失败的设备只有在上次报告里出现过时才保留为带 error 的条目（读卡器之类的空设备不报）。
-func (p *Plugin) discover(ctx context.Context, env smartEnv, last *report.Report) ([]disk, error) {
+func (p *Plugin) discover(ctx context.Context, env toolEnv, last *report.Report) ([]disk, error) {
 	args, err := sudocmd.Args(sudocmd.OpSmartScan, "")
 	if err != nil {
 		return nil, err
@@ -276,33 +290,33 @@ func parseScan(out string) []scanDev {
 	return devs
 }
 
-// runSudo 以单条命令时限执行 `sudo -n -- <smartctl> <args…>`。
-func (p *Plugin) runSudo(ctx context.Context, env smartEnv, args []string) (cmdexec.Result, error) {
+// runSudo 以单条命令时限执行 `sudo -n -- <命令绝对路径> <args…>`。
+func (p *Plugin) runSudo(ctx context.Context, env toolEnv, args []string) (cmdexec.Result, error) {
 	cctx, cancel := context.WithTimeout(ctx, p.cmdTimeout)
 	defer cancel()
-	res, err := p.runner.Run(cctx, env.sudo, sudocmd.SudoArgv(env.smartctl, args)...)
+	res, err := p.runner.Run(cctx, env.sudo, sudocmd.SudoArgv(env.path, args)...)
 	if err != nil {
-		return res, describeRunErr(ctx, err)
+		return res, describeRunErr(ctx, env.name, err)
 	}
 	return res, nil
 }
 
 // describeRunErr 把执行器错误转为双语原因；先排除信号终止，再区分单条命令超时。
-func describeRunErr(ctx context.Context, err error) error {
+func describeRunErr(ctx context.Context, name string, err error) error {
 	switch {
 	case ctx.Err() != nil:
 		return ctx.Err()
 	case errors.Is(err, cmdexec.ErrSignaled):
-		return fmt.Errorf("smartctl 被信号终止 / smartctl was killed by a signal: %w", err)
+		return fmt.Errorf("%s 被信号终止 / %s was killed by a signal: %w", name, name, err)
 	case errors.Is(err, context.DeadlineExceeded):
-		return fmt.Errorf("smartctl 执行超时 / smartctl timed out: %w", err)
+		return fmt.Errorf("%s 执行超时 / %s timed out: %w", name, name, err)
 	default:
-		return fmt.Errorf("执行 smartctl 失败 / Failed to run smartctl: %w", err)
+		return fmt.Errorf("执行 %s 失败 / Failed to run %s: %w", name, name, err)
 	}
 }
 
 // sudoFailure 识别 `sudo -n` 自身的失败（无权限、需要密码、不在 sudoers 里）：
-// 非 0 退出、stdout 不是 smartctl 的 JSON、stderr 有以「sudo: 」开头的行。
+// 非 0 退出、stdout 不是 smartctl 的 JSON、stderr 有以「sudo: 」开头的行。smartctl、mdadm、btrfs 共用。
 func sudoFailure(res cmdexec.Result) (string, bool) {
 	if res.ExitCode == 0 || bytes.HasPrefix(bytes.TrimSpace(res.Stdout), []byte("{")) {
 		return "", false
@@ -358,7 +372,7 @@ func (r smartResult) items(key string, last *report.Report) []report.Item {
 }
 
 // checkDisk 对一块盘执行 smartctl 并判定。
-func (p *Plugin) checkDisk(ctx context.Context, env smartEnv, d disk, c config) smartResult {
+func (p *Plugin) checkDisk(ctx context.Context, env toolEnv, d disk, c config) smartResult {
 	op := sudocmd.OpSmart
 	if d.sat {
 		op = sudocmd.OpSmartSat

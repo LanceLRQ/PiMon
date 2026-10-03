@@ -1,0 +1,7 @@
+UUID:             5d1a0f0e-7c3b-2a19-8f4e-6d210a9b3c77
+Scrub started:    Tue Sep 30 03:00:01 2025
+Status:           aborted
+Duration:         0:00:41
+Total to scrub:   44.01GiB
+Rate:             162.76MiB/s
+Error summary:    no errors found

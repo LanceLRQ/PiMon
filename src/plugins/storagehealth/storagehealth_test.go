@@ -3,6 +3,7 @@ package storagehealth
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +24,19 @@ var baseTime = time.Date(2026, 10, 3, 8, 0, 0, 0, time.UTC)
 const (
 	sudoPath  = "/usr/bin/sudo"
 	smartPath = "/usr/sbin/smartctl"
+	mdadmPath = "/usr/sbin/mdadm"
+	btrfsPath = "/usr/bin/btrfs"
 )
+
+// fakeFiles 模拟 /proc 下的文件；未登记的路径视为不存在。
+type fakeFiles map[string]string
+
+func (f fakeFiles) read(name string) ([]byte, error) {
+	if v, ok := f[name]; ok {
+		return []byte(v), nil
+	}
+	return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
+}
 
 func readTestdata(t *testing.T, name string) []byte {
 	t.Helper()
@@ -57,22 +70,43 @@ func newLinux(f *cmdexec.Fake) *Plugin {
 	p.goos = "linux"
 	p.lookPath = func(string) (string, error) { return sudoPath, nil }
 	p.resolve = func(name string) (string, error) {
-		if name == sudocmd.Smartctl {
+		switch name {
+		case sudocmd.Smartctl:
 			return smartPath, nil
+		case sudocmd.Mdadm:
+			return mdadmPath, nil
+		case sudocmd.Btrfs:
+			return btrfsPath, nil
 		}
 		return "", sudocmd.ErrNotFound
 	}
 	p.evalSymlinks = evalLinks
+	p.readFile = fakeFiles{"/proc/mounts": ""}.read
+	p.loc = time.UTC
 	return p
 }
 
-func sudoArgs(t *testing.T, op sudocmd.Op, dev string) []string {
+func sudoArgsFor(t *testing.T, path string, op sudocmd.Op, dev string) []string {
 	t.Helper()
 	args, err := sudocmd.Args(op, dev)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return sudocmd.SudoArgv(smartPath, args)
+	return sudocmd.SudoArgv(path, args)
+}
+
+func sudoArgs(t *testing.T, op sudocmd.Op, dev string) []string {
+	t.Helper()
+	return sudoArgsFor(t, smartPath, op, dev)
+}
+
+// smartOnly 关掉 RAID 与 Btrfs 检查，其余配置照给。
+func smartOnly(cfg map[string]any) map[string]any {
+	out := map[string]any{"raid": false, "btrfs": false}
+	for k, v := range cfg {
+		out[k] = v
+	}
+	return out
 }
 
 func setScan(t *testing.T, f *cmdexec.Fake, res cmdexec.Result, err error) {
@@ -220,9 +254,15 @@ func TestCollect配置设备解析符号链接并校验白名单(t *testing.T) {
 		t.Errorf("by-id 盘 = %+v", it)
 	}
 	for _, k := range []string{"smart[/dev/disk/by-id/loop]", "smart[/dev/disk/by-id/missing]"} {
-		if it := m[k]; it.State != report.StatusUnknown || !strings.Contains(it.Error, "不支持") {
+		if it := m[k]; it.State != report.StatusUnknown || it.Error == "" {
 			t.Errorf("%s = %+v", k, it)
 		}
+	}
+	if e := m["smart[/dev/disk/by-id/loop]"].Error; !strings.Contains(e, "不支持的设备路径") {
+		t.Errorf("loop 应判不支持: %q", e)
+	}
+	if e := m["smart[/dev/disk/by-id/missing]"].Error; !strings.Contains(e, "设备不存在或无法解析") || strings.Contains(e, "不支持") {
+		t.Errorf("不存在的设备应单独说明: %q", e)
 	}
 	if len(f.Calls()) != 2 {
 		t.Errorf("白名单外的设备不应执行 sudo: %v", f.Calls())
@@ -249,8 +289,8 @@ func TestCollect缺失字段为未知不当0(t *testing.T) {
 	if val(t, m, "smart_temp[/dev/sdb]") != 29 {
 		t.Error("温度不符")
 	}
-	if rep.Status != report.StatusOK {
-		t.Errorf("未知不抬高整体状态: %s", rep.Status)
+	if rep.Status != report.StatusUnknown || !strings.Contains(rep.Summary, "未知 1") {
+		t.Errorf("全部条目为未知时整体应为 unknown 且 summary 含未知计数: %s %q", rep.Status, rep.Summary)
 	}
 }
 
@@ -398,11 +438,11 @@ func TestCollectCtx结束返回错误(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	setDisk(t, f, "/dev/sda", false, cmdexec.Result{}, context.Canceled)
-	if _, err := newLinux(f).Collect(ctx, input(t, map[string]any{"smart_devices": []any{"/dev/sda"}}, nil)); err == nil {
+	if _, err := newLinux(f).Collect(ctx, input(t, smartOnly(map[string]any{"smart_devices": []any{"/dev/sda"}}), nil)); err == nil {
 		t.Fatal("ctx 结束应返回 error")
 	}
 	setScan(t, f, cmdexec.Result{}, context.Canceled)
-	if _, err := newLinux(f).Collect(ctx, input(t, map[string]any{}, nil)); err == nil {
+	if _, err := newLinux(f).Collect(ctx, input(t, smartOnly(nil), nil)); err == nil {
 		t.Fatal("发现阶段 ctx 结束应返回 error")
 	}
 }
@@ -429,7 +469,7 @@ func TestCollect发现失败沿用Last键集(t *testing.T) {
 	f := cmdexec.NewFake()
 	setScan(t, f, sudoDenied, nil)
 	p := newLinux(f)
-	if _, err := p.Collect(context.Background(), input(t, map[string]any{}, nil)); err == nil || !strings.Contains(err.Error(), "无 sudo 权限") {
+	if _, err := p.Collect(context.Background(), input(t, smartOnly(nil), nil)); err == nil || !strings.Contains(err.Error(), "无 sudo 权限") {
 		t.Fatalf("首次运行发现失败应返回采集错误: %v", err)
 	}
 	v := 40.0
@@ -484,8 +524,8 @@ func TestCollect休眠盘沿用Last子项(t *testing.T) {
 	if _, ok := m["smart_hours[/dev/sdb]"]; !ok {
 		t.Error("通电时长项应沿用")
 	}
-	if rep.Status != report.StatusOK {
-		t.Errorf("休眠不抬高整体状态: %s", rep.Status)
+	if rep.Status != report.StatusUnknown || !strings.Contains(rep.Summary, "休眠 1") {
+		t.Errorf("仅有休眠盘时整体为 unknown: %s %q", rep.Status, rep.Summary)
 	}
 }
 
@@ -521,7 +561,7 @@ func TestCollect扫描为空(t *testing.T) {
 func TestCollect扫描非零退出(t *testing.T) {
 	f := cmdexec.NewFake()
 	setScan(t, f, cmdexec.Result{ExitCode: 1, Stderr: "boom"}, nil)
-	if _, err := newLinux(f).Collect(context.Background(), input(t, map[string]any{}, nil)); err == nil || !strings.Contains(err.Error(), "退出码 1") {
+	if _, err := newLinux(f).Collect(context.Background(), input(t, smartOnly(nil), nil)); err == nil || !strings.Contains(err.Error(), "退出码 1") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -582,7 +622,7 @@ func TestCollect环境缺失(t *testing.T) {
 				t.Errorf("status=%s calls=%v", rep.Status, f.Calls())
 			}
 			// 自动发现时环境缺失且没有 Last：返回采集错误。
-			if _, err := p.Collect(context.Background(), input(t, map[string]any{}, nil)); err == nil || !strings.Contains(err.Error(), c.want) {
+			if _, err := p.Collect(context.Background(), input(t, smartOnly(nil), nil)); err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Errorf("发现阶段 err = %v", err)
 			}
 		})
@@ -624,5 +664,69 @@ func TestParseScan(t *testing.T) {
 	}
 	if len(parseScan("# scan_smart_devices: glob(3) aborted matching pattern /dev/discs/disc*\n")) != 0 {
 		t.Fatal("注释行应忽略")
+	}
+}
+
+func TestCollect某项检查失败其余照常产出报告(t *testing.T) {
+	f := cmdexec.NewFake()
+	setScan(t, f, sudoDenied, nil)
+	setMdadm(t, f, "/dev/md0", detailSample(t, "mdadm-detail-fnos.txt"), nil)
+	p := raidPlugin(t, f, "mdstat-fnos.txt")
+	rep, err := p.Collect(context.Background(), input(t, map[string]any{"btrfs": false}, nil))
+	if err != nil {
+		t.Fatalf("RAID 有结果时不应整体报错: %v", err)
+	}
+	plugintest.AssertValidAgainstManifest(t, p.Manifest(), rep)
+	if it := items(rep)["raid[/dev/md0]"]; it.State != report.StatusOK {
+		t.Errorf("raid = %+v", it)
+	}
+	if rep.Status != report.StatusWarning || !strings.Contains(rep.Summary, "SMART 设备发现失败") || !strings.Contains(rep.Summary, "阵列 1 个") {
+		t.Errorf("status=%s summary=%q", rep.Status, rep.Summary)
+	}
+}
+
+func TestCollect全部启用的检查都失败才返回错误(t *testing.T) {
+	f := cmdexec.NewFake()
+	setScan(t, f, sudoDenied, nil)
+	p := newLinux(f)
+	p.readFile = func(string) ([]byte, error) { return nil, context.DeadlineExceeded }
+	_, err := p.Collect(context.Background(), input(t, map[string]any{}, nil))
+	if err == nil || !strings.Contains(err.Error(), "SMART") || !strings.Contains(err.Error(), "/proc/mdstat") || !strings.Contains(err.Error(), "/proc/mounts") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestCollect三类检查合并(t *testing.T) {
+	f := cmdexec.NewFake()
+	setScan(t, f, cmdexec.Result{Stdout: []byte("/dev/sda -d sat # /dev/sda [SAT], ATA device\n")}, nil)
+	setDisk(t, f, "/dev/sda", true, sample(t, "smart-ata-healthy.json", 0), nil)
+	setMdadm(t, f, "/dev/md0", detailSample(t, "mdadm-detail-fnos.txt"), nil)
+	p := fnosBtrfs(t, f, "btrfs-device-stats-clean.txt", "btrfs-scrub-new-ok.txt")
+	p.readFile = fakeFiles{
+		"/proc/mdstat": string(readTestdata(t, "mdstat-fnos.txt")),
+		"/proc/mounts": string(readTestdata(t, "mounts-fnos.txt")),
+	}.read
+	in := input(t, nil, nil)
+	in.Clock = clock.NewFake(scrubStart.Add(24 * time.Hour))
+	rep, err := p.Collect(context.Background(), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plugintest.AssertValidAgainstManifest(t, p.Manifest(), rep)
+	m := items(rep)
+	for _, k := range []string{"smart[/dev/sda]", "raid[/dev/md0]", "btrfs[/vol1]", "scrub[/vol1]"} {
+		if m[k].State != report.StatusOK {
+			t.Errorf("%s = %+v", k, m[k])
+		}
+	}
+	if rep.Status != report.StatusOK || strings.Count(rep.Summary, " | ") != 2 {
+		t.Errorf("status=%s summary=%q", rep.Status, rep.Summary)
+	}
+}
+
+func TestCollect未启用任何检查(t *testing.T) {
+	rep, err := newLinux(cmdexec.NewFake()).Collect(context.Background(), input(t, map[string]any{"smart": false, "raid": false, "btrfs": false}, nil))
+	if err != nil || rep.Status != report.StatusOK || !strings.Contains(rep.Summary, "未启用任何检查") {
+		t.Errorf("rep=%+v err=%v", rep, err)
 	}
 }

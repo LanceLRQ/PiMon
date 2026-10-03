@@ -1,0 +1,5 @@
+[/dev/dm-0].write_io_errs    0
+[/dev/dm-0].read_io_errs     3
+[/dev/dm-0].flush_io_errs    0
+[/dev/dm-0].corruption_errs  12
+[/dev/dm-0].generation_errs  0

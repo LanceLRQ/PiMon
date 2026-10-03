@@ -1,0 +1,15 @@
+/dev/md127:
+           Version : 1.2
+        Raid Level : raid5
+      Raid Devices : 3
+     Total Devices : 3
+       Persistence : Superblock is persistent
+
+             State : active, FAILED, Not Started 
+    Active Devices : 0
+   Working Devices : 3
+    Failed Devices : 0
+     Spare Devices : 3
+
+              Name : fnOS:1  (local to host fnOS)
+            Events : 1203

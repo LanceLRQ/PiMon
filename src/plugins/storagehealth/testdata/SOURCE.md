@@ -15,3 +15,26 @@ smartctl 的 JSON 输出是设备与工具产生的事实数据。下列文件�
 | `scan-open-linux.txt` | 按 smartmontools 源码 `smartctl.cpp` 的 `scan_devices` 输出格式构造 | 正常行 `<设备> -d <类型> # <info>, <协议> device`；打开失败的行以 `# ` 开头并带 `open failed:` |
 
 smartmontools 源码参考：<https://github.com/smartmontools/smartmontools>（`smartctl.cpp`、`ataprint.cpp`、`scsiprint.cpp`、`nvmeprint.cpp`、`smartctl.h` 的退出位定义）。
+
+## RAID 与 Btrfs 样本（D3b）
+
+全部是按公开资料与文档构造的样本（设备名、UUID 为示例值），真机输出在 M2g 验收时补录。
+
+| 文件 | 依据 |
+|---|---|
+| `mdstat-fnos.txt` | 飞牛 fnOS 单盘 RAID1：`docs/_internal/research/02-飞牛fnOS存储结构调研.md`（单盘也建 RAID1、`--metadata=1.2`、阵列名 `fnOS:0`）；`/proc/mdstat` 格式见 Linux 内核文档 `Documentation/admin-guide/md.rst` 与 mdadm 手册 |
+| `mdstat-none.txt` | 无 md 阵列时内核输出（Personalities 行为空、`unused devices: <none>`），即普通 Ubuntu 的 mdstat |
+| `mdstat-degraded.txt` | 降级阵列：成员带 `(F)`、`[2/1] [U_]`，mdadm 文档与内核 md 驱动输出格式 |
+| `mdstat-rebuilding.txt` | 重建中阵列：`recovery = 12.6% (...) finish=...min speed=...K/sec`；另含 `resync=DELAYED`（内核 `md_seq_show`） |
+| `mdstat-check.txt` | 例行 `check`（Debian `checkarray` 触发）进度行 |
+| `mdstat-inactive.txt` | 研究文档所述异常特征：`inactive`、成员均为 `(S)`（断电后 RAID5 不识别） |
+| `mdadm-detail-fnos.txt` / `mdadm-detail-degraded.txt` / `mdadm-detail-rebuilding.txt` | `mdadm --detail` 的输出格式（mdadm 手册 `--detail`、`Detail.c`）；`Name : fnOS:0  (local to host fnOS)`、`State : clean, degraded, recovering` |
+| `mdadm-detail-notstarted.txt` | 研究文档：`State : active, FAILED, Not Started` |
+| `mounts-fnos.txt` | fnOS 的 `/dev/mapper/trim_…-0` 挂在 `/vol1`，加两个子卷挂载（含 `\040` 转义的挂载点）以测去重；格式见 `proc(5)` |
+| `mounts-ubuntu.txt` | 普通 Ubuntu（ext4，无 btrfs） |
+| `btrfs-device-stats-*.txt` | `btrfs device stats` 固定格式 `[<设备>].<计数名> <值>`（btrfs-progs `cmds/device.c`） |
+| `btrfs-scrub-new-*.txt` | btrfs-progs 5.x/6.x 的 `btrfs scrub status` 格式（`cmds/scrub.c`：`Scrub started:`、`Status:`、`Error summary:` 及 `csum=N` 加 `Corrected:`/`Uncorrectable:`/`Unverified:` 明细）；`aborted` 为中止的一次 |
+| `btrfs-scrub-old-*.txt` | btrfs-progs 4.x 格式：`scrub started at … and finished after …`、`total bytes scrubbed: … with N errors`、`error details:` |
+| `btrfs-scrub-never.txt` | 从未执行：`no stats available` |
+
+参考：mdadm <https://github.com/md-raid-utilities/mdadm>，btrfs-progs <https://github.com/kdave/btrfs-progs>，内核 md 文档 <https://docs.kernel.org/admin-guide/md.html>。

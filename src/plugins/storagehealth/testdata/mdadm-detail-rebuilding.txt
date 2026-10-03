@@ -1,0 +1,24 @@
+/dev/md0:
+           Version : 1.2
+        Raid Level : raid1
+        Array Size : 976630336 (931.39 GiB 1000.07 GB)
+      Raid Devices : 2
+     Total Devices : 2
+       Persistence : Superblock is persistent
+
+       Update Time : Fri Oct  3 07:45:10 2025
+             State : clean, degraded, recovering 
+    Active Devices : 1
+   Working Devices : 2
+    Failed Devices : 0
+     Spare Devices : 1
+
+    Rebuild Status : 12% complete
+
+              Name : fnOS:0  (local to host fnOS)
+              UUID : 5d1a0f0e:7c3b2a19:8f4e6d21:0a9b3c77
+            Events : 4950
+
+    Number   Major   Minor   RaidDevice State
+       0       8        1        0      active sync   /dev/sda1
+       2       8       33        1      spare rebuilding   /dev/sdc1

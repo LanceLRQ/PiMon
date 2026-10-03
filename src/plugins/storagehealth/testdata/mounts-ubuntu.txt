@@ -1,0 +1,4 @@
+sysfs /sys sysfs rw,nosuid,nodev,noexec,relatime 0 0
+proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0
+/dev/sda2 / ext4 rw,relatime 0 0
+/dev/sda1 /boot/efi vfat rw,relatime,fmask=0077,dmask=0077 0 0
