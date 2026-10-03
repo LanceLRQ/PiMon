@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"time"
@@ -60,7 +61,7 @@ func (s *Store) State(ctx context.Context, id string) (string, error) {
 	var v string
 	err := s.db.QueryRowContext(ctx, `SELECT state FROM instance_state WHERE instance_id = ?`, id).Scan(&v)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return "", err
 		}
 		return "", fmt.Errorf("读取 state: %w", err)

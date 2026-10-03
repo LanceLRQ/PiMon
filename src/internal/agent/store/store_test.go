@@ -29,8 +29,7 @@ func TestOpen迁移与权限(t *testing.T) {
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode=%v", info.Mode())
 	}
-	var n int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM instance_state`).Scan(&n); err != nil {
+	if _, err := s.db.Exec(`SELECT COUNT(*) FROM instance_state`); err != nil {
 		t.Fatal(err)
 	}
 	// 重复打开幂等；不预建事件表

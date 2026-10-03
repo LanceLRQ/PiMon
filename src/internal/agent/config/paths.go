@@ -72,7 +72,11 @@ func Resolve(env Env) (Paths, error) {
 	}, nil
 }
 
-// EnsureDataDir 创建数据目录（用户模式 0700，系统模式 0750）；已存在时不改权限。
+// EnsureDataDir 创建数据目录并把 DataDir 本身的权限显式设为目标值
+// （用户模式 0700，系统模式 0750）：不受 umask 影响，已存在的宽松目录也会收紧；不递归。
 func EnsureDataDir(p Paths) error {
-	return os.MkdirAll(p.DataDir, p.DataDirMode())
+	if err := os.MkdirAll(p.DataDir, p.DataDirMode()); err != nil {
+		return err
+	}
+	return os.Chmod(p.DataDir, p.DataDirMode())
 }
