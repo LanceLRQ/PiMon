@@ -1,5 +1,10 @@
 // Package mdns 提供最小的 mDNS 单次查询：向本地链路组播 A/AAAA 问题，在时间窗口内收集应答。
 // 只做查询，不发布服务也不持续监听；不处理多网卡选择，使用系统默认路由。
+//
+// 应答过滤：只采信来源端口为 5353、来源 IP 与本机某个网卡在同一子网的报文，
+// 并丢弃链路本地（fe80::/10、169.254/16）与带 zone 的地址（拨号方无法可靠使用）。
+// 已知限制：RFC 6762 建议的「来源 IP TTL 为 255」校验需要 golang.org/x/net/ipv4 的控制消息，
+// 成本较高，未实现；同子网 + 端口 5353 的校验已挡住大多数跨网段伪造。
 package mdns
 
 import (
@@ -54,10 +59,14 @@ type Options struct {
 	Window time.Duration
 	// Conn 创建一个新的端点，查询结束时由 Lookup 关闭；为空时用系统 UDP 套接字。
 	Conn func() (PacketConn, error)
+	// LocalPrefixes 返回本机各网卡地址所在的子网前缀，用于校验应答来源；为空时读取系统网卡
+	// （net.InterfaceAddrs）。每次 Lookup 调用一次，出错时 Lookup 返回该错误。
+	LocalPrefixes func() ([]netip.Prefix, error)
 }
 
 // Lookup 对 name（形如 pimon.local）发送 QU 查询，返回窗口内收到的去重后的 A/AAAA 地址。
-// 向 IPv4 组播发送失败视为错误；IPv6 组播发送尽力而为，失败被忽略。
+// 窗口固定走满（收到应答也不提前返回），窗口过半时重发一次查询以应对首包丢失。
+// 首次向 IPv4 组播发送失败视为错误；IPv6 组播发送与重发都尽力而为，失败被忽略。
 // ctx 取消返回 ctx.Err()；无应答返回 ErrNoAnswer。
 func Lookup(ctx context.Context, name string, opts Options) ([]netip.Addr, error) {
 	name = strings.TrimSuffix(strings.TrimSpace(name), ".")
@@ -82,6 +91,14 @@ func Lookup(ctx context.Context, name string, opts Options) ([]netip.Addr, error
 	if newConn == nil {
 		newConn = defaultConn
 	}
+	localPrefixes := opts.LocalPrefixes
+	if localPrefixes == nil {
+		localPrefixes = systemPrefixes
+	}
+	prefixes, err := localPrefixes()
+	if err != nil {
+		return nil, fmt.Errorf("读取本机网卡地址失败: %w", err)
+	}
 
 	query, err := buildQuery(name)
 	if err != nil {
@@ -103,19 +120,23 @@ func Lookup(ctx context.Context, name string, opts Options) ([]netip.Addr, error
 		defer close(done)
 		buf := make([]byte, maxPacketSize)
 		for {
-			n, _, err := conn.ReadFrom(buf)
+			n, from, err := conn.ReadFrom(buf)
 			if err != nil {
 				return
 			}
-			c.add(buf[:n])
+			if fromLocalResponder(from, prefixes) {
+				c.add(buf[:n])
+			}
 		}
 	}()
 
-	var ctxErr error
-	select {
-	case <-clk.After(window):
-	case <-ctx.Done():
-		ctxErr = ctx.Err()
+	// 截止时刻按绝对时间算：后半窗口的计时从重发后剩余的时长开始，时钟被一次推进过整个窗口时也能按时结束。
+	deadline := clk.Now().Add(window)
+	ctxErr := waitOrDone(ctx, clk.After(window/2))
+	if ctxErr == nil {
+		_, _ = conn.WriteTo(query, groupV4)
+		_, _ = conn.WriteTo(query, groupV6)
+		ctxErr = waitOrDone(ctx, clk.After(deadline.Sub(clk.Now())))
 	}
 	_ = conn.Close()
 	<-done
@@ -128,6 +149,80 @@ func Lookup(ctx context.Context, name string, opts Options) ([]netip.Addr, error
 		return nil, ErrNoAnswer
 	}
 	return addrs, nil
+}
+
+// waitOrDone 等到 timer 触发返回 nil，或 ctx 结束返回 ctx.Err()。
+func waitOrDone(ctx context.Context, timer <-chan time.Time) error {
+	select {
+	case <-timer:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// systemPrefixes 读取系统网卡地址并转换为子网前缀。
+func systemPrefixes() ([]netip.Prefix, error) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil, err
+	}
+	return prefixesFromAddrs(addrs), nil
+}
+
+// prefixesFromAddrs 把网卡地址（*net.IPNet）转换为规范化的子网前缀：IPv4 映射地址还原为 IPv4，
+// 16 字节掩码按 IPv4 位数折算；无法解析的条目跳过。
+func prefixesFromAddrs(addrs []net.Addr) []netip.Prefix {
+	out := make([]netip.Prefix, 0, len(addrs))
+	for _, a := range addrs {
+		ipn, ok := a.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip, ok := netip.AddrFromSlice(ipn.IP)
+		if !ok {
+			continue
+		}
+		ones, bits := ipn.Mask.Size()
+		if bits == 0 {
+			continue
+		}
+		ip = ip.Unmap()
+		if ip.Is4() && bits == 128 {
+			ones -= 96
+		}
+		p, err := ip.Prefix(ones)
+		if err != nil {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// fromLocalResponder 校验应答来源：必须是 UDP 端口 5353，且来源 IP（去 zone、还原 IPv4 映射）
+// 落在本机某个网卡的子网内。
+func fromLocalResponder(from net.Addr, prefixes []netip.Prefix) bool {
+	ua, ok := from.(*net.UDPAddr)
+	if !ok || ua == nil || ua.Port != mdnsPort {
+		return false
+	}
+	ip, ok := netip.AddrFromSlice(ua.IP)
+	if !ok {
+		return false
+	}
+	ip = ip.Unmap()
+	for _, p := range prefixes {
+		if p.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// usableAddr 报告应答中的地址能否交给拨号方：丢弃链路本地与带 zone 的地址。
+func usableAddr(a netip.Addr) bool {
+	return !a.IsLinkLocalUnicast() && a.Zone() == ""
 }
 
 // buildQuery 构造 A 与 AAAA 两个问题的单报文查询，ID 为 0，问题类别置 QU 位请求单播应答。
@@ -164,6 +259,9 @@ func (c *collector) result() []netip.Addr {
 }
 
 func (c *collector) push(a netip.Addr) {
+	if !usableAddr(a) {
+		return
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.seen == nil {
