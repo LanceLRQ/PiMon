@@ -1,0 +1,195 @@
+package daemon
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	goruntime "runtime"
+	"time"
+
+	"github.com/LanceLRQ/PiMon/src/internal/agent/config"
+	"github.com/LanceLRQ/PiMon/src/internal/certs"
+	"github.com/LanceLRQ/PiMon/src/pkg/protocol/agent"
+	"github.com/LanceLRQ/PiMon/src/pkg/version"
+)
+
+// 守护进程状态（Status.State）。
+const (
+	// StateRunning：连接循环在运行（拨入在连接或重连，拨出在监听）；是否已连上看 Connected。
+	StateRunning = "running"
+	// StateRevoked：已被 hub 吊销，需要重新配对。
+	StateRevoked = "revoked"
+	// StateBadCredential：hub 拒绝凭据（auth_fail{bad_credential}），凭据保留，需要重新配对。
+	StateBadCredential = "bad_credential"
+	// StateConfigError：配置缺失或不合法，等修正后 reload。
+	StateConfigError = "config_error"
+	// StateIncompatible：hub 判定协议版本不兼容，按最大退避等待升级。
+	StateIncompatible = "incompatible"
+	// StateIdle：尚未运行，或因其他原因停止。
+	StateIdle = "idle"
+)
+
+// UpgradeInfoTimeout 是向 hub 请求升级信息的超时（走会话的 Clock）。
+const UpgradeInfoTimeout = 10 * time.Second
+
+// Incompatible 是 hub 判定不兼容时给出的信息。
+type Incompatible struct {
+	Reason      string `json:"reason"`
+	RequiredMin int    `json:"required_min"`
+	HubVersion  string `json:"hub_version"`
+}
+
+// Status 是守护进程的状态快照，供 ctl status 输出。不含凭据、凭据哈希与配对码。
+type Status struct {
+	Mode   string `json:"mode"`
+	HubURL string `json:"hub_url,omitempty"`
+	// Pin 是拨入模式钉扎的 hub SPKI 指纹。
+	Pin string `json:"pin,omitempty"`
+	// Listen 是拨出模式的监听地址（已就绪时为实际地址）。
+	Listen    string `json:"listen,omitempty"`
+	Connected bool   `json:"connected"`
+	// Since 是当前会话收到 hello_ok 的时刻，未连接为零值。
+	Since time.Time `json:"since,omitzero"`
+	// LastError 是最近错误或停止原因（如「已被吊销，需要重新配对」）。
+	LastError string `json:"last_error,omitempty"`
+	State     string `json:"state"`
+	// Incompatible 只在 State 为 incompatible 时非空。
+	Incompatible *Incompatible `json:"incompatible,omitempty"`
+	// Instances 是当前会话最近一次 assign 的实例数。
+	Instances            int    `json:"instances"`
+	Version              string `json:"version"`
+	ProtocolVersion      int    `json:"protocol_version"`
+	MinCompatibleVersion int    `json:"min_compatible_version"`
+	// PairWindowExpiresAt 是拨出配对窗口的到期时刻，没有打开的窗口为零值。
+	PairWindowExpiresAt time.Time `json:"pair_window_expires_at,omitzero"`
+}
+
+// Status 返回状态快照。
+func (d *Daemon) Status() Status {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	st := Status{
+		Mode: d.conf.Mode, LastError: d.lastErr, State: d.state, Connected: d.cur != nil, Since: d.since,
+		Version: version.Version, ProtocolVersion: agent.ProtocolVersion, MinCompatibleVersion: agent.MinCompatibleVersion,
+	}
+	switch d.conf.Mode {
+	case config.ModeDialIn:
+		st.HubURL, st.Pin = d.conf.HubURL, d.conf.HubPin
+	case config.ModeDialOut:
+		st.Listen = d.conf.Listen
+		if d.listen != nil {
+			st.Listen = d.listen.addr
+		}
+	}
+	if d.incompat != nil {
+		inc := *d.incompat
+		st.Incompatible = &inc
+	}
+	if d.cur != nil {
+		st.Instances = d.cur.instances
+	}
+	if w := d.window; w != nil && d.clk.Now().Before(w.expires) {
+		st.PairWindowExpiresAt = w.expires
+	}
+	return st
+}
+
+// Repin 在拨入模式下把 hub 指纹更新为 pin（hub 证书重建后），落盘后按新配置重连。
+func (d *Daemon) Repin(ctx context.Context, pin certs.SPKI) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if pin == (certs.SPKI{}) {
+		return errors.New("指纹不能为空")
+	}
+	d.mu.Lock()
+	mode := d.conf.Mode
+	d.mu.Unlock()
+	if mode != config.ModeDialIn {
+		return ErrNotDialIn
+	}
+	notDialIn := false
+	err := d.updateConfig(func(c *config.Config) bool {
+		if c.Mode != config.ModeDialIn {
+			notDialIn = true
+			return false
+		}
+		c.HubPin = pin.String()
+		return true
+	})
+	switch {
+	case err != nil:
+		return err
+	case notDialIn:
+		return ErrNotDialIn
+	}
+	d.log.Info("已更新 hub 指纹，按新指纹重连", "pin", pin.String())
+	d.requestRestart()
+	return nil
+}
+
+// Reload 重新扫描插件目录（有就绪会话时随之发 plugins_changed），重新读取配置：
+// 配置与当前不同、或连接已停止（吊销、凭据失效、配置错误）时按新配置重建连接；配置不合法时返回错误，
+// 当前连接不受影响。
+func (d *Daemon) Reload(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	d.reg.Scan()
+	c, err := config.Load(d.cfg.Paths.Config, euid())
+	if err != nil {
+		d.mu.Lock()
+		idle := d.runCancel == nil
+		d.mu.Unlock()
+		if idle {
+			d.setLastErr("配置错误：" + err.Error())
+		}
+		return fmt.Errorf("重新读取配置: %w", err)
+	}
+	d.mu.Lock()
+	changed := c != d.conf
+	idle := d.runCancel == nil
+	d.mu.Unlock()
+	if changed || idle {
+		d.log.Info("重新加载配置，重建连接", "changed", changed)
+		d.requestRestart()
+	}
+	return nil
+}
+
+// UpgradeInfo 是 hub 经 agent 通道告知的升级信息（C7 用它下载并校验）。
+type UpgradeInfo struct {
+	HubVersion string `json:"hub_version"`
+	WebPort    int    `json:"web_port"`
+	// SHA256 是本平台 agent 二进制的 SHA-256 十六进制；hub 未内嵌本平台时为空。
+	SHA256 string `json:"sha256"`
+	// HubHost 是当前会话对端的 IP（经 mDNS 兜底连上时比配置里的地址更准）。
+	HubHost string `json:"hub_host"`
+}
+
+// UpgradeInfo 经当前会话向 hub 请求升级信息；没有就绪会话返回 ErrNotConnected。
+func (d *Daemon) UpgradeInfo(ctx context.Context) (UpgradeInfo, error) {
+	d.mu.Lock()
+	c := d.cur
+	d.mu.Unlock()
+	if c == nil {
+		return UpgradeInfo{}, ErrNotConnected
+	}
+	resp, err := c.s.Request(ctx, &agent.UpgradeInfoGet{}, UpgradeInfoTimeout)
+	if err != nil {
+		return UpgradeInfo{}, fmt.Errorf("请求升级信息: %w", err)
+	}
+	ui, ok := resp.(*agent.UpgradeInfo)
+	if !ok {
+		return UpgradeInfo{}, fmt.Errorf("hub 的升级信息应答类型不符：%s", resp.MsgType())
+	}
+	host := c.s.Peer().RemoteAddr
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return UpgradeInfo{
+		HubVersion: ui.HubVersion, WebPort: ui.WebPort,
+		SHA256: ui.Agents[goruntime.GOOS+"-"+goruntime.GOARCH], HubHost: host,
+	}, nil
+}
