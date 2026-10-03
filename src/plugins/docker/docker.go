@@ -67,6 +67,12 @@ func (p *Plugin) Collect(ctx context.Context, in runtime.Input) (*report.Report,
 	includeStopped := cfg.Bool(in.Config, "include_stopped", true)
 	filters := cfg.List(in.Config, "names")
 
+	for _, f := range filters {
+		if _, err := path.Match(strings.TrimSpace(f), ""); err != nil {
+			return nil, fmt.Errorf("名称过滤模式「%s」不合法 / Invalid name filter pattern %q", f, f)
+		}
+	}
+
 	cli := newClient(socketPath(in.Config))
 	defer cli.close()
 	if err := cli.negotiate(ctx); err != nil {
@@ -91,9 +97,14 @@ func (p *Plugin) Collect(ctx context.Context, in runtime.Input) (*report.Report,
 		it := report.Item{Key: "container[" + name + "]", Type: report.TypeState}
 		detail, err := cli.inspect(ctx, c.ID)
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("读取容器详情被中断 / Inspect interrupted: %w", ctx.Err())
+			}
 			it.State = report.StatusUnknown
 			it.Text = "状态未知 / Unknown"
 			it.Error = "无法读取容器详情 / Cannot inspect container"
+			abnormal++
+			rep.Status = raise(rep.Status, report.StatusWarning)
 		} else {
 			it.State, it.Text = classify(detail, now)
 		}
@@ -200,14 +211,21 @@ func startingState(age, startPeriod time.Duration) report.Status {
 
 // exitedState 判断已退出容器。退出码 0、143（SIGTERM）与未被 OOM 杀死的 137（SIGKILL）
 // 视为正常停止（docker stop 的结果），其余非 0 或 OOM 判严重。
-func exitedState(code int, oom bool) (report.Status, string) {
+func exitedState(code *int, oom bool) (report.Status, string) {
+	if code == nil {
+		if oom {
+			return report.StatusCritical, "内存不足被杀（退出码缺失）/ OOM killed (exit code missing)"
+		}
+		return report.StatusUnknown, "已停止，退出码缺失 / Stopped, exit code missing"
+	}
+	c := *code
 	switch {
 	case oom:
-		return report.StatusCritical, fmt.Sprintf("内存不足被杀（退出码 %d）/ OOM killed (exit %d)", code, code)
-	case code == 0 || code == 143 || code == 137:
+		return report.StatusCritical, fmt.Sprintf("内存不足被杀（退出码 %d）/ OOM killed (exit %d)", c, c)
+	case c == 0 || c == 143 || c == 137:
 		return report.StatusUnknown, "已停止 / Stopped"
 	}
-	return report.StatusCritical, fmt.Sprintf("异常退出（退出码 %d）/ Exited abnormally (exit %d)", code, code)
+	return report.StatusCritical, fmt.Sprintf("异常退出（退出码 %d）/ Exited abnormally (exit %d)", c, c)
 }
 
 // raise 按 ok < warning < critical 取更严重者；unknown 不抬高整体状态。

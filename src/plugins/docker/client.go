@@ -35,7 +35,7 @@ type inspectResult struct {
 		Status     string `json:"Status"`
 		Restarting bool   `json:"Restarting"`
 		OOMKilled  bool   `json:"OOMKilled"`
-		ExitCode   int    `json:"ExitCode"`
+		ExitCode   *int   `json:"ExitCode"`
 		StartedAt  string `json:"StartedAt"`
 		Health     *struct {
 			Status string `json:"Status"`

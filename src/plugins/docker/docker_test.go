@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -26,6 +27,7 @@ type fakeEngine struct {
 	paths      []string
 	apiVersion string // 为空则不返回 API-Version 头
 	failInspec map[string]bool
+	onInspect  func()
 }
 
 func (f *fakeEngine) seen() []string {
@@ -65,6 +67,9 @@ func (f *fakeEngine) handler(t *testing.T) http.Handler {
 			_, _ = w.Write(body)
 		case strings.Contains(p, "/containers/") && strings.HasSuffix(p, "/json"):
 			id := strings.TrimSuffix(p[strings.LastIndex(p[:len(p)-5], "/")+1:], "/json")
+			if f.onInspect != nil {
+				f.onInspect()
+			}
 			if f.failInspec[id] {
 				http.Error(w, "boom", http.StatusInternalServerError)
 				return
@@ -202,7 +207,8 @@ func TestExited退出码判定(t *testing.T) {
 		{255, false, report.StatusCritical},
 	}
 	for _, c := range cases {
-		st, _ := exitedState(c.code, c.oom)
+		code := c.code
+		st, _ := exitedState(&code, c.oom)
 		if st != c.want {
 			t.Errorf("code=%d oom=%v: %s，期望 %s", c.code, c.oom, st, c.want)
 		}
@@ -339,6 +345,55 @@ func TestInspect失败只影响该条目(t *testing.T) {
 	}
 	if items(rep)["container[web-1]"].State != report.StatusOK {
 		t.Error("其他容器不受影响")
+	}
+	if rep.Status != report.StatusCritical { // 样本里本就有 crash/loop 为 critical
+		t.Errorf("报告状态 = %s", rep.Status)
+	}
+	rep2, err := collect(t, map[string]any{"socket": startEngine(t, &fakeEngine{apiVersion: "1.52", failInspec: map[string]bool{"bbb2": true}}), "names": []any{"db", "web-1"}}, baseTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep2.Status != report.StatusWarning {
+		t.Errorf("inspect 失败应抬到 warning，得到 %s", rep2.Status)
+	}
+	if !strings.Contains(rep2.Summary, "异常 1") {
+		t.Errorf("summary = %q", rep2.Summary)
+	}
+}
+
+func TestInspect期间ctx取消返回错误(t *testing.T) {
+	f := &fakeEngine{apiVersion: "1.52"}
+	sock := startEngine(t, f)
+	ctx, cancel := context.WithCancel(context.Background())
+	f.onInspect = cancel
+	rep, err := New().Collect(ctx, runtime.Input{Config: map[string]any{"socket": sock}, Clock: clock.NewFake(baseTime)})
+	if err == nil || rep != nil {
+		t.Fatalf("应返回错误而非报告: rep=%v err=%v", rep, err)
+	}
+}
+
+func TestExited缺退出码判unknown(t *testing.T) {
+	st, txt := exitedState(nil, false)
+	if st != report.StatusUnknown || !strings.Contains(txt, "缺失") {
+		t.Errorf("%s %q", st, txt)
+	}
+	var d inspectResult
+	if err := json.Unmarshal([]byte(`{"State":{"Status":"exited"}}`), &d); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := classify(d, baseTime); st != report.StatusUnknown {
+		t.Errorf("缺 ExitCode 应为 unknown，得到 %s", st)
+	}
+	if st, _ := exitedState(nil, true); st != report.StatusCritical {
+		t.Errorf("OOM 仍应 critical，得到 %s", st)
+	}
+}
+
+func TestName过滤模式非法(t *testing.T) {
+	f := &fakeEngine{apiVersion: "1.52"}
+	_, err := collect(t, map[string]any{"socket": startEngine(t, f), "names": []any{"web-*", "["}}, baseTime)
+	if err == nil || !strings.Contains(err.Error(), "「[」") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
