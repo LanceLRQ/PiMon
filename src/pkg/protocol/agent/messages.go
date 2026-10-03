@@ -200,6 +200,10 @@ type AssignedInstance struct {
 	IntervalMs int64  `json:"interval_ms"`
 	TimeoutMs  int64  `json:"timeout_ms"`
 	ConfigHash string `json:"config_hash"`
+	// ContentHash 是实例配置内容的摘要（hub 实例行的 config_hash），可选：只在它变化时 agent 清空
+	// 实例的上次报告与私有 state（与 hub 的 resetState 一致）；间隔、代理、插件版本变化不改变它。
+	// 为空表示未知（旧版 hub），agent 不据此清空。
+	ContentHash string `json:"content_hash,omitempty"`
 }
 
 // AssignedInstances 是一组下发实例；单独记录时 LogValue 逐实例脱敏（JSON 处理器不会展开明文）。

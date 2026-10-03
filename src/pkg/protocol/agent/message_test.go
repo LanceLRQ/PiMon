@@ -268,3 +268,18 @@ func TestRunOutcome_有ErrorKind时Error不能为空(t *testing.T) {
 		}
 	}
 }
+
+func TestAssignedInstance_ContentHash可选且向后兼容(t *testing.T) {
+	data, err := Encode(&Assign{Version: 1, Instances: []AssignedInstance{{ID: "i", PluginID: "p", ContentHash: "c1"}}})
+	if err != nil || !strings.Contains(string(data), `"content_hash":"c1"`) {
+		t.Fatalf("应编码 content_hash: %s %v", data, err)
+	}
+	data, _ = Encode(&Assign{Version: 1, Instances: []AssignedInstance{{ID: "i", PluginID: "p"}}})
+	if strings.Contains(string(data), "content_hash") {
+		t.Fatalf("空 content_hash 不应出现: %s", data)
+	}
+	old, err := Decode([]byte(`{"type":"assign","version":1,"instances":[{"id":"i","plugin_id":"p","interval_ms":0,"timeout_ms":0,"config_hash":"h"}]}`))
+	if err != nil || old.(*Assign).Instances[0].ContentHash != "" {
+		t.Fatalf("旧格式 assign = %v %v", old, err)
+	}
+}

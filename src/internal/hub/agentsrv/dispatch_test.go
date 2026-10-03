@@ -363,7 +363,8 @@ func TestDispatcher_OnReady立即全量下发(t *testing.T) {
 	}
 	got := a.Instances[0]
 	if got.ID != "i1" || got.PluginID != "p1" || got.Config["host"] != "i1" || got.Secrets["token"] != "s-i1" ||
-		got.ProxyURL != "http://u:pw@127.0.0.1:8080" || got.IntervalMs != 45000 || got.TimeoutMs != 7000 || got.ConfigHash != "h-i1" {
+		got.ProxyURL != "http://u:pw@127.0.0.1:8080" || got.IntervalMs != 45000 || got.TimeoutMs != 7000 || got.ConfigHash != "h-i1" ||
+		got.ContentHash != "c-i1" {
 		t.Fatalf("实例转换不对: %v", got)
 	}
 	if h, ok := f.d.SentHash("dev1", "i2"); !ok || h != "h-i2" {

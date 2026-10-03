@@ -405,6 +405,7 @@ func (d *Dispatcher) dispatch(dev string) {
 		list[i] = agent.AssignedInstance{
 			ID: sp.ID, PluginID: sp.PluginID, Config: sp.Config, Secrets: sp.Secrets, ProxyURL: sp.ProxyURL,
 			IntervalMs: sp.Interval.Milliseconds(), TimeoutMs: sp.Timeout.Milliseconds(), ConfigHash: sp.ConfigHash,
+			ContentHash: sp.ContentHash,
 		}
 		hashes[sp.ID] = sentInst{hash: sp.ConfigHash, content: sp.ContentHash}
 	}
