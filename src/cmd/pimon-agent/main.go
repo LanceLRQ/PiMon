@@ -18,6 +18,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/agent/ctl"
 	"github.com/LanceLRQ/PiMon/src/internal/agent/daemon"
 	"github.com/LanceLRQ/PiMon/src/internal/agent/install"
+	"github.com/LanceLRQ/PiMon/src/internal/agent/upgrade"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
 	"github.com/LanceLRQ/PiMon/src/pkg/version"
 )
@@ -31,15 +32,12 @@ const usage = `用法: pimon-agent <命令> [参数]
   run        守护进程（由服务管理器调用；--log-level debug|info|warn|error）
   status     显示模式、连接状态、已分配实例数、版本等
   repin      hub 证书重建后更新钉扎指纹（--fp SHA256:…）
-  upgrade    升级 agent（拨入从 hub；拨出用 --release）
+  upgrade    升级 agent（拨入从 hub；拨出用 --release vX.Y.Z [--proxy URL]）
   uninstall  停止并删除服务（--purge 同时删除配置与数据）
   version    显示版本号
 
-install、uninstall、pair、run、status、repin 在 Linux 上加 --user 表示用户模式（macOS 总是用户模式）。
+install、uninstall、pair、run、status、repin、upgrade 在 Linux 上加 --user 表示用户模式（macOS 总是用户模式）。
 `
-
-// unimplemented 是后续子任务实现的命令。
-var unimplemented = map[string]bool{"upgrade": true}
 
 // ctlTimeout 是 CLI 经控制套接字调用一次的总超时（略大于服务端的操作上限）。
 const ctlTimeout = ctl.OpTimeout + 2*ctl.IOTimeout
@@ -81,11 +79,13 @@ type cli struct {
 	// doInstall、doUninstall 执行安装与卸载（测试替换为记录参数，不触碰真实系统）。
 	doInstall   func(ctx context.Context, d install.Deps, o install.Options) error
 	doUninstall func(ctx context.Context, d install.Deps, o install.UninstallOptions) error
+	// doUpgrade 执行升级（测试替换为记录参数，不下载、不替换二进制）。
+	doUpgrade func(ctx context.Context, d upgrade.Deps, o upgrade.Options) error
 }
 
 func newCLI(stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string) *cli {
 	return &cli{stdin: stdin, stdout: stdout, stderr: stderr, getenv: getenv, goos: goruntime.GOOS, now: time.Now,
-		doInstall: install.Install, doUninstall: install.Uninstall}
+		doInstall: install.Install, doUninstall: install.Uninstall, doUpgrade: upgrade.Run}
 }
 
 func (c *cli) run(args []string) int {
@@ -94,28 +94,27 @@ func (c *cli) run(args []string) int {
 		return 2
 	}
 	cmd, rest := args[0], args[1:]
-	switch {
-	case cmd == "version":
+	switch cmd {
+	case "version":
 		_, _ = fmt.Fprintln(c.stdout, version.Version)
 		return 0
-	case cmd == "help" || cmd == "-h" || cmd == "--help":
+	case "help", "-h", "--help":
 		_, _ = fmt.Fprint(c.stdout, usage)
 		return 0
-	case cmd == "run":
+	case "run":
 		return c.cmdRun(rest)
-	case cmd == "status":
+	case "status":
 		return c.cmdStatus(rest)
-	case cmd == "pair":
+	case "pair":
 		return c.cmdPair(rest)
-	case cmd == "repin":
+	case "repin":
 		return c.cmdRepin(rest)
-	case cmd == "install":
+	case "install":
 		return c.cmdInstall(rest)
-	case cmd == "uninstall":
+	case "uninstall":
 		return c.cmdUninstall(rest)
-	case unimplemented[cmd]:
-		_, _ = fmt.Fprintf(c.stderr, "错误: 命令 %s 尚未实现\n", cmd)
-		return 1
+	case "upgrade":
+		return c.cmdUpgrade(rest)
 	default:
 		_, _ = fmt.Fprintf(c.stderr, "未知命令 %q\n\n%s", cmd, usage)
 		return 2
