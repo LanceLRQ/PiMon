@@ -60,7 +60,7 @@ func (s *Server) Pair(ctx context.Context, msg agent.Pair) (agent.PairOK, error)
 	}
 	hash := agent.CredentialHash(cred)
 	if err := s.devs.CreatePaired(ctx, devices.PairedDevice{
-		CredentialHash: hash, Code: pc, PairName: msg.Name, Hostname: msg.Hostname,
+		CredentialHash: hash, Code: pc, PairName: msg.Name, Hostname: clipPeerField(msg.Hostname),
 	}); err != nil {
 		return agent.PairOK{}, err
 	}

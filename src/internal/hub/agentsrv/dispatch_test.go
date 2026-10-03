@@ -101,7 +101,9 @@ type fakeInst struct {
 	issueLog  []string
 	created   []model.InstanceInput
 	createErr error
-	applied   []applied
+	// createCtxErr 记录每次 Create 调用时 ctx 的错误。
+	createCtxErr []error
+	applied      []applied
 	// block 非空时 RemoteSpecs 等它关闭（模拟下发组装卡住）。
 	block chan struct{}
 }
@@ -153,10 +155,11 @@ func (f *fakeInst) SetAssignIssue(machine, id, msg string) {
 	f.issues[machine+"/"+id] = msg
 }
 
-func (f *fakeInst) Create(_ context.Context, in model.InstanceInput) (model.InstanceDetail, error) {
+func (f *fakeInst) Create(ctx context.Context, in model.InstanceInput) (model.InstanceDetail, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.created = append(f.created, in)
+	f.createCtxErr = append(f.createCtxErr, ctx.Err())
 	if f.createErr != nil {
 		return model.InstanceDetail{}, f.createErr
 	}
@@ -194,6 +197,8 @@ type fakeDevs struct {
 	devs map[string]model.Device
 	auto map[string]bool
 	cbs  []func(string, bool)
+	// onTake 非空时在 TakeAutoHostMetrics 返回前调用。
+	onTake func()
 }
 
 func (f *fakeDevs) Get(_ context.Context, id string) (model.Device, error) {
@@ -211,6 +216,9 @@ func (f *fakeDevs) TakeAutoHostMetrics(_ context.Context, id string) (bool, erro
 	defer f.mu.Unlock()
 	v := f.auto[id]
 	f.auto[id] = false
+	if f.onTake != nil {
+		f.onTake()
+	}
 	return v, nil
 }
 
@@ -615,6 +623,23 @@ func TestDispatcher_自动创建失败只记警告不重试(t *testing.T) {
 	waitAssigns(t, s, 2)
 	if f.inst.createdCount() != 1 || f.devs.autoFlag("dev1") {
 		t.Fatalf("失败后应清零且不重试，创建 %d 次", f.inst.createdCount())
+	}
+}
+
+// Ruling 23：标记清零后开始关停，仍要把实例建成（Create 不随下发器 ctx 取消）。
+func TestDispatcher_自动创建不受关停取消影响(t *testing.T) {
+	f := newDFX(t)
+	f.devs.devs["dev1"] = model.Device{ID: "dev1", Name: "nas-box"}
+	f.devs.auto["dev1"] = true
+	f.devs.onTake = f.d.cancel // 模拟标记刚清零时 Close 取消了 ctx
+	f.plugs.has["dev1/"+HostMetricsPluginID] = true
+	f.online("dev1")
+	f.d.OnReady("dev1")
+	waitFor(t, "自动创建", func() bool { return f.inst.createdCount() == 1 })
+	f.inst.mu.Lock()
+	defer f.inst.mu.Unlock()
+	if err := f.inst.createCtxErr[0]; err != nil {
+		t.Fatalf("Create 的 ctx 不应随关停取消: %v", err)
 	}
 }
 

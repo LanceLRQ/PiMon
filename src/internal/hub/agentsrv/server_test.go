@@ -3,11 +3,14 @@ package agentsrv
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/LanceLRQ/PiMon/src/internal/agentlink"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/devices"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 	"github.com/LanceLRQ/PiMon/src/pkg/protocol/agent"
@@ -340,6 +343,147 @@ func TestRepair确认时替换旧设备并断开旧会话(t *testing.T) {
 		t.Fatalf("新设备应沿用旧名称，得到 %q", d.Name)
 	}
 	waitFor(t, "旧设备在线状态被清除", func() bool { return e.presence(old.id) == "" })
+}
+
+// instanceMachine 读实例行的运行位置。
+func instanceMachine(t *testing.T, db *store.DB, id string) string {
+	t.Helper()
+	var m string
+	must(t, db.QueryRowContext(context.Background(), `SELECT machine FROM plugin_instances WHERE id = ?`, id).Scan(&m))
+	return m
+}
+
+// insertInstance 插入一个运行在 machine 上的实例行。
+func insertInstance(t *testing.T, db *store.DB, id, machine string) {
+	t.Helper()
+	now := store.FormatTime(t0)
+	_, err := db.ExecContext(context.Background(),
+		`INSERT INTO plugin_instances (id, plugin_id, name, machine, config_json, config_hash, created_at, updated_at)
+		 VALUES (?, 'host-metrics', ?, ?, '{}', 'h', ?, ?)`, id, id, machine, now, now)
+	must(t, err)
+}
+
+// Ruling 22：重新配对的 hello 不兼容时只记录原因，不确认、不迁移、不吊销旧设备；占位不随 15 分钟清理删除；
+// agent 升级后首个兼容的 hello 才确认并迁移。
+func TestRepair遇不兼容保留旧设备且升级后接替(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	old, err := e.pair(t, e.newCode(t, devices.PairingOptions{Name: "nas1"}))
+	must(t, err)
+	old.helloOK(t)
+	insertInstance(t, e.db, "i1", old.id)
+
+	e.setHubMin(2)
+	p, err := e.pair(t, e.newCode(t, devices.PairingOptions{Name: "nas1", RepairDeviceID: old.id}))
+	must(t, err)
+	must(t, p.sess.Send(helloMsg(1, 1)))
+	if m, ok := p.recv(t).(*agent.Incompatible); !ok || m.Reason != agent.ReasonVersionTooOld {
+		t.Fatalf("应收到 incompatible，得到 %#v", m)
+	}
+	waitClosed(t, p.sess)
+
+	det, err := e.devs.Detail(ctx, p.id)
+	must(t, err)
+	if det.Confirmed || det.Replaces != old.id {
+		t.Fatalf("占位应保持未确认并保留 replaces: %+v", det)
+	}
+	if d := e.device(t, p.id); d.Incompatible == nil || d.Incompatible.Reason != agent.ReasonVersionTooOld {
+		t.Fatalf("占位应记录不兼容原因: %+v", d)
+	}
+	if _, err := e.devs.Detail(ctx, old.id); err != nil {
+		t.Fatalf("旧设备应原样保留: %v", err)
+	}
+	if m := instanceMachine(t, e.db, "i1"); m != old.id {
+		t.Fatalf("实例不应迁移，machine = %q", m)
+	}
+	select {
+	case <-old.sess.Done():
+		t.Fatalf("旧设备会话不应被吊销: %+v", old.sess.Err())
+	default:
+	}
+	// 满 15 分钟的清理不删除它（用时钟靠后的仓库直接清理，避免推进 hub 时钟触发心跳超时）。
+	late := devices.New(devices.Config{DB: e.db, Clock: clock.NewFake(t0.Add(devices.PlaceholderTTL + time.Minute))})
+	must(t, late.Cleanup(ctx))
+	if _, err := e.devs.Detail(ctx, p.id); err != nil {
+		t.Fatalf("记录了不兼容原因的占位不应被清理: %v", err)
+	}
+
+	// agent 升级后用凭据接入：兼容的 hello 确认并迁移，旧设备被替换、旧会话以 revoked 断开。
+	e.setHubMin(agent.MinCompatibleVersion)
+	q, err := e.dial(t, p.cred)
+	must(t, err)
+	q.helloOK(t)
+	if r := waitClosed(t, old.sess); r.Bye != agent.ReasonRevoked {
+		t.Fatalf("旧设备会话应以 revoked 断开，得到 %+v", r)
+	}
+	if _, err := e.devs.Detail(ctx, old.id); !errors.Is(err, devices.ErrNotFound) {
+		t.Fatalf("旧设备应被删除: %v", err)
+	}
+	if m := instanceMachine(t, e.db, "i1"); m != p.id {
+		t.Fatalf("实例应迁到新设备，machine = %q", m)
+	}
+	if d := e.device(t, p.id); d.Name != "nas1" || d.Incompatible != nil {
+		t.Fatalf("新设备 = %+v", d)
+	}
+}
+
+// Ruling 23：hello 与 pair 中对端可控的字符串入库前截断到 256 字节且保持 UTF-8 合法。
+func TestHello对端字符串入库前截断(t *testing.T) {
+	e := newEnv(t)
+	long := strings.Repeat("长", 400) // 1200 字节
+	p := &peer{msgs: make(chan agent.Message, 16)}
+	cfg := e.dialCfg(p)
+	cfg.PairCode = e.newCode(t, devices.PairingOptions{})
+	cfg.PairInfo = agent.Pair{Name: "box", Hostname: long}
+	cfg.OnCredential = func(ok agent.PairOK) error { p.cred, p.id = ok.Credential, ok.DeviceID; return nil }
+	s, err := agentlink.Dial(context.Background(), cfg)
+	must(t, err)
+	p.sess = s
+	t.Cleanup(func() { s.Close("") })
+	if d := e.device(t, p.id); len(d.Hostname) > maxPeerField || !utf8.ValidString(d.Hostname) {
+		t.Fatalf("配对时的主机名未截断: %d 字节", len(d.Hostname))
+	}
+	e.waitAttached(t, p.id)
+
+	h := helloMsg(agent.ProtocolVersion, agent.MinCompatibleVersion)
+	h.Hostname, h.AgentVersion, h.OS, h.Arch = long, long, long, long
+	must(t, p.sess.Send(h))
+	if _, ok := p.recv(t).(*agent.HelloOK); !ok {
+		t.Fatal("应收到 hello_ok")
+	}
+	d := e.device(t, p.id)
+	for name, v := range map[string]string{"hostname": d.Hostname, "agent_version": d.AgentVersion, "os": d.OS, "arch": d.Arch} {
+		if len(v) > maxPeerField || len(v) < maxPeerField-8 || !utf8.ValidString(v) {
+			t.Fatalf("%s 应截断到 %d 字节内且保持 UTF-8 合法，得到 %d 字节", name, maxPeerField, len(v))
+		}
+	}
+}
+
+// Ruling 23：Server.Close 之后才被分发的 hello（agentlink 分发协程可能在会话关闭后仍取出队列里的消息）
+// 直接以会话已结束了结，不再读写库。
+func TestClose之后到达的hello不处理(t *testing.T) {
+	e := newEnv(t)
+	p, err := e.pair(t, e.newCode(t, devices.PairingOptions{}))
+	must(t, err)
+	var sess *agentlink.Session
+	e.srv.mu.Lock()
+	for s := range e.srv.conns {
+		if s.Peer().DeviceID == p.id {
+			sess = s
+		}
+	}
+	e.srv.mu.Unlock()
+	e.srv.Close()
+
+	c := &conn{sess: sess, handled: make(chan struct{}), ready: make(chan struct{})}
+	e.srv.handleHello(c, helloMsg(agent.ProtocolVersion, agent.MinCompatibleVersion))
+	<-c.ready
+	if !errors.Is(c.outcome, ErrSessionClosed) {
+		t.Fatalf("Close 之后的 hello 结果 = %v，期望 ErrSessionClosed", c.outcome)
+	}
+	if d := e.device(t, p.id); d.AgentVersion != "" {
+		t.Fatalf("Close 之后的 hello 不应写库: %+v", d)
+	}
 }
 
 func TestRouter收到业务消息(t *testing.T) {

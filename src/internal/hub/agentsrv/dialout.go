@@ -617,9 +617,14 @@ func (d *DialOut) Pair(ctx context.Context, req model.DialOutRequest) (model.Dev
 	return d.pair(ctx, req, "")
 }
 
-// Repair 是重新配对：流程与 Pair 相同，保存的新设备带上 replaces=oldID，首个 hello 被接受时
-// 在设备仓库里把旧设备的实例、manifest 与维护模式迁到新设备并删除旧设备行。
-// 配对失败时不留占位，旧设备保持原样。名称、角色等缺省值由调用方按旧设备预填。
+// Repair 是重新配对：流程与 Pair 相同，保存的新设备带上 replaces=oldID，首个兼容的 hello 被接受时
+// 在设备仓库里把旧设备的实例、manifest 与维护模式迁到新设备并删除旧设备行。名称、角色等缺省值由调用方按旧设备预填。
+//
+// 失败时旧设备一律保持原样（实例不迁移、不吊销）：
+//   - 拿到凭据之前失败（不可达、指纹不符、配对码错误等）：不留占位；
+//   - hello 不兼容：*PairingError{incompatible} 带新设备 ID，占位保留并记录不兼容原因，由重连循环接手，
+//     对端升级后首个兼容的 hello 才接替旧设备；
+//   - 等待 hello 超时：*PairingError{timeout} 带新设备 ID，占位由重连循环接手，连上后接替旧设备。
 func (d *DialOut) Repair(ctx context.Context, oldID string, req model.DialOutRequest) (model.Device, error) {
 	return d.pair(ctx, req, oldID)
 }

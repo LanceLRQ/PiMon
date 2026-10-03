@@ -475,6 +475,29 @@ func TestCleanup清理过期码与未确认占位(t *testing.T) {
 	}
 }
 
+// 重新配对遇不兼容的拨入占位记录了不兼容原因、等待 agent 升级后接替旧设备，不随 15 分钟清理删除。
+func TestCleanup豁免记录了不兼容原因的占位(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	_, old := f.pairNew(t, PairingOptions{Name: "old"}, "", "")
+	_, err := f.s.Confirm(ctx, old)
+	must(t, err)
+	_, waiting := f.pairNew(t, PairingOptions{Name: "old", RepairDeviceID: old}, "", "")
+	must(t, f.s.UpdateHello(ctx, waiting, HelloInfo{
+		ProtocolVersion: 1, Incompatible: &model.DeviceIncompatible{Reason: "version_too_old", RequiredMin: 2},
+	}))
+	_, stale := f.pairNew(t, PairingOptions{Name: "stale", RepairDeviceID: old}, "", "")
+	f.clk.Advance(PlaceholderTTL + time.Minute)
+
+	must(t, f.s.Cleanup(ctx))
+	if _, err := f.s.Get(ctx, waiting); err != nil {
+		t.Fatalf("记录了不兼容原因的占位不应清理: %v", err)
+	}
+	if _, err := f.s.Get(ctx, stale); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("未 hello 的占位仍应清理: %v", err)
+	}
+}
+
 func TestCreateDialOut密文与读取(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

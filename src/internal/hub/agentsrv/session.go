@@ -242,8 +242,21 @@ func (s *Server) handleFirst(c *conn, msg agent.Message) {
 }
 
 // handleHello 版本协商、更新设备行、确认占位、manifest 入库，接受后注册并顶替旧会话。
+//
+// 处理过程登记在 wg 里，Close 会等它结束（之后才可关库）；Close 之后才被分发的 hello 不再读写库。
 func (s *Server) handleHello(c *conn, m *agent.Hello) {
 	sess := c.sess
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		c.settle(ErrSessionClosed)
+		sess.Close(agent.ReasonShutdown)
+		return
+	}
+	s.wg.Add(1)
+	s.mu.Unlock()
+	defer s.wg.Done()
+
 	peer := sess.Peer()
 	id := peer.DeviceID
 	log := s.log.With("device_id", id)
@@ -256,7 +269,8 @@ func (s *Server) handleHello(c *conn, m *agent.Hello) {
 		return
 	}
 	info := devices.HelloInfo{
-		Hostname: m.Hostname, AgentVersion: m.AgentVersion, OS: m.OS, Arch: m.Arch, ProtocolVersion: m.ProtocolVersion,
+		Hostname: clipPeerField(m.Hostname), AgentVersion: clipPeerField(m.AgentVersion),
+		OS: clipPeerField(m.OS), Arch: clipPeerField(m.Arch), ProtocolVersion: m.ProtocolVersion,
 	}
 	if det.Direction == model.DeviceDialIn {
 		info.Address = remoteIP(peer.RemoteAddr)
@@ -271,7 +285,9 @@ func (s *Server) handleHello(c *conn, m *agent.Hello) {
 		info.Incompatible = &model.DeviceIncompatible{Reason: reason, RequiredMin: required}
 		err := s.devs.UpdateHello(s.ctx, id, info)
 		// agent 能发 hello 说明它已持有凭据：确认占位，升级 agent 后可直接用凭据接入，不必重新配对。
-		if err == nil && !det.Confirmed {
+		// 重新配对的占位（replaces 非空）只记录不兼容原因，不确认、不迁移、不吊销旧设备：
+		// 首个兼容的 hello 才接替旧设备（Ruling 22）；它不随占位清理删除（见 devices.Store.Cleanup）。
+		if err == nil && !det.Confirmed && det.Replaces == "" {
 			_, err = s.devs.Confirm(s.ctx, id)
 		}
 		s.flow.Unlock()
@@ -430,6 +446,14 @@ func remoteIP(addr string) string {
 		return ""
 	}
 	return ap.Addr().Unmap().String()
+}
+
+// maxPeerField 是对端可控字符串（hello 与 pair 的主机名、agent 版本、OS、架构）入库的最大字节数。
+const maxPeerField = 256
+
+// clipPeerField 把对端可控的字符串截断到 maxPeerField 字节内（保持 UTF-8 合法，截断时以「…」结尾）。
+func clipPeerField(v string) string {
+	return clipText(v, maxPeerField-len("…"))
 }
 
 // maxLogValue 是日志里对端可控字符串的最大字节数。

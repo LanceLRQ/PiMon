@@ -655,6 +655,100 @@ func TestDialOut重新配对失败保留旧设备(t *testing.T) {
 	}
 }
 
+// Ruling 22：拨出重新配对遇不兼容 → 502 incompatible，旧设备及其实例原样保留、仍在线；占位存在且记录不兼容原因；
+// agent 升级后由重连循环接入，首个兼容 hello 才确认并迁移。
+func TestDialOut重新配对遇不兼容保留旧设备且升级后接替(t *testing.T) {
+	e := newOutEnv(t)
+	ctx := context.Background()
+	a1 := startFakeAgent(t, "PAIR-OLD")
+	old := e.pairOK(t, a1, "PAIR-OLD")
+	insertInstance(t, e.db, "i1", old.ID)
+
+	a2 := startFakeAgent(t, "PAIR-NEW")
+	a2.setHello(helloMsg(99, 99))
+	req := dialReq(a2, "PAIR-NEW")
+	req.Name = old.Name
+	_, err := e.d.Repair(ctx, old.ID, req)
+	pe := pairingErr(t, err, ReasonIncompatible)
+	if pe.DeviceID == "" || pe.DeviceID == old.ID {
+		t.Fatalf("details 应带新设备 ID: %+v", pe)
+	}
+	if _, err := e.devs.Get(ctx, old.ID); err != nil {
+		t.Fatalf("旧设备应原样保留: %v", err)
+	}
+	if !e.online(old.ID) {
+		t.Fatal("旧设备不应被吊销")
+	}
+	if m := instanceMachine(t, e.db, "i1"); m != old.ID {
+		t.Fatalf("实例不应迁移，machine = %q", m)
+	}
+	det, err := e.devs.Detail(ctx, pe.DeviceID)
+	must(t, err)
+	if det.Confirmed || det.Replaces != old.ID {
+		t.Fatalf("占位应未确认并保留 replaces: %+v", det)
+	}
+	if dev, _ := e.devs.Get(ctx, pe.DeviceID); dev.Incompatible == nil || dev.Incompatible.Reason != agent.ReasonVersionTooNew {
+		t.Fatalf("占位应记录不兼容原因: %+v", dev)
+	}
+
+	a2.setHello(helloMsg(agent.ProtocolVersion, agent.MinCompatibleVersion))
+	waitFor(t, "升级后接入并接替旧设备", func() bool {
+		if e.online(pe.DeviceID) {
+			return true
+		}
+		e.dclk.Advance(time.Second)
+		return false
+	})
+	waitFor(t, "旧设备被替换", func() bool {
+		_, err := e.devs.Get(ctx, old.ID)
+		return errors.Is(err, devices.ErrNotFound)
+	})
+	if m := instanceMachine(t, e.db, "i1"); m != pe.DeviceID {
+		t.Fatalf("实例应迁到新设备，machine = %q", m)
+	}
+	if det, _ := e.devs.Detail(ctx, pe.DeviceID); !det.Confirmed || det.Replaces != "" {
+		t.Fatalf("新设备应已确认: %+v", det)
+	}
+	waitFor(t, "旧设备重连循环停止", func() bool { return e.loopIdle(old.ID) })
+}
+
+// Ruling 12/22：拨出重新配对等待 hello 超时 → 502 timeout 带 device_id，旧设备保留；占位由重连循环接手，连上后接替旧设备。
+func TestDialOut重新配对超时后连上接替旧设备(t *testing.T) {
+	e := newOutEnv(t)
+	ctx := context.Background()
+	a1 := startFakeAgent(t, "PAIR-OLD")
+	old := e.pairOK(t, a1, "PAIR-OLD")
+	insertInstance(t, e.db, "i1", old.ID)
+
+	e.d.pairTimeout = 2 * time.Second
+	a2 := startFakeAgent(t, "PAIR-NEW")
+	a2.setHello(nil)
+	_, err := e.d.Repair(ctx, old.ID, dialReq(a2, "PAIR-NEW"))
+	pe := pairingErr(t, err, ReasonTimeout)
+	if pe.DeviceID == "" || pe.DeviceID == old.ID {
+		t.Fatalf("details 应带新设备 ID: %+v", pe)
+	}
+	if _, err := e.devs.Get(ctx, old.ID); err != nil {
+		t.Fatalf("超时后旧设备应保留: %v", err)
+	}
+
+	a2.setHello(helloMsg(agent.ProtocolVersion, agent.MinCompatibleVersion))
+	waitFor(t, "重连上线", func() bool {
+		if e.online(pe.DeviceID) {
+			return true
+		}
+		e.dclk.Advance(time.Second)
+		return false
+	})
+	waitFor(t, "旧设备被替换", func() bool {
+		_, err := e.devs.Get(ctx, old.ID)
+		return errors.Is(err, devices.ErrNotFound)
+	})
+	if m := instanceMachine(t, e.db, "i1"); m != pe.DeviceID {
+		t.Fatalf("实例应迁到新设备，machine = %q", m)
+	}
+}
+
 func TestDialOut连接错误变化触发钩子(t *testing.T) {
 	e := newOutEnv(t)
 	ctx := context.Background()

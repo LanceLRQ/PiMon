@@ -369,12 +369,14 @@ func (d *Dispatcher) autoHostMetrics(dev string) {
 	if !took {
 		return
 	}
-	dv, err := d.devs.Get(d.ctx, dev)
+	// 标记已清零：之后即使开始关停也要把实例建成（Close 等本次处理结束后才关库），否则标记清零却没有实例。
+	ctx := context.WithoutCancel(d.ctx)
+	dv, err := d.devs.Get(ctx, dev)
 	if err != nil {
 		d.log.Warn("自动创建 host-metrics 实例失败：读取设备失败", "device_id", dev, "err", err)
 		return
 	}
-	if _, err := d.inst.Create(d.ctx, model.InstanceInput{
+	if _, err := d.inst.Create(ctx, model.InstanceInput{
 		PluginID: HostMetricsPluginID, Name: dv.Name, RunsOn: dev, Config: map[string]any{},
 	}); err != nil {
 		d.log.Warn("自动创建 host-metrics 实例失败，不再重试", "device_id", dev, "err", err)

@@ -102,6 +102,7 @@ func (s *Service) ListByMachine(ctx context.Context, machine string) ([]model.In
 }
 
 // pluginFor 按运行位置取插件：hub 查注册表，设备查其上报的 manifest（内存缓存，不逐次读库）。
+// 不得在 DB 事务内调用：设备缓存未命中时会读库，数据库是单连接，事务内再发非 tx 查询会自锁。
 func (s *Service) pluginFor(machine, id string) (plugins.Plugin, bool) {
 	if machine == machineHub {
 		return s.reg.Get(id)

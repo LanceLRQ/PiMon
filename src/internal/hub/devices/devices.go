@@ -803,6 +803,8 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 
 // Cleanup 删除已过期的配对码，以及创建超过 PlaceholderTTL 仍未确认的拨入设备占位（旧设备不受影响）。
 // 拨出设备由中枢主动拨号、凭据只存在中枢，未确认时不清理，需用户手动删除。
+// 已记录不兼容原因的拨入占位（重新配对遇不兼容的 agent，hello 未确认）也不清理：agent 已持凭据，
+// 升级后首个兼容的 hello 才接替旧设备；用户可手动删除它，吊销旧设备时一并删除。
 // 由 Server 定期（建议每分钟）调用。
 func (s *Store) Cleanup(ctx context.Context) error {
 	now := s.clk.Now()
@@ -814,7 +816,7 @@ func (s *Store) Cleanup(ctx context.Context) error {
 	if err := deleteExpiredCodes(ctx, tx, now); err != nil {
 		return err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id, created_at FROM devices WHERE confirmed_at IS NULL AND direction = 'dial_in'`)
+	rows, err := tx.QueryContext(ctx, `SELECT id, created_at FROM devices WHERE confirmed_at IS NULL AND direction = 'dial_in' AND incompatible_reason = ''`)
 	if err != nil {
 		return err
 	}
