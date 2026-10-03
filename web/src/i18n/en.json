@@ -965,6 +965,7 @@
         "testOk": "Connected ({{type}}, {{ms}} ms)",
         "testFailed": "Connection failed: {{reason}}",
         "loadFailed": "Could not read the saved NAS backup settings. The NAS fields are disabled and will not be saved.",
+        "loading": "Reading the NAS backup settings…",
         "reload": "Reload"
       }
     },

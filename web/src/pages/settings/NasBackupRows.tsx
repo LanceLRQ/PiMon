@@ -10,13 +10,16 @@ import { Switch } from '@/ui/switch'
 export interface NasTestState {
   testing: boolean
   // 最近一次测试的结果文案；ok 决定语气
-  result: { ok: boolean; text: string } | null
+  // detail 是后端已脱敏的原因说明，作为分类文案的补充
+  result: { ok: boolean; text: string; detail?: string } | null
 }
 
 interface Props {
   form: BackupRemoteInput
   // 已保存的配置，用来判断密钥是否已设置；读取失败时为 null
   saved: BackupRemote | null
+  // 首次读取或重新读取进行中
+  loading: boolean
   loadFailed: boolean
   // 刚保存且口令已更改：在口令字段旁显示持久提示
   passphraseNotice: boolean
@@ -33,7 +36,7 @@ interface Props {
 const smbKeys = ['smb_host', 'smb_port', 'smb_share', 'smb_dir', 'smb_username', 'smb_password', 'smb_domain']
 const webdavKeys = ['webdav_url', 'webdav_dir', 'webdav_username', 'webdav_password']
 
-export function NasBackupRows({ form, saved, loadFailed, passphraseNotice, onRetry, changedKeys, errorText, test, onChange, onTest }: Props) {
+export function NasBackupRows({ form, saved, loading, loadFailed, passphraseNotice, onRetry, changedKeys, errorText, test, onChange, onTest }: Props) {
   const { t } = useTranslation()
   const mark = (...keys: (keyof BackupRemoteInput)[]) => ({
     changed: keys.some((k) => changedKeys.includes(k)),
@@ -58,7 +61,14 @@ export function NasBackupRows({ form, saved, loadFailed, passphraseNotice, onRet
 
   return (
     <>
-      {loadFailed && (
+      {loading && (
+        <div className="border-t border-border px-4 py-3">
+          <Note tone="info" role="status">
+            {t('settings.backup.remote.loading')}
+          </Note>
+        </div>
+      )}
+      {loadFailed && !loading && (
         <div className="border-t border-border px-4 py-3">
           <Note tone="warn" role="status">
             {t('settings.backup.remote.loadFailed')}{' '}
@@ -68,8 +78,8 @@ export function NasBackupRows({ form, saved, loadFailed, passphraseNotice, onRet
           </Note>
         </div>
       )}
-      {/* 读取失败时整组字段与测试按钮禁用（fieldset 向下传递 disabled） */}
-      <fieldset disabled={loadFailed} className="m-0 contents border-0 p-0">
+      {/* 读取中或读取失败时整组字段与测试按钮禁用（fieldset 向下传递 disabled） */}
+      <fieldset disabled={loading || loadFailed} className="m-0 contents border-0 p-0">
       <FormRow label={t('settings.backup.nas')} fieldKey="backup.remote.enabled" {...mark('enabled')}>
         <div className="flex items-center gap-3">
           <Switch checked={form.enabled} onChange={(enabled) => onChange({ enabled })} ariaLabel={t('settings.backup.remote.enabled')} />
@@ -224,6 +234,7 @@ export function NasBackupRows({ form, saved, loadFailed, passphraseNotice, onRet
           {test.result && (
             <span role={test.result.ok ? 'status' : 'alert'} className={test.result.ok ? 'text-[12.5px] text-status-ok' : 'text-[12.5px] text-status-crit'}>
               {test.result.text}
+              {test.result.detail && <span className="ml-2 font-mono text-[11px] text-muted-foreground">{test.result.detail}</span>}
             </span>
           )}
         </div>

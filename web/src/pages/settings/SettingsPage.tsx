@@ -63,6 +63,8 @@ export function SettingsPage() {
   const [remoteBase, setRemoteBase] = useState<BackupRemoteInput>(defaultRemoteForm)
   const [remoteDraft, setRemoteDraft] = useState<BackupRemoteInput>(defaultRemoteForm)
   const [remoteLoadFailed, setRemoteLoadFailed] = useState(false)
+  // 首次读取与「重新读取」进行中：此时草稿只是默认值，不可编辑也不可保存
+  const [remoteLoading, setRemoteLoading] = useState(true)
   // 保存成功且口令已更改后的持久提示，下次编辑 NAS 表单、放弃或离开页面后消失
   const [passphraseNotice, setPassphraseNotice] = useState(false)
   const [remoteTest, setRemoteTest] = useState<NasTestState>({ testing: false, result: null })
@@ -87,6 +89,7 @@ export function SettingsPage() {
   }, [])
 
   const loadRemote = useCallback(async () => {
+    setRemoteLoading(true)
     try {
       const r = await http.get<BackupRemote>('/api/backups/remote')
       const form = remoteToForm(r)
@@ -96,6 +99,8 @@ export function SettingsPage() {
       setRemoteLoadFailed(false)
     } catch {
       setRemoteLoadFailed(true)
+    } finally {
+      setRemoteLoading(false)
     }
   }, [])
 
@@ -106,8 +111,9 @@ export function SettingsPage() {
   }, [load, loadBackups, loadRemote])
 
   const dirty = useMemo(() => (base && draft ? dirtyKeys(draft, base) : []), [base, draft])
-  // 读取失败时 NAS 不参与脏计数与保存：后端 PUT 是整体替换，拿默认值覆盖已保存配置会丢数据
-  const remoteDirty = useMemo(() => (remoteLoadFailed ? [] : remoteDirtyKeys(remoteDraft, remoteBase)), [remoteLoadFailed, remoteDraft, remoteBase])
+  // 读取中或读取失败时 NAS 不参与脏计数与保存：后端 PUT 是整体替换，拿默认值覆盖已保存配置会丢数据
+  const remoteBlocked = remoteLoading || remoteLoadFailed
+  const remoteDirty = useMemo(() => (remoteBlocked ? [] : remoteDirtyKeys(remoteDraft, remoteBase)), [remoteBlocked, remoteDraft, remoteBase])
   const dirtyCount = dirty.length + remoteDirty.length
   const isDirty = dirtyCount > 0
   const changed = (k: SettingsKey) => dirty.includes(k)
@@ -216,16 +222,19 @@ export function SettingsPage() {
       setRemoteTest({ testing: false, result: { ok: true, text: t('settings.backup.remote.testOk', { type, ms: res.elapsed_ms }) } })
     } catch (e) {
       let text: string
+      let detail: string | undefined
       if (isApiError(e) && e.code === 'validation.failed') {
         setRemoteFieldErrors((e.details.fields ?? {}) as Record<string, string>)
         text = t('settings.backup.remote.testFailed', { reason: translateErrorValue(i18n, e) })
       } else if (isApiError(e) && e.code === 'backup.remote_failed') {
         const key = `errors.backup.remote_reason.${String(e.details.reason ?? '')}`
         text = t('settings.backup.remote.testFailed', { reason: i18n.exists(key) ? t(key) : translateErrorValue(i18n, e) })
+        // 后端已脱敏的原因说明（如证书校验失败），作为分类文案的补充
+        if (typeof e.details.message === 'string' && e.details.message) detail = e.details.message
       } else {
         text = t('settings.backup.remote.testFailed', { reason: translateErrorValue(i18n, e) })
       }
-      setRemoteTest({ testing: false, result: { ok: false, text } })
+      setRemoteTest({ testing: false, result: { ok: false, text, detail } })
     }
   }
 
@@ -496,6 +505,7 @@ export function SettingsPage() {
             <NasBackupRows
               form={remoteDraft}
               saved={remoteSaved}
+              loading={remoteLoading}
               loadFailed={remoteLoadFailed}
               passphraseNotice={passphraseNotice}
               onRetry={() => void loadRemote()}

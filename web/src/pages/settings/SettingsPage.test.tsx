@@ -479,6 +479,37 @@ describe('NAS 备份', () => {
     expect(screen.getByRole('button', { name: '测试连接' })).toBeEnabled()
   })
 
+  it('测试连接失败时把已脱敏的 details.message 作为补充说明显示', async () => {
+    await setup({ extra: nasExtra({ test: () => apiError(502, 'backup.remote_failed', { reason: 'connect', message: 'TLS 证书校验失败（只支持系统信任的证书）' }) }) })
+    await screen.findByLabelText('主机')
+    await userEvent.click(screen.getByRole('button', { name: '测试连接' }))
+    expect(await screen.findByText('TLS 证书校验失败（只支持系统信任的证书）')).toBeInTheDocument()
+  })
+
+  it('首次读取未返回前 NAS 字段禁用且不参与保存；读取返回后可编辑', async () => {
+    let release: (r: Response) => void = () => {}
+    const pending = new Promise<Response>((res) => (release = res))
+    const { api } = await setup({
+      extra: (r) => {
+        if (r.url === '/api/backups/remote' && r.method === 'GET') return pending as unknown as Response
+        if (r.url === '/api/settings' && r.method === 'PUT') return json(200, baseSettings)
+        return nasExtra()(r)
+      },
+    })
+    expect(screen.getByText('正在读取 NAS 备份配置…')).toBeInTheDocument()
+    expect(screen.getByLabelText('主机')).toBeDisabled()
+    expect(screen.getByRole('button', { name: '测试连接' })).toBeDisabled()
+    await userEvent.type(screen.getByLabelText('访问地址'), 'https://x.example')
+    expect(saveBar()).toHaveTextContent('有 1 处未保存的修改')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(api.calls.some((c) => c.method === 'PUT')).toBe(true))
+    expect(api.calls.filter((c) => c.method === 'PUT').map((c) => c.url)).toEqual(['/api/settings'])
+    release(json(200, savedRemote))
+    await waitFor(() => expect(screen.getByLabelText('主机')).toBeEnabled())
+    expect(screen.getByLabelText('主机')).toHaveValue('nas.local')
+    expect(screen.queryByText('正在读取 NAS 备份配置…')).not.toBeInTheDocument()
+  })
+
   it('测试连接失败且 reason 未知时显示通用文案', async () => {
     await setup({ extra: nasExtra({ test: () => apiError(502, 'backup.remote_failed', { reason: 'weird' }) }) })
     await screen.findByLabelText('主机')

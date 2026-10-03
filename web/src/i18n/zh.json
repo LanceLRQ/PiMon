@@ -965,6 +965,7 @@
         "testOk": "连接成功（{{type}}，用时 {{ms}} 毫秒）",
         "testFailed": "连接失败：{{reason}}",
         "loadFailed": "无法读取已保存的 NAS 备份配置，NAS 部分已禁用且不会被保存。",
+        "loading": "正在读取 NAS 备份配置…",
         "reload": "重新读取"
       }
     },

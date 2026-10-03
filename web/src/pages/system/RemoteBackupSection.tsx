@@ -111,7 +111,10 @@ export function RemoteBackupSection() {
     const base = translateErrorValue(i18n, e)
     const reason = isApiError(e) && e.code === 'backup.remote_failed' ? e.details.reason : undefined
     const key = typeof reason === 'string' ? `errors.backup.remote_reason.${reason}` : ''
-    return key && i18n.exists(key) ? t('common.withDetail', { summary: base, detail: t(key) }) : base
+    const text = key && i18n.exists(key) ? t('common.withDetail', { summary: base, detail: t(key) }) : base
+    // 后端已脱敏的原因说明（如证书校验失败），作为分类文案的补充
+    const message = isApiError(e) && typeof e.details.message === 'string' ? e.details.message : ''
+    return message ? t('common.withDetail', { summary: text, detail: message }) : text
   }
 
   // 与 hub-self 一致：最近结果跳过取消记录；全是取消记录则视为尚无结果

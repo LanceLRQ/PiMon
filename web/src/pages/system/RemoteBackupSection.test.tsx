@@ -165,6 +165,15 @@ describe('异地备份小节', () => {
     expect(await screen.findByText(/远端备份失败.*用户名或密码错误/)).toBeInTheDocument()
   })
 
+  it('立即上传失败时在分类文案后附上已脱敏的 details.message', async () => {
+    await setup({
+      extra: (r) => (r.method === 'POST' && r.url === '/api/backups/remote/upload' ? apiError(502, 'backup.remote_failed', { reason: 'connect', message: 'TLS 证书校验失败' }) : undefined),
+    })
+    await screen.findByText('smb://nas.lan:445/backup/pimon')
+    await userEvent.click(screen.getByRole('button', { name: '立即上传' }))
+    expect(await screen.findByText(/TLS 证书校验失败/)).toBeInTheDocument()
+  })
+
   it('网络错误：提示可能仍在后台进行并刷新记录', async () => {
     const ctx = await setup({
       extra: (r) => {
