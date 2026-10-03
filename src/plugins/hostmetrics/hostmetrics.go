@@ -10,6 +10,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"os"
+	goruntime "runtime"
 	"sort"
 	"time"
 
@@ -55,8 +56,9 @@ type counters struct {
 
 // Plugin 是 host-metrics 的 Source 实现。
 type Plugin struct {
-	m *manifest.Manifest
-	s Sampler
+	m    *manifest.Manifest
+	s    Sampler
+	goos string
 }
 
 func init() {
@@ -69,7 +71,7 @@ func New(s Sampler) *Plugin {
 	if err != nil {
 		panic("host-metrics 内置 manifest 不合法: " + err.Error())
 	}
-	return &Plugin{m: m, s: s}
+	return &Plugin{m: m, s: s, goos: goruntime.GOOS}
 }
 
 // Manifest 实现 runtime.Source。
@@ -171,7 +173,7 @@ func (p *Plugin) disks(ctx context.Context, rep *report.Report, th thresholds) {
 	}
 	var cands []Partition
 	for _, part := range parts {
-		if realMount(part) {
+		if realMount(p.goos, part) {
 			cands = append(cands, part)
 		}
 	}

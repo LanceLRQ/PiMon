@@ -15,10 +15,12 @@ import (
 // 飞牛与 Ubuntu 样本按两类系统常见的 /proc/mounts 布局整理，不是真机录制。
 var machineCases = []struct {
 	name  string
+	goos  string
 	parts []Partition
 	want  []string
 }{
 	{
+		goos: "linux",
 		name: "飞牛 NAS：存储卷、Docker 数据目录、Btrfs 子卷、overlay 与 NFS",
 		parts: []Partition{
 			{Mount: "/", FSType: "ext4", Device: "/dev/mapper/trim-root"},
@@ -34,6 +36,7 @@ var machineCases = []struct {
 		want: []string{"disk[/]", "disk[/vol1]"},
 	},
 	{
+		goos: "linux",
 		name: "Ubuntu x86：snap 的 squashfs、/boot/efi、loop 设备",
 		parts: []Partition{
 			{Mount: "/", FSType: "ext4", Device: "/dev/sda2"},
@@ -47,6 +50,7 @@ var machineCases = []struct {
 		want: []string{"disk[/]", "disk[/boot]", "disk[/data]"},
 	},
 	{
+		goos: "darwin",
 		name: "macOS：只读系统卷、/System/Volumes/*、Data 数据卷、smbfs、只读磁盘映像",
 		parts: []Partition{
 			{Mount: "/", FSType: "apfs", Device: "/dev/disk3s1s1", ReadOnly: true},
@@ -71,11 +75,13 @@ func TestMachinePartitionFiltering(t *testing.T) {
 	for _, c := range machineCases {
 		t.Run(c.name, func(t *testing.T) {
 			s := diskSampler(c.parts...)
-			rep := run(t, New(s), clock.NewFake(time.Unix(1_800_000_000, 0)), "", nil)
+			p := New(s)
+			p.goos = c.goos
+			rep := run(t, p, clock.NewFake(time.Unix(1_800_000_000, 0)), "", nil)
 			if got := diskKeys(rep); !reflect.DeepEqual(got, c.want) {
 				t.Fatalf("磁盘条目 = %v，期望 %v", got, c.want)
 			}
-			assertValidAgainstManifest(t, New(s), rep)
+			assertValidAgainstManifest(t, p, rep)
 		})
 	}
 }
@@ -89,18 +95,21 @@ func TestRealMountNetworkAndReadOnly(t *testing.T) {
 		{Partition{Mount: "/mnt/x", FSType: "NFS4"}, false},
 		{Partition{Mount: "/mnt/x", FSType: "fuse.sshfs"}, false},
 		{Partition{Mount: "/mnt/x", FSType: "ext4", ReadOnly: true}, false},
+		{Partition{Mount: "/", FSType: "apfs", ReadOnly: true}, false},
+		{Partition{Mount: "/Volumes/dmg", FSType: "hfs", ReadOnly: true}, false},
 		{Partition{Mount: "/boot/efi", FSType: "vfat"}, false},
 		{Partition{Mount: "/boot/efi/EFI", FSType: "vfat"}, false},
 		{Partition{Mount: "/boot/firmware", FSType: "vfat"}, true},
 		{Partition{Mount: "/System/Volumes/Data", FSType: "apfs"}, true},
 	} {
-		if got := realMount(c.p); got != c.want {
+		if got := realMount("darwin", c.p); got != c.want {
 			t.Errorf("%+v 应为 %v", c.p, c.want)
 		}
 	}
 }
 
-// 非树莓派读不到欠压标志时不输出 throttled；温度读不到时也不输出（前端显示未知），都不能是 0。
+// 非树莓派读不到欠压标志时不输出 throttled；温度读不到时也不输出，都不能是 0。
+// 缺失的数据项由前端显示为「未知」：web/src/templates/item-view.ts:53 中数据项缺失时 level 为 unknown、text 为 null，由调用方显示。
 func TestNonPiOmitsThrottledAndMissingTempIsNotZero(t *testing.T) {
 	s := diskSampler(Partition{Mount: "/", FSType: "ext4", Device: "/dev/sda1"})
 	s.throttleErr, s.tempErr = errNA, errNA
@@ -144,5 +153,40 @@ func TestCommandRunner(t *testing.T) {
 	}
 	if v, err := readThrottled(ctx, throttleIO{run: run, readFile: func(string) ([]byte, error) { return nil, errNA }}); err != nil || v != 5 {
 		t.Fatalf("经 cmdexec 读取失败: %v %v", v, err)
+	}
+}
+
+func TestReadOnlyExclusionOnlyOnDarwin(t *testing.T) {
+	for _, c := range []struct {
+		goos string
+		p    Partition
+		want bool
+	}{
+		{"linux", Partition{Mount: "/data", FSType: "ext4", ReadOnly: true}, true},
+		{"linux", Partition{Mount: "/vol2", FSType: "btrfs", ReadOnly: true}, true},
+		{"linux", Partition{Mount: "/mnt/cd", FSType: "iso9660", ReadOnly: true}, false},
+		{"linux", Partition{Mount: "/snap/x/1", FSType: "squashfs", ReadOnly: true}, false},
+		{"darwin", Partition{Mount: "/", FSType: "apfs", ReadOnly: true}, false},
+		{"darwin", Partition{Mount: "/Volumes/dmg", FSType: "hfs", ReadOnly: true}, false},
+		{"darwin", Partition{Mount: "/System/Volumes/Data", FSType: "apfs"}, true},
+	} {
+		if got := realMount(c.goos, c.p); got != c.want {
+			t.Errorf("%s %+v 应为 %v", c.goos, c.p, c.want)
+		}
+	}
+}
+
+// bind 挂载与同设备多路径：保留路径最短的挂载点，打乱输入顺序结果一致。
+func TestBindMountKeepsShortestStable(t *testing.T) {
+	a := Partition{Mount: "/srv/media", FSType: "ext4", Device: "/dev/sdc1"}
+	b := Partition{Mount: "/var/lib/app/media", FSType: "ext4", Device: "/dev/sdc1"}
+	c := Partition{Mount: "/home/u/m", FSType: "ext4", Device: "/dev/sdc1"}
+	for _, order := range [][]Partition{{a, b, c}, {c, b, a}, {b, a, c}} {
+		p := New(diskSampler(order...))
+		p.goos = "linux"
+		rep := run(t, p, clock.NewFake(time.Unix(1_800_000_000, 0)), "", nil)
+		if got := diskKeys(rep); !reflect.DeepEqual(got, []string{"disk[/home/u/m]"}) {
+			t.Fatalf("顺序 %v 得到 %v", order, got)
+		}
 	}
 }

@@ -247,7 +247,7 @@ func TestRealMountFilter(t *testing.T) {
 		{Partition{Mount: "/runner", FSType: "ext4"}, true},
 		{Partition{Mount: "", FSType: "ext4"}, false},
 	} {
-		if got := realMount(c.p); got != c.want {
+		if got := realMount("linux", c.p); got != c.want {
 			t.Errorf("%+v 应为 %v", c.p, c.want)
 		}
 	}

@@ -50,7 +50,7 @@ var pseudoFS = map[string]bool{
 	"binfmt_misc": true, "bpf": true, "ramfs": true, "nsfs": true, "efivarfs": true, "rpc_pipefs": true,
 	// 网络文件系统：容量属于远端，不代表本机存储。
 	"smbfs": true, "nfs": true, "nfs3": true, "nfs4": true, "cifs": true, "smb3": true, "afpfs": true,
-	"webdav": true, "fuse.sshfs": true, "9p": true,
+	"webdav": true, "fuse.sshfs": true, "9p": true, "iso9660": true, "udf": true,
 }
 
 // pseudoMountPrefixes 是不计入统计的挂载点前缀（系统目录与容器、快照挂载）。
@@ -61,10 +61,11 @@ var pseudoMountPrefixes = []string{
 }
 
 // realMount 判断一个挂载点是否是值得监控的真实存储。
-// 只读挂载（macOS 的密封系统卷、磁盘映像）不计入；macOS 的 /System/Volumes/Data 是真实数据卷，
-// 它是读写挂载，不在前缀表里，因此保留。
-func realMount(p Partition) bool {
-	if p.Mount == "" || p.ReadOnly || pseudoFS[strings.ToLower(p.FSType)] {
+// 只读挂载只在 darwin 上排除（密封系统卷 / 与磁盘映像）；Linux 上只读挂载的真实数据盘照常保留，
+// 只读的伪类型（squashfs、iso9660 等）仍由 pseudoFS 排除。macOS 的 /System/Volumes/Data
+// 是读写的真实数据卷，不在前缀表里，因此保留。goos 可注入，便于在任意平台测试各分支。
+func realMount(goos string, p Partition) bool {
+	if p.Mount == "" || (goos == "darwin" && p.ReadOnly) || pseudoFS[strings.ToLower(p.FSType)] {
 		return false
 	}
 	for _, pre := range pseudoMountPrefixes {
