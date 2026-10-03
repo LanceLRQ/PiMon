@@ -503,10 +503,10 @@ func TestAgent端到端拨入与拨出全流程(t *testing.T) {
 
 		// 复制 exec 插件到 agent 插件目录 → plugins_changed → hub 上该设备的可用插件出现新插件。
 		writeAgentExecPlugin(t, ag.paths.PluginDir, "e2e-exec")
-		deadline := time.Now().Add(10 * time.Second)
-		for !contains(h.pluginIDs(t, devID), "e2e-exec") {
-			if time.Now().After(deadline) {
-				t.Fatalf("hub 上设备插件列表未出现 e2e-exec: %v", h.pluginIDs(t, devID))
+		const maxRounds = 30
+		for round := 0; !contains(h.pluginIDs(t, devID), "e2e-exec"); round++ {
+			if round >= maxRounds {
+				t.Fatalf("推进 %d 轮后 hub 上设备插件列表仍未出现 e2e-exec: %v", maxRounds, h.pluginIDs(t, devID))
 			}
 			clk.Advance(200 * time.Millisecond) // 推进插件目录防抖
 			time.Sleep(10 * time.Millisecond)
@@ -527,7 +527,10 @@ func TestAgent端到端拨入与拨出全流程(t *testing.T) {
 		}
 
 		// 重启 agent：自动用凭据重连恢复在线，重新下发后再次运行并回传。
-		before, _ := h.a.instances.Get(bg, instID)
+		before, err := h.a.instances.Get(bg, instID)
+		if err != nil || before.Report == nil {
+			t.Fatalf("重启前读取实例失败: report=%v err=%v", before.Report, err)
+		}
 		calls := probe.calls.Load()
 		ag.start()
 		waitUntil(t, "重启后 online", func() bool { return h.presence(devID) == model.PresenceOnline })

@@ -44,6 +44,8 @@ func (c *cli) cmdRun(args []string) int {
 		}
 		defer func() { _ = w.Close() }()
 		c.log = logging.NewWithRing(w, c.lv, c.ring)
+		// main 启动时的默认 logger 写标准错误，LaunchAgent 不收；改用文件 logger，走 slog.Default 的日志才不丢。
+		slog.SetDefault(c.log)
 	case c.log == nil:
 		c.log = logging.NewWithRing(c.stderr, c.lv, c.ring)
 	}

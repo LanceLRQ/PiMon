@@ -175,15 +175,15 @@ func TestExec插件扫描后带已构造的Source(t *testing.T) {
 }
 
 func TestExec插件属主不符被拒(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root 属主恒被放行")
+	}
 	other := os.Geteuid() + 12345
 	f := newFixture(t, func() int { return other })
 	d := f.put(t, "probe", manifestYAML("probe", "source", "exec", "[agent]"))
 	s := f.reg.Scan()
 	if _, ok := f.reg.Get("probe"); ok {
 		t.Fatal("属主不符的插件不应可用")
-	}
-	if os.Geteuid() == 0 {
-		return // root 属主的文件总能通过属主检查，这里只确认不 panic
 	}
 	is := issueFor(t, s, d)
 	if is.Kind != pluginscan.IssueInsecure || !strings.Contains(is.Message, "agent 运行用户") {

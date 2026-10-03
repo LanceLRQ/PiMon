@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
 
 permissions:
   contents: write
@@ -12,8 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: src/go.mod
@@ -27,9 +25,13 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
-      # 先构建前端，再构建 hub（linux/arm64、darwin/arm64）；build-go 会连带交叉编译三个平台的 agent 并内嵌进 hub。
+      # 先构建前端（hub 内嵌其产物，测试也依赖），测试通过后再构建 hub（linux/arm64、darwin/arm64）；build-go 会连带交叉编译三个平台的 agent 并内嵌进 hub。
+      - name: 构建前端
+        run: make web
+      - name: 测试
+        run: make test-go
       - name: 构建
-        run: make web build-go VERSION=${{ github.ref_name }}
+        run: make build-go VERSION=${{ github.ref_name }}
       - name: 生成校验和
         run: cd bin && sha256sum pimon-hub-* pimon-agent-* > SHA256SUMS
       - name: 创建 GitHub Release

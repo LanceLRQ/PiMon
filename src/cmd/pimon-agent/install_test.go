@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,13 +81,19 @@ func TestRun_日志写入文件(t *testing.T) {
 	e := newEnv(t)
 	e.save(dialOutConf())
 	logPath := filepath.Join(e.home, "logs", "agent.log")
+	prev := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prev) })
 	rd := e.startDaemon("--log-file", logPath)
+	slog.Info("默认日志探针")
 	if code := rd.stop(t); code != 0 {
 		t.Fatalf("退出码 %d", code)
 	}
 	b, err := os.ReadFile(logPath)
 	if err != nil || !strings.Contains(string(b), "agent 守护进程启动") {
 		t.Fatalf("日志文件内容 %q err=%v", b, err)
+	}
+	if !strings.Contains(string(b), "默认日志探针") {
+		t.Fatalf("slog.Default 的日志应写入日志文件: %q", b)
 	}
 	if strings.Contains(rd.stderr.String(), "agent 守护进程启动") {
 		t.Fatal("指定 --log-file 时不应再写标准错误")
