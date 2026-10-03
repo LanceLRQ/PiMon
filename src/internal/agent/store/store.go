@@ -69,21 +69,38 @@ func (s *Store) State(ctx context.Context, id string) (string, error) {
 	return v, nil
 }
 
-// PutState 写入实例的私有 state；内容与插件归属都未变化时不写库。
+// PutState 写入实例的私有 state 与写入时的配置内容摘要（空表示未知）；内容、插件归属与摘要都未变化时不写库。
 // 新建行时 last_assigned_at 一并设为当前时间。
-func (s *Store) PutState(ctx context.Context, id, pluginID, state string) error {
+func (s *Store) PutState(ctx context.Context, id, pluginID, contentHash, state string) error {
 	now := s.now()
 	_, err := s.db.ExecContext(ctx, `
-INSERT INTO instance_state (instance_id, plugin_id, state, updated_at, last_assigned_at)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO instance_state (instance_id, plugin_id, state, content_hash, updated_at, last_assigned_at)
+VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT(instance_id) DO UPDATE SET
-    plugin_id = excluded.plugin_id, state = excluded.state, updated_at = excluded.updated_at
-WHERE instance_state.state <> excluded.state OR instance_state.plugin_id <> excluded.plugin_id`,
-		id, pluginID, state, now, now)
+    plugin_id = excluded.plugin_id, state = excluded.state, content_hash = excluded.content_hash,
+    updated_at = excluded.updated_at
+WHERE instance_state.state <> excluded.state OR instance_state.plugin_id <> excluded.plugin_id
+   OR instance_state.content_hash <> excluded.content_hash`,
+		id, pluginID, state, contentHash, now, now)
 	if err != nil {
 		return fmt.Errorf("写入 state: %w", err)
 	}
 	return nil
+}
+
+// DeleteStateIfContentChanged 在库中 state 的内容摘要与 contentHash 不同（双方都非空）时删除它，
+// 返回是否删除。用于进程重启后发现配置内容已变：旧 state 不再可信。
+func (s *Store) DeleteStateIfContentChanged(ctx context.Context, id, contentHash string) (bool, error) {
+	if contentHash == "" {
+		return false, nil
+	}
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM instance_state WHERE instance_id = ? AND content_hash <> '' AND content_hash <> ?`, id, contentHash)
+	if err != nil {
+		return false, fmt.Errorf("删除 state: %w", err)
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // Touch 把仍被分配的实例的 last_assigned_at 刷新为当前时间；不存在的 id 忽略。

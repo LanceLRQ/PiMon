@@ -25,7 +25,7 @@ func (b *Binding) RunNow(m *agent.RunNow) {
 		b.mu.Unlock()
 		o := agent.RunOutcome{Error: errTextNotAssigned, ErrorKind: agent.ErrorKindNotAssigned, CollectedAt: b.r.cfg.Clock.Now()}
 		if sp != nil {
-			o.Error, o.ErrorKind = sp.reason(), agent.ErrorKindFailed
+			o.Error, o.ErrorKind, o.ConfigHash = sp.reason(), agent.ErrorKindFailed, sp.hash
 		}
 		b.send(&agent.RunResult{RequestID: m.RequestID, InstanceID: m.InstanceID, RunOutcome: o})
 		return
@@ -44,7 +44,7 @@ func (b *Binding) RunNow(m *agent.RunNow) {
 	b.mu.Unlock()
 	go func() {
 		defer b.wg.Done()
-		res := b.collect(b.ctx, j)
+		res := b.collect(j.ctx, j) // 配置替换、移出或断线时取消，旧结果不写回
 		release()
 		if res.canceled {
 			return

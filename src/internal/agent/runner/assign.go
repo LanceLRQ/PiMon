@@ -1,12 +1,12 @@
 package runner
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/internal/agent/plugins"
@@ -22,7 +22,7 @@ const maxReceiptMessage = 512
 
 // spec 是当前 assign 里的一个实例：回执结果，以及回执为 started 时的运行快照。
 type spec struct {
-	// hash 是下发摘要；与上一次下发不同表示配置内容变了（不论回执是否成功）。
+	// hash 是下发摘要（回执失败时也记，run_result 带上它）。
 	hash    string
 	status  string
 	message string
@@ -44,6 +44,7 @@ func (sp *spec) reason() string {
 
 // Assign 应用一次全量下发：逐实例校验并汇总成 assign_result（按下发顺序，Version 原样回显），
 // 与当前集合对比——移出或回执失败的停止，新增或本地哈希变化的重新登记，未变的不动。
+// 内容摘要（content_hash）变化的实例清空上次报告与 state（与 hub 的 resetState 一致）；
 // 移出 assign 不删除 state；出现在 assign 里的实例刷新分配时间（见 Runner.GC）。
 // 在会话 Handler 里同步调用，之后的 run_now 一定看到本次下发；Binding 已关闭时忽略。
 func (b *Binding) Assign(m *agent.Assign) {
@@ -56,10 +57,11 @@ func (b *Binding) Assign(m *agent.Assign) {
 	ids := make(map[string]bool, len(m.Instances))
 	touch := make([]string, 0, len(m.Instances))
 	results := make([]agent.AssignResultItem, 0, len(m.Instances))
+	reset := map[string]bool{}
 	for _, in := range m.Instances {
 		sp := b.prepare(in)
-		if old := b.specs[in.ID]; old != nil && old.hash != sp.hash && sp.job != nil {
-			sp.job.reset = &sync.Once{}
+		if b.r.noteContent(in.ID, in.ContentHash) {
+			reset[in.ID] = true
 		}
 		next[in.ID] = sp
 		ids[in.ID] = true
@@ -70,23 +72,43 @@ func (b *Binding) Assign(m *agent.Assign) {
 		b.r.cfg.Log.Warn("刷新 state 分配时间失败", "err", err)
 	}
 
+	// 1. 先同步取消旧运行：未变的沿用原 job；内容变化、移出、回执失败、周期与流式互换的摘除任务；
+	//    其余（下发摘要变了但内容没变）留给下面的 Upsert 替换。被替换的 job 一律取消，run_now 随之取消。
 	for id, old := range b.specs {
+		if old.job == nil {
+			continue
+		}
 		nw := next[id]
-		if old.job != nil && (nw == nil || nw.job == nil || nw.stream != old.stream) {
+		switch {
+		case nw != nil && nw.job != nil && !reset[id] && nw.localHash == old.localHash && nw.stream == old.stream:
+			nw.job = old.job
+		case nw == nil || nw.job == nil || nw.stream != old.stream || reset[id]:
 			b.dropTask(id, old)
+			old.job.cancel()
+		default:
+			old.job.cancel()
 		}
 	}
+	// 2. 再清空：内容摘要变化的（内存记录）删 state 与上次报告；其余按库中摘要兜底（进程重启后）。
+	//    旧运行已取消，commit 拒绝它们写回；新任务还没登记，看到的一定是清空后的状态。
+	for _, in := range m.Instances {
+		if reset[in.ID] {
+			b.r.reset(b.ctx, in.ID)
+		} else if in.ContentHash != "" {
+			b.r.resetIfStored(b.ctx, in.ID, in.ContentHash)
+		}
+	}
+	// 3. 最后登记（本地哈希不变的不重排）。
 	started := 0
-	for id, sp := range next {
-		if sp.job != nil {
-			b.upsertTask(sp) // 哈希变化时这里取消旧运行，先于下面的清空
-			started++
+	for _, sp := range next {
+		if sp.job == nil {
+			continue
 		}
-		if old := b.specs[id]; old != nil && old.hash != sp.hash {
-			// 配置内容变化：旧的上次报告与 state 不再可信（与 hub 的 resetState 一致）。旧运行已在 upsertTask
-			// 里取消，commit 会拒绝它写回；新任务若抢先启动，其首次运行也会在持锁读 state 前再清空一次（job.reset）。
-			b.r.reset(b.ctx, id)
+		if sp.job.ctx == nil {
+			sp.job.ctx, sp.job.cancel = context.WithCancel(b.ctx)
 		}
+		b.upsertTask(sp)
+		started++
 	}
 	b.specs = next
 	b.r.setAssigned(b, ids)
@@ -137,7 +159,7 @@ func (b *Binding) validate(in agent.AssignedInstance) *spec {
 	return &spec{
 		status: agent.AssignStarted,
 		job: &job{
-			id: in.ID, pluginID: in.PluginID, hash: in.ConfigHash, src: p.Source,
+			id: in.ID, pluginID: in.PluginID, hash: in.ConfigHash, contentHash: in.ContentHash, src: p.Source,
 			in:       runtime.Input{Config: in.Config, Secrets: in.Secrets, Proxy: pr, Clock: b.r.cfg.Clock},
 			interval: interval,
 			timeout:  time.Duration(in.TimeoutMs) * time.Millisecond,

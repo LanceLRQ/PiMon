@@ -30,9 +30,10 @@ type Registry interface {
 // State 在没有记录时返回 sql.ErrNoRows。
 type Store interface {
 	State(ctx context.Context, id string) (string, error)
-	PutState(ctx context.Context, id, pluginID, state string) error
+	PutState(ctx context.Context, id, pluginID, contentHash, state string) error
 	Touch(ctx context.Context, ids []string) error
 	DeleteState(ctx context.Context, id string) error
+	DeleteStateIfContentChanged(ctx context.Context, id, contentHash string) (bool, error)
 	GC(ctx context.Context, before time.Time) (int64, error)
 }
 
@@ -70,6 +71,8 @@ type Runner struct {
 	locks map[string]chan struct{}
 	// last 是每实例上次成功的报告，跨会话保留，实例不再出现在任何活跃 Binding 的 assign 里时删除。
 	last map[string]*report.Report
+	// content 是每实例最近一次下发的内容摘要，跨会话保存（进程重启后由库中的 content_hash 兜底）。
+	content map[string]string
 	// assigned 是每个活跃 Binding 当前 assign 里的实例 id。
 	assigned map[*Binding]map[string]bool
 }
@@ -86,6 +89,7 @@ func New(cfg Config) *Runner {
 		cfg:      cfg,
 		locks:    map[string]chan struct{}{},
 		last:     map[string]*report.Report{},
+		content:  map[string]string{},
 		assigned: map[*Binding]map[string]bool{},
 	}
 }
@@ -163,7 +167,7 @@ func (r *Runner) setLast(id string, rep *report.Report) {
 	}
 }
 
-// reset 清空实例的上次报告并删除本地 state（配置内容变化后旧值不再可信，与 hub 的 resetState 一致）。
+// reset 清空实例的上次报告并删除本地 state（配置内容摘要变化后旧值不再可信，与 hub 的 resetState 一致）。
 // 调用方须已取消该实例旧配置的运行。
 func (r *Runner) reset(ctx context.Context, id string) {
 	r.writeMu.Lock()
@@ -176,20 +180,49 @@ func (r *Runner) reset(ctx context.Context, id string) {
 	}
 }
 
-// commit 在运行未被取消时写入成功结果：state 与 old 不同才写库，并记下上次报告；已取消时返回 false。
-func (r *Runner) commit(ctx context.Context, id, pluginID, old string, rep *report.Report) bool {
+// commit 在运行未被取消时写入成功结果：state 连同内容摘要交给 PutState（内容未变时库不写），并记下上次报告；
+// 已取消时返回 false。
+func (r *Runner) commit(ctx context.Context, j *job, rep *report.Report) bool {
 	r.writeMu.Lock()
 	defer r.writeMu.Unlock()
 	if ctx.Err() != nil {
 		return false
 	}
-	if rep.State != old {
-		if err := r.cfg.Store.PutState(ctx, id, pluginID, rep.State); err != nil {
-			r.cfg.Log.Warn("写入本地 state 失败", "instance_id", clipLog(id), "err", err)
-		}
+	if err := r.cfg.Store.PutState(ctx, j.id, j.pluginID, j.contentHash, rep.State); err != nil {
+		r.cfg.Log.Warn("写入本地 state 失败", "instance_id", clipLog(j.id), "err", err)
 	}
-	r.setLast(id, rep)
+	r.setLast(j.id, rep)
 	return true
+}
+
+// noteContent 记下实例最近一次下发的内容摘要（跨会话保存），返回内容是否变化（新旧都非空且不同）。
+// 空摘要表示未知：不记、不算变化。
+func (r *Runner) noteContent(id, contentHash string) bool {
+	if contentHash == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	prev := r.content[id]
+	r.content[id] = contentHash
+	return prev != "" && prev != contentHash
+}
+
+// resetIfStored 在库中 state 的内容摘要与 contentHash 不同时删除它并清空上次报告（进程重启后内存里没有记录）。
+// 调用方须已取消该实例旧配置的运行。
+func (r *Runner) resetIfStored(ctx context.Context, id, contentHash string) {
+	r.writeMu.Lock()
+	defer r.writeMu.Unlock()
+	deleted, err := r.cfg.Store.DeleteStateIfContentChanged(ctx, id, contentHash)
+	if err != nil {
+		r.cfg.Log.Warn("按内容摘要清理本地 state 失败", "instance_id", clipLog(id), "err", err)
+		return
+	}
+	if deleted {
+		r.mu.Lock()
+		delete(r.last, id)
+		r.mu.Unlock()
+	}
 }
 
 // setAssigned 更新 b 当前分配的实例集合，并丢弃不再被任何活跃 Binding 分配的实例的上次报告。

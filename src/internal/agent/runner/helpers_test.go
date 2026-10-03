@@ -72,10 +72,12 @@ type call struct {
 // countSource 是只注入、不注册到全局的计数型测试插件：按配置 name 计数，
 // 返回的 state 在输入 state 后追加 "|"+name；block 为真时等 gate 关闭或 ctx 结束。
 type countSource struct {
-	m        *manifest.Manifest
-	block    atomic.Bool
-	gate     chan struct{}
-	failWith atomic.Pointer[string]
+	m     *manifest.Manifest
+	block atomic.Bool
+	// ignoreCancel 为真时阻塞调用只等 gate，不理会 ctx（模拟不响应取消、照常返回成功的插件）。
+	ignoreCancel atomic.Bool
+	gate         chan struct{}
+	failWith     atomic.Pointer[string]
 	// onCancel 在阻塞的调用因 ctx 结束而返回前调用（测试 Close 是否等待插件退出）。
 	onCancel atomic.Pointer[func()]
 	started  chan call
@@ -101,7 +103,9 @@ func (c *countSource) Collect(ctx context.Context, in runtime.Input) (*report.Re
 	c.calls[name]++
 	c.mu.Unlock()
 	c.started <- call{name: name, ctx: ctx, in: in}
-	if c.block.Load() {
+	if c.block.Load() && c.ignoreCancel.Load() {
+		<-c.gate
+	} else if c.block.Load() {
 		select {
 		case <-c.gate:
 		case <-ctx.Done():
@@ -198,8 +202,14 @@ type fixture struct {
 
 func newFixture(t *testing.T, jitter time.Duration, srcs ...runtime.Source) *fixture {
 	t.Helper()
+	return newFixtureAt(t, filepath.Join(t.TempDir(), "agent.db"), jitter, srcs...)
+}
+
+// newFixtureAt 用指定的库文件组装运行器；同一路径再调用一次即模拟进程重启。
+func newFixtureAt(t *testing.T, dbPath string, jitter time.Duration, srcs ...runtime.Source) *fixture {
+	t.Helper()
 	clk := clock.NewFake(t0)
-	st, err := store.Open(filepath.Join(t.TempDir(), "agent.db"), store.WithClock(clk))
+	st, err := store.Open(dbPath, store.WithClock(clk))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +236,7 @@ func (f *fixture) attach(t *testing.T) (*Binding, *fakeSender) {
 func inst(id, name, hash string) agent.AssignedInstance {
 	return agent.AssignedInstance{
 		ID: id, PluginID: "test-count", Config: map[string]any{"name": name},
-		IntervalMs: 60000, TimeoutMs: 30000, ConfigHash: hash,
+		IntervalMs: 60000, TimeoutMs: 30000, ConfigHash: hash, ContentHash: "c:" + hash,
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
@@ -23,16 +22,19 @@ type job struct {
 	interval time.Duration
 	// timeout 是下发的 timeout_ms，> 0 时优先于 manifest 的超时。
 	timeout time.Duration
-	// reset 非 nil 表示本次下发改变了配置内容：首次运行在持运行锁、读 state 之前执行一次清空。
-	// Assign 里也会立即清空一次；这里兜住新任务协程抢在 Assign 清空之前启动的窗口。
-	reset *sync.Once
+	// contentHash 是下发的内容摘要（空表示未知），随 state 一起写库。
+	contentHash string
+	// ctx 从 Binding 的 ctx 派生：该 job 被替换、移出、回执失败或断线时取消。周期运行与 run_now 都受它约束，
+	// commit 据它拒绝旧配置的结果写回。由 Assign 在登记前设置。
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
-// ensureReset 在运行前执行配置变化后的清空（每个 job 至多一次）。调用方持有运行锁。
-func (b *Binding) ensureReset(ctx context.Context, j *job) {
-	if j.reset != nil {
-		j.reset.Do(func() { b.r.reset(ctx, j.id) })
-	}
+// withJob 返回一个在 ctx 或 j.ctx 任一结束时都结束的 ctx。
+func withJob(ctx context.Context, j *job) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(j.ctx, cancel)
+	return ctx, func() { stop(); cancel() }
 }
 
 // errReadState 是读本地 state 失败时的错误（固定文字，不带库路径等细节）。
@@ -48,11 +50,10 @@ type result struct {
 }
 
 // collect 执行一次采集（调用方已持有实例运行锁）：读上次报告与本地 state，按下发超时加截止时间，
-// 经 CollectWithTimeout 运行（错误已归类并脱敏）；成功时 state 变化才写库并记下上次报告。
+// 经 CollectWithTimeout 运行（错误已归类并脱敏）；成功时经 commit 写 state（连同内容摘要）并记下上次报告。
 func (b *Binding) collect(ctx context.Context, j *job) result {
 	clk := b.r.cfg.Clock
 	start := clk.Now()
-	b.ensureReset(ctx, j)
 	in := j.in
 	in.Last = b.r.lastFor(j.id)
 	old, err := b.r.cfg.Store.State(ctx, j.id)
@@ -79,7 +80,7 @@ func (b *Binding) collect(ctx context.Context, j *job) result {
 	if err != nil {
 		return res
 	}
-	if !b.r.commit(ctx, j.id, j.pluginID, old, rep) {
+	if !b.r.commit(ctx, j, rep) {
 		return result{canceled: true}
 	}
 	return res
@@ -106,6 +107,8 @@ func (res result) outcome(hash string) agent.RunOutcome {
 // 被取消时不发结果，返回 ctx 的错误让调度器丢弃本次。
 func (b *Binding) periodicRun(j *job) runtime.RunFunc {
 	return func(ctx context.Context) (*report.Report, error) {
+		ctx, cancel := withJob(ctx, j)
+		defer cancel()
 		release, err := b.r.acquire(ctx, j.id)
 		if err != nil {
 			return nil, err
@@ -130,7 +133,8 @@ type streamRun struct {
 
 func (s *streamRun) Run(ctx context.Context, in runtime.Input, _ func(*report.Report)) error {
 	b, j := s.b, s.j
-	b.ensureReset(ctx, j)
+	ctx, cancel := withJob(ctx, j)
+	defer cancel()
 	in.Last = b.r.lastFor(j.id)
 	cur, err := b.r.cfg.Store.State(ctx, j.id)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -141,10 +145,9 @@ func (s *streamRun) Run(ctx context.Context, in runtime.Input, _ func(*report.Re
 		if ctx.Err() != nil || rep == nil {
 			return
 		}
-		if !b.r.commit(ctx, j.id, j.pluginID, cur, rep) {
+		if !b.r.commit(ctx, j, rep) {
 			return
 		}
-		cur = rep.State
 		now := b.r.cfg.Clock.Now()
 		b.sendReport(j.id, result{rep: rep, start: now}.outcome(j.hash))
 	})

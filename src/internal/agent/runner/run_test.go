@@ -2,7 +2,9 @@ package runner
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -358,5 +360,160 @@ func TestAssign_配置哈希变化时删除本地state(t *testing.T) {
 	b.Assign(&agent.Assign{Version: 3})
 	if _, ok := state(t, f.store, "k"); !ok {
 		t.Fatal("移出 assign 不应删除 state")
+	}
+}
+
+func TestAssign_只改间隔或代理不清空state与上次报告(t *testing.T) {
+	src := newCountSource(t)
+	f := newFixture(t, 0, src)
+	b, s := f.attach(t)
+
+	b.Assign(&agent.Assign{Version: 1, Instances: []agent.AssignedInstance{inst("a", "a", "h1")}})
+	expect[*agent.Report](t, s)
+	src.next(t)
+
+	// 下发摘要变了（间隔、代理），内容摘要没变：按新配置重排，但 state 与上次报告保留
+	changed := inst("a", "a", "h2")
+	changed.ContentHash = "c:h1"
+	changed.IntervalMs = 120000
+	changed.ProxyURL = "socks5://127.0.0.1:1080"
+	b.Assign(&agent.Assign{Version: 2, Instances: []agent.AssignedInstance{changed}})
+	c := src.next(t)
+	if c.in.State != "|a" || c.in.Last == nil {
+		t.Fatalf("内容未变时应保留 state 与上次报告，state=%q last=%v", c.in.State, c.in.Last)
+	}
+	expect[*agent.Report](t, s) // 等这次运行写完 state
+	if v, ok := state(t, f.store, "a"); !ok || v != "|a|a" {
+		t.Fatalf("本地 state = %q %v", v, ok)
+	}
+}
+
+func TestAssign_内容摘要为空视为未知不清空(t *testing.T) {
+	src := newCountSource(t)
+	f := newFixture(t, 0, src)
+	b, s := f.attach(t)
+
+	a := inst("a", "a", "h1")
+	a.ContentHash = ""
+	b.Assign(&agent.Assign{Version: 1, Instances: []agent.AssignedInstance{a}})
+	expect[*agent.Report](t, s)
+	src.next(t)
+	a2 := inst("a", "a", "h2")
+	a2.ContentHash = ""
+	b.Assign(&agent.Assign{Version: 2, Instances: []agent.AssignedInstance{a2}})
+	if c := src.next(t); c.in.State != "|a" || c.in.Last == nil {
+		t.Fatalf("摘要未知时不应清空，state=%q last=%v", c.in.State, c.in.Last)
+	}
+}
+
+func TestAssign_新会话收到不同内容摘要时清空(t *testing.T) {
+	src := newCountSource(t)
+	f := newFixture(t, 0, src)
+	b1, s1 := f.attach(t)
+
+	b1.Assign(&agent.Assign{Version: 1, Instances: []agent.AssignedInstance{inst("a", "a", "h1"), inst("k", "k", "hk")}})
+	expect[*agent.Report](t, s1)
+	expect[*agent.Report](t, s1)
+	src.next(t)
+	src.next(t)
+	s1.disconnect()
+	<-b1.Done()
+
+	b2, s2 := f.attach(t)
+	b2.Assign(&agent.Assign{Version: 1, Instances: []agent.AssignedInstance{inst("a", "a", "h2"), inst("k", "k", "hk")}})
+	for range 2 {
+		c := src.next(t)
+		switch c.name {
+		case "a":
+			if c.in.State != "" || c.in.Last != nil {
+				t.Fatalf("新会话里内容变化的实例应清空，state=%q last=%v", c.in.State, c.in.Last)
+			}
+		case "k":
+			if c.in.State != "|k" || c.in.Last == nil {
+				t.Fatalf("新会话里内容未变的实例应保留，state=%q last=%v", c.in.State, c.in.Last)
+			}
+		}
+	}
+	expect[*agent.Report](t, s2)
+}
+
+func TestAssign_进程重启后按库中内容摘要删除state(t *testing.T) {
+	src := newCountSource(t)
+	db := filepath.Join(t.TempDir(), "agent.db")
+	f1 := newFixtureAt(t, db, 0, src)
+	b1, s1 := f1.attach(t)
+	b1.Assign(&agent.Assign{Version: 1, Instances: []agent.AssignedInstance{inst("a", "a", "h1"), inst("k", "k", "hk")}})
+	expect[*agent.Report](t, s1)
+	expect[*agent.Report](t, s1)
+	b1.Close()
+	_ = f1.store.Close()
+
+	// 新进程：内存为空，只有库
+	f2 := newFixtureAt(t, db, time.Hour, src)
+	b2, s2 := f2.attach(t)
+	b2.Assign(&agent.Assign{Version: 1, Instances: []agent.AssignedInstance{inst("a", "a", "h2"), inst("k", "k", "hk")}})
+	expect[*agent.AssignResult](t, s2)
+	if _, ok := state(t, f2.store, "a"); ok {
+		t.Fatal("库中内容摘要与下发不同，应删除 state")
+	}
+	if v, ok := state(t, f2.store, "k"); !ok || v != "|k" {
+		t.Fatalf("内容摘要相同应保留 state，得到 %q %v", v, ok)
+	}
+}
+
+func TestRunNow_配置替换后旧运行不写回(t *testing.T) {
+	src := newCountSource(t)
+	f := newFixture(t, time.Hour, src)
+	b, s := f.attach(t)
+	var gateOnce sync.Once
+	openGate := func() { gateOnce.Do(func() { close(src.gate) }) }
+	t.Cleanup(openGate) // 先于 Binding.Close 执行：断言失败时也不会卡在不理会取消的插件上
+
+	b.Assign(&agent.Assign{Version: 1, Instances: []agent.AssignedInstance{inst("a", "a", "h1")}})
+	expect[*agent.AssignResult](t, s)
+	src.block.Store(true)
+	src.ignoreCancel.Store(true) // 插件不理会取消，放行后照常返回成功
+	b.RunNow(&agent.RunNow{RequestID: "old", InstanceID: "a"})
+	old := src.next(t)
+
+	b.Assign(&agent.Assign{Version: 2, Instances: []agent.AssignedInstance{inst("a", "a", "h2")}})
+	if old.ctx.Err() == nil {
+		t.Fatal("配置替换应取消旧配置的 run_now")
+	}
+	src.block.Store(false)
+	openGate()
+	// 等旧运行完全结束（插件返回后还要释放运行锁）
+	waitUntil(t, func() bool {
+		release, ok := b.r.tryAcquire("a")
+		if ok {
+			release()
+		}
+		return src.finished.Load() == 1 && ok
+	})
+
+	b.RunNow(&agent.RunNow{RequestID: "new", InstanceID: "a"})
+	c := src.next(t)
+	if c.in.State != "" || c.in.Last != nil {
+		t.Fatalf("旧运行的结果不应写回，新运行看到 state=%q last=%v", c.in.State, c.in.Last)
+	}
+	rr := expect[*agent.RunResult](t, s)
+	if rr.RequestID != "new" {
+		t.Fatalf("旧配置的 run_now 不应回复成功结果，收到 %+v", rr)
+	}
+}
+
+func TestRunNow_移出assign取消运行(t *testing.T) {
+	src := newCountSource(t)
+	f := newFixture(t, time.Hour, src)
+	b, s := f.attach(t)
+
+	b.Assign(&agent.Assign{Version: 1, Instances: []agent.AssignedInstance{inst("a", "a", "h1")}})
+	expect[*agent.AssignResult](t, s)
+	src.block.Store(true)
+	b.RunNow(&agent.RunNow{RequestID: "r", InstanceID: "a"})
+	c := src.next(t)
+	b.Assign(&agent.Assign{Version: 2})
+	if c.ctx.Err() == nil {
+		t.Fatal("移出 assign 应取消运行中的 run_now")
 	}
 }

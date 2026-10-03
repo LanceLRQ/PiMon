@@ -113,7 +113,8 @@ func TestAssign_三种失败回执(t *testing.T) {
 	// 回执失败的实例 run_now 回 failed，Error 用回执原因
 	b.RunNow(&agent.RunNow{RequestID: "q1", InstanceID: "m"})
 	rr := expect[*agent.RunResult](t, s)
-	if rr.RequestID != "q1" || rr.ErrorKind != agent.ErrorKindFailed || !strings.Contains(rr.Error, agent.AssignPluginMissing) {
+	if rr.RequestID != "q1" || rr.ErrorKind != agent.ErrorKindFailed || !strings.Contains(rr.Error, agent.AssignPluginMissing) ||
+		rr.ConfigHash != "h1" {
 		t.Fatalf("run_result = %+v", rr)
 	}
 }
