@@ -22,7 +22,7 @@ func TestVersion打印版本号(t *testing.T) {
 }
 
 func TestSubcommands未实现返回1(t *testing.T) {
-	for _, cmd := range []string{"install", "pair", "run", "status", "repin", "upgrade", "uninstall"} {
+	for _, cmd := range []string{"install", "upgrade", "uninstall"} {
 		code, out, errb := runArgs(cmd)
 		if code != 1 || out != "" || !strings.Contains(errb, "未实现") || strings.Count(strings.TrimSpace(errb), "\n") != 0 {
 			t.Fatalf("%s: code=%d out=%q err=%q", cmd, code, out, errb)

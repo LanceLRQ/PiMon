@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/internal/agent/config"
+	"github.com/LanceLRQ/PiMon/src/internal/agent/ctl"
 	"github.com/LanceLRQ/PiMon/src/internal/certs"
 	"github.com/LanceLRQ/PiMon/src/pkg/protocol/agent"
 	"github.com/LanceLRQ/PiMon/src/pkg/version"
@@ -33,37 +34,11 @@ const (
 // UpgradeInfoTimeout 是向 hub 请求升级信息的超时（走会话的 Clock）。
 const UpgradeInfoTimeout = 10 * time.Second
 
-// Incompatible 是 hub 判定不兼容时给出的信息。
-type Incompatible struct {
-	Reason      string `json:"reason"`
-	RequiredMin int    `json:"required_min"`
-	HubVersion  string `json:"hub_version"`
-}
-
-// Status 是守护进程的状态快照，供 ctl status 输出。不含凭据、凭据哈希与配对码。
-type Status struct {
-	Mode   string `json:"mode"`
-	HubURL string `json:"hub_url,omitempty"`
-	// Pin 是拨入模式钉扎的 hub SPKI 指纹。
-	Pin string `json:"pin,omitempty"`
-	// Listen 是拨出模式的监听地址（已就绪时为实际地址）。
-	Listen    string `json:"listen,omitempty"`
-	Connected bool   `json:"connected"`
-	// Since 是当前会话收到 hello_ok 的时刻，未连接为零值。
-	Since time.Time `json:"since,omitzero"`
-	// LastError 是最近错误或停止原因（如「已被吊销，需要重新配对」）。
-	LastError string `json:"last_error,omitempty"`
-	State     string `json:"state"`
-	// Incompatible 只在 State 为 incompatible 时非空。
-	Incompatible *Incompatible `json:"incompatible,omitempty"`
-	// Instances 是当前会话最近一次 assign 的实例数。
-	Instances            int    `json:"instances"`
-	Version              string `json:"version"`
-	ProtocolVersion      int    `json:"protocol_version"`
-	MinCompatibleVersion int    `json:"min_compatible_version"`
-	// PairWindowExpiresAt 是拨出配对窗口的到期时刻，没有打开的窗口为零值。
-	PairWindowExpiresAt time.Time `json:"pair_window_expires_at,omitzero"`
-}
+// Incompatible、Status 是控制套接字协议里的类型（定义在 ctl，这里是别名，供守护进程与测试直接使用）。
+type (
+	Incompatible = ctl.Incompatible
+	Status       = ctl.Status
+)
 
 // Status 返回状态快照。
 func (d *Daemon) Status() Status {
@@ -158,15 +133,8 @@ func (d *Daemon) Reload(ctx context.Context) error {
 	return nil
 }
 
-// UpgradeInfo 是 hub 经 agent 通道告知的升级信息（C7 用它下载并校验）。
-type UpgradeInfo struct {
-	HubVersion string `json:"hub_version"`
-	WebPort    int    `json:"web_port"`
-	// SHA256 是本平台 agent 二进制的 SHA-256 十六进制；hub 未内嵌本平台时为空。
-	SHA256 string `json:"sha256"`
-	// HubHost 是当前会话对端的 IP（经 mDNS 兜底连上时比配置里的地址更准）。
-	HubHost string `json:"hub_host"`
-}
+// UpgradeInfo 是 hub 经 agent 通道告知的升级信息（ctl 协议类型的别名，C7 用它下载并校验）。
+type UpgradeInfo = ctl.UpgradeInfo
 
 // UpgradeInfo 经当前会话向 hub 请求升级信息；没有就绪会话返回 ErrNotConnected。
 func (d *Daemon) UpgradeInfo(ctx context.Context) (UpgradeInfo, error) {

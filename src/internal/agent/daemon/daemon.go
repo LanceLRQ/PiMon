@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/LanceLRQ/PiMon/src/internal/agent/config"
+	"github.com/LanceLRQ/PiMon/src/internal/agent/ctl"
 	"github.com/LanceLRQ/PiMon/src/internal/agent/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/agent/runner"
 	"github.com/LanceLRQ/PiMon/src/internal/agent/store"
@@ -56,7 +57,7 @@ type Config struct {
 	Listen string
 	// OnListen 在拨出监听就绪后以实际地址调用（测试用）。
 	OnListen func(addr string)
-	// CtlSock 是控制套接字路径，空表示不开（由 C4c 使用）。
+	// CtlSock 是控制套接字路径，空表示不开；已有进程在监听时 Run 返回错误（防止两个守护进程同时运行）。
 	CtlSock string
 	// Hostname 缺省 os.Hostname，用于 hello 与拨出 pair_ok 的 listener_info。
 	Hostname func() (string, error)
@@ -163,8 +164,23 @@ func (d *Daemon) Run(ctx context.Context) error {
 	d.mu.Unlock()
 	d.reg.Scan() // 首次扫描也会通知变化：此时没有就绪会话，丢弃即可
 
+	var srv *ctl.Server
+	if d.cfg.CtlSock != "" {
+		if srv, err = ctl.Listen(ctl.ServerConfig{Path: d.cfg.CtlSock, Backend: d, Log: d.log}); err != nil {
+			return fmt.Errorf("打开控制套接字: %w", err)
+		}
+		defer func() { _ = srv.Close() }()
+	}
+
 	bg, stopBG := context.WithCancel(ctx)
 	defer stopBG()
+	ctlDone := make(chan struct{})
+	go func() {
+		defer close(ctlDone)
+		if srv != nil {
+			_ = srv.Serve(bg)
+		}
+	}()
 	watchDone, err := d.reg.Watch(bg)
 	if err != nil {
 		d.log.Warn("监视插件目录失败，目录变化需 reload 才生效", "dir", d.cfg.Paths.PluginDir, "err", err)
@@ -183,6 +199,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	d.mu.Unlock()
 	d.wg.Wait()
 	stopBG()
+	<-ctlDone // 控制套接字取消并等完在途请求后删除套接字文件
 	<-gcDone
 	if watchDone != nil {
 		<-watchDone

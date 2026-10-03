@@ -4,13 +4,13 @@ import (
 	"context"
 	"crypto/subtle"
 	"fmt"
-	"log/slog"
 	"net"
 	"time"
 
 	"golang.org/x/net/netutil"
 
 	"github.com/LanceLRQ/PiMon/src/internal/agent/config"
+	"github.com/LanceLRQ/PiMon/src/internal/agent/ctl"
 	"github.com/LanceLRQ/PiMon/src/internal/agent/daemon/link"
 	"github.com/LanceLRQ/PiMon/src/internal/agentlink"
 	"github.com/LanceLRQ/PiMon/src/internal/certs"
@@ -40,20 +40,8 @@ const (
 	AgentCommonName = "PiMon Agent"
 )
 
-// PairWindow 是打开的拨出配对窗口，供 pair 命令打印。Code 只在这里出现一次，不写日志、不进状态。
-type PairWindow struct {
-	Code        string    `json:"code"`
-	Fingerprint string    `json:"fingerprint"`
-	Port        int       `json:"port"`
-	IPs         []string  `json:"ips"`
-	ExpiresAt   time.Time `json:"expires_at"`
-}
-
-// LogValue 隐去配对码。
-func (w PairWindow) LogValue() slog.Value {
-	return slog.GroupValue(slog.String("fingerprint", w.Fingerprint), slog.Int("port", w.Port),
-		slog.Time("expires_at", w.ExpiresAt))
-}
+// PairWindow 是打开的拨出配对窗口，供 pair 命令打印（ctl 协议类型的别名）。Code 只在这里出现一次，不写日志、不进状态。
+type PairWindow = ctl.PairWindow
 
 // pairWindow 是内存中的配对窗口：只存配对码哈希。
 type pairWindow struct {
@@ -155,7 +143,7 @@ func (d *Daemon) OpenPairWindow(ctx context.Context) (PairWindow, error) {
 	d.mu.Lock()
 	if d.conf.Mode != config.ModeDialOut {
 		d.mu.Unlock()
-		return PairWindow{}, ErrNotDialOut
+		return PairWindow{}, fmt.Errorf("%w：拨入模式请用 install --code 重新配对", ErrNotDialOut)
 	}
 	if d.listen == nil {
 		d.mu.Unlock()
