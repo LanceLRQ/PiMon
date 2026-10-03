@@ -3,8 +3,10 @@ package backup
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -56,6 +58,18 @@ func TestDecryptNotAge(t *testing.T) {
 	_, err := DecryptReader(bytes.NewReader([]byte("\x1f\x8b not age")), "x")
 	if err == nil || errors.Is(err, ErrWrongPassphrase) {
 		t.Fatalf("非 age 数据应返回其他错误，得到 %v", err)
+	}
+}
+
+// 仅头部合法的文件声明了过高的 scrypt 强度：读取头部时就被拒，不会真的去算 scrypt（否则树莓派 OOM）。
+func TestDecryptRejectsExcessiveWorkFactor(t *testing.T) {
+	salt := base64.RawStdEncoding.EncodeToString(make([]byte, 16))
+	body := base64.RawStdEncoding.EncodeToString(make([]byte, 32))
+	mac := base64.RawStdEncoding.EncodeToString(make([]byte, 32))
+	file := "age-encryption.org/v1\n-> scrypt " + salt + " 21\n" + body + "\n--- " + mac + "\n"
+	_, err := DecryptReader(strings.NewReader(file), "x")
+	if err == nil || errors.Is(err, ErrWrongPassphrase) || !strings.Contains(err.Error(), "work factor") {
+		t.Fatalf("过高的 work factor 应被拒绝：%v", err)
 	}
 }
 

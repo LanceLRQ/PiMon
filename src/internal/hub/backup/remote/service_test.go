@@ -131,6 +131,19 @@ func TestAfterDailyUploadsWhenEnabled(t *testing.T) {
 	}
 }
 
+// 每日任务 ctx 被取消但服务未关停时，上传只跟随服务 ctx：照常上传成功，不记为 canceled。
+func TestAfterDailyIgnoresDailyCtxCancellation(t *testing.T) {
+	f := newSvc(t)
+	f.enable(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	f.svc.AfterDaily(ctx, f.local.list[0])
+	ups := f.uploads(t)
+	if len(ups) != 1 || !ups[0].Success {
+		t.Fatalf("每日任务 ctx 取消不应影响上传：%+v", ups)
+	}
+}
+
 func TestAfterDailySkipsWhenDisabled(t *testing.T) {
 	f := newSvc(t)
 	f.svc.AfterDaily(context.Background(), f.local.list[0])

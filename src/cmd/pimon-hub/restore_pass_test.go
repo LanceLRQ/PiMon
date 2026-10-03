@@ -26,6 +26,8 @@ func TestTakeValueFlag(t *testing.T) {
 		{[]string{"a", "b"}, []string{"a", "b"}, "", false},
 		{[]string{"--", "--passphrase-file", "p"}, []string{"--", "--passphrase-file", "p"}, "", false},
 		{[]string{"--passphrase-file"}, nil, "", true},
+		{[]string{"--passphrase-file="}, nil, "", true},
+		{[]string{"--passphrase-file", ""}, nil, "", true},
 	}
 	for _, c := range cases {
 		rest, val, err := takeValueFlag(c.in, "--passphrase-file")

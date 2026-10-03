@@ -212,7 +212,7 @@ func takeFlag(args []string, name string) ([]string, bool) {
 }
 
 // takeValueFlag 从参数里取出带值的选项 name（接受 `--name 值` 与 `--name=值`，遇到 -- 之后不再识别），
-// 返回剩余参数与值；同一选项出现多次时以最后一次为准，缺值时报错。
+// 返回剩余参数与值；同一选项出现多次时以最后一次为准，缺值或值为空时报错。
 func takeValueFlag(args []string, name string) ([]string, string, error) {
 	out := make([]string, 0, len(args))
 	val := ""
@@ -229,8 +229,14 @@ func takeValueFlag(args []string, name string) ([]string, string, error) {
 			}
 			i++
 			val = args[i]
+			if val == "" {
+				return nil, "", fmt.Errorf("参数 %s 的值不能为空", name)
+			}
 		case strings.HasPrefix(a, name+"="):
 			val = strings.TrimPrefix(a, name+"=")
+			if val == "" {
+				return nil, "", fmt.Errorf("参数 %s 的值不能为空", name)
+			}
 		default:
 			out = append(out, a)
 		}

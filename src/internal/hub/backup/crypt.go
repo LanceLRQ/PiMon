@@ -16,6 +16,9 @@ var ageMagic = []byte("age-encryption.org/v1\n")
 
 const maxScryptWorkFactor = 30
 
+// maxDecryptWorkFactor 是解密时接受的 scrypt 强度上限（约 128 MiB × 2^(n-18) 的内存）。
+const maxDecryptWorkFactor = 20
+
 // ErrWrongPassphrase 表示备份口令不正确。
 var ErrWrongPassphrase = errors.New("备份口令不正确")
 
@@ -55,6 +58,8 @@ func DecryptReader(src io.Reader, passphrase string) (io.Reader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建解密身份: %w", err)
 	}
+	// 限制文件头可声明的强度，避免被篡改的高强度文件在树莓派上耗尽内存；上限不低于加密端默认强度 18。
+	id.SetMaxWorkFactor(maxDecryptWorkFactor)
 	r, err := age.Decrypt(src, id)
 	if err != nil {
 		if errors.Is(err, age.ErrIncorrectIdentity) {

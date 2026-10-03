@@ -166,9 +166,11 @@ func (s *Service) lock(ctx context.Context) error {
 func (s *Service) unlock() { <-s.sem }
 
 // AfterDaily 是每日本地备份成功后的回调：目标已启用时立即上传刚生成的那份。
-// 失败只记录并写日志，不重试（第二天自然再传一次）。ctx 是每日任务的 ctx。
-func (s *Service) AfterDaily(ctx context.Context, info model.BackupInfo) {
-	if _, err := s.begin(); err != nil {
+// 失败只记录并写日志，不重试（第二天自然再传一次）。上传运行在服务生命周期 ctx 下，
+// 与 UploadNow 一致：取消只看服务关停，每日任务自身的 ctx 不参与。
+func (s *Service) AfterDaily(_ context.Context, info model.BackupInfo) {
+	ctx, err := s.begin()
+	if err != nil {
 		return
 	}
 	defer s.inflight.Done()
