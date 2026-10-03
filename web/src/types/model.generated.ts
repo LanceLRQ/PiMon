@@ -203,6 +203,14 @@ export interface AgentInfo {
    * Platforms 是中枢内嵌的 agent 平台（如 linux-amd64），没有内嵌时为空数组。
    */
   platforms: string[];
+  /**
+   * ReleaseURLTemplate 是 GitHub Releases 的下载地址模板（<os>、<arch> 为占位）；开发构建为空串。
+   */
+  release_url_template: string;
+  /**
+   * ReleaseChecksums 是 Release 产物的 SHA-256（键 os-arch）；开发构建或没有内嵌时为空对象。
+   */
+  release_checksums: { [key: string]: string};
 }
 
 //////////

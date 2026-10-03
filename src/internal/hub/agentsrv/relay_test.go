@@ -338,6 +338,17 @@ func TestUpgradeInfo_回复版本与端口(t *testing.T) {
 	}
 }
 
+func TestUpgradeInfo_回复内嵌校验和(t *testing.T) {
+	f := newDFX(t)
+	f.d.agentSums = func() map[string]string { return map[string]string{"linux-arm64": "deadbeef"} }
+	s := f.online("dev1")
+	f.d.replyUpgradeInfo(s, "dev1", &agent.UpgradeInfoGet{RequestID: "r1"})
+	ui, ok := s.all()[0].(*agent.UpgradeInfo)
+	if !ok || ui.Agents["linux-arm64"] != "deadbeef" || len(ui.Agents) != 1 {
+		t.Fatalf("upgrade_info = %#v", s.all()[0])
+	}
+}
+
 func TestUpgradeInfo_端口不合法时不回复(t *testing.T) {
 	for _, port := range []int{0, 70000} {
 		f := newDFX(t)

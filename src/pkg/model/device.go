@@ -133,4 +133,8 @@ type AgentInfo struct {
 	MinCompatibleVersion int    `json:"min_compatible_version"`
 	// Platforms 是中枢内嵌的 agent 平台（如 linux-amd64），没有内嵌时为空数组。
 	Platforms []string `json:"platforms"`
+	// ReleaseURLTemplate 是 GitHub Releases 的下载地址模板（<os>、<arch> 为占位）；开发构建为空串。
+	ReleaseURLTemplate string `json:"release_url_template"`
+	// ReleaseChecksums 是 Release 产物的 SHA-256（键 os-arch）；开发构建或没有内嵌时为空对象。
+	ReleaseChecksums map[string]string `json:"release_checksums"`
 }

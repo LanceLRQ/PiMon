@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -39,7 +40,15 @@ type AgentChannel struct {
 	HubVersion  string
 	// Platforms 是中枢内嵌的 agent 平台，没有内嵌时为空。
 	Platforms []string
+	// ReleaseChecksums 是内嵌 agent 的校验和（键 os-arch），与对应版本的 Release 产物相同。
+	ReleaseChecksums map[string]string
 }
+
+// releaseTagPattern 只匹配正式发布的版本号（含 v），开发构建没有对应的 Release。
+var releaseTagPattern = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
+
+// releaseURLTemplate 是 GitHub Releases 的 agent 下载地址模板，版本即 tag 本身。
+const releaseURLTemplate = "https://github.com/LanceLRQ/PiMon/releases/download/%s/pimon-agent-<os>-<arch>"
 
 // port 返回监听端口，通道未启用或地址不合法时为空串。
 func (c AgentChannel) port() string {
@@ -304,8 +313,9 @@ func (s *server) pairingResult(r *http.Request, ch AgentChannel, code string, ex
 		Steps: []string{
 			`PLATFORM=$(uname -s | tr 'A-Z' 'a-z')-$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')`,
 			fmt.Sprintf(`curl -fsSLo pimon-agent %s/agent/download/$PLATFORM && chmod +x pimon-agent`, web),
-			fmt.Sprintf(`echo "$(curl -fsSL %s/agent/checksums | awk -v f="pimon-agent-$PLATFORM" '$2==f{print $1}')  pimon-agent" | sha256sum -c -`, web),
-			"sudo ./pimon-agent install " + install,
+			fmt.Sprintf(`echo "$(curl -fsSL %s/agent/checksums | awk -v f="pimon-agent-$PLATFORM" '$2==f{print $1}')  pimon-agent" | (command -v sha256sum >/dev/null && sha256sum -c - || shasum -a 256 -c -)`, web),
+			// macOS 只有用户模式，不加 sudo。
+			`$([ "$(uname -s)" = Darwin ] || echo sudo) ./pimon-agent install ` + install,
 		},
 	}
 }
@@ -398,8 +408,16 @@ func (s *server) agentInfo(w http.ResponseWriter, _ *http.Request) {
 	if platforms == nil {
 		platforms = []string{}
 	}
-	httpx.WriteJSON(w, http.StatusOK, model.AgentInfo{
+	info := model.AgentInfo{
 		AgentPort: port, Fingerprint: ch.Fingerprint, HubVersion: ch.HubVersion,
 		ProtocolVersion: agent.ProtocolVersion, MinCompatibleVersion: agent.MinCompatibleVersion, Platforms: platforms,
-	})
+		ReleaseChecksums: map[string]string{},
+	}
+	if releaseTagPattern.MatchString(ch.HubVersion) {
+		info.ReleaseURLTemplate = fmt.Sprintf(releaseURLTemplate, ch.HubVersion)
+		for k, v := range ch.ReleaseChecksums {
+			info.ReleaseChecksums[k] = v
+		}
+	}
+	httpx.WriteJSON(w, http.StatusOK, info)
 }

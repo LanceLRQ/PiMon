@@ -287,8 +287,12 @@ func TestDevices配对命令含地址指纹与配对码(t *testing.T) {
 		}
 	}
 	joined := strings.Join(res.Steps, "\n")
-	if !strings.Contains(joined, "http://192.168.7.8:41999/agent/download/") || !strings.Contains(joined, "sha256sum") {
-		t.Fatalf("分步命令应含下载与 sha256 校验: %s", joined)
+	if !strings.Contains(joined, "http://192.168.7.8:41999/agent/download/") ||
+		!strings.Contains(joined, "command -v sha256sum >/dev/null && sha256sum -c - || shasum -a 256 -c -") {
+		t.Fatalf("分步命令应含下载与 sha256 校验（含 shasum 兜底）: %s", joined)
+	}
+	if !strings.Contains(last, `$([ "$(uname -s)" = Darwin ] || echo sudo) ./pimon-agent install`) || strings.HasPrefix(last, "sudo ") {
+		t.Fatalf("安装步骤应只在非 macOS 加 sudo: %q", last)
 	}
 	// 配对码真实可用，预填信息随码保存
 	pc, err := e.devices.ConsumePairingCode(context.Background(), devices.HashPairingCode(res.Code))
@@ -336,11 +340,42 @@ func TestAgentInfo(t *testing.T) {
 		info.ProtocolVersion != 1 || info.MinCompatibleVersion != 1 || len(info.Platforms) != 1 || info.Platforms[0] != "linux-amd64" {
 		t.Fatalf("info = %d %s", resp.StatusCode, data)
 	}
+	if info.ReleaseURLTemplate != "" || !strings.Contains(string(data), `"release_checksums":{}`) {
+		t.Fatalf("开发构建不应有 Release 字段 = %s", data)
+	}
 	*e.agentCh = AgentChannel{Fingerprint: "SHA256:testfp", HubVersion: "v-test"}
 	_, data = e.do(c, "GET", "/api/agent/info", nil)
 	info = decode[model.AgentInfo](t, data)
 	if info.AgentPort != 0 || !strings.Contains(string(data), `"platforms":[]`) {
 		t.Fatalf("未启用 = %s", data)
+	}
+}
+
+func TestAgentInfo正式版本返回Release字段(t *testing.T) {
+	e := newEnv(t)
+	c := e.setup()
+	*e.agentCh = AgentChannel{Addr: "0.0.0.0:31418", Fingerprint: "SHA256:testfp", HubVersion: "v0.2.0",
+		Platforms: []string{"linux-amd64"}, ReleaseChecksums: map[string]string{"linux-amd64": "abc"}}
+	_, data := e.do(c, "GET", "/api/agent/info", nil)
+	info := decode[model.AgentInfo](t, data)
+	if info.ReleaseURLTemplate != "https://github.com/LanceLRQ/PiMon/releases/download/v0.2.0/pimon-agent-<os>-<arch>" ||
+		info.ReleaseChecksums["linux-amd64"] != "abc" {
+		t.Fatalf("正式版本 = %s", data)
+	}
+	// 有内嵌但没有校验和时仍是空对象而不是 null
+	*e.agentCh = AgentChannel{Addr: "0.0.0.0:31418", HubVersion: "v0.2.0"}
+	_, data = e.do(c, "GET", "/api/agent/info", nil)
+	if !strings.Contains(string(data), `"release_checksums":{}`) {
+		t.Fatalf("应为空对象: %s", data)
+	}
+	// 带后缀的开发版本不匹配
+	for _, v := range []string{"v0.2.0-3-gabc", "a2bba3f-dirty", "0.2.0", "dev"} {
+		*e.agentCh = AgentChannel{Addr: "0.0.0.0:31418", HubVersion: v, ReleaseChecksums: map[string]string{"linux-amd64": "abc"}}
+		_, data = e.do(c, "GET", "/api/agent/info", nil)
+		info = decode[model.AgentInfo](t, data)
+		if info.ReleaseURLTemplate != "" || len(info.ReleaseChecksums) != 0 {
+			t.Fatalf("版本 %q 不应有 Release 字段: %s", v, data)
+		}
 	}
 }
 

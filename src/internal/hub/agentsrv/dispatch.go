@@ -71,6 +71,9 @@ type DispatcherConfig struct {
 	HubVersion string
 	// WebPort 返回网页实际监听端口（取不到时返回 0），写入 upgrade_info；为空视为取不到。
 	WebPort func() int
+	// AgentChecksums 返回内嵌 agent 的校验和（键 os-arch，值 SHA-256 十六进制），写入 upgrade_info；
+	// 为空或返回 nil 视为没有内嵌。
+	AgentChecksums func() map[string]string
 }
 
 // sentInst 是某实例在最近一次送达的 assign 里的摘要：hash 是发给 agent 的下发摘要，
@@ -98,6 +101,7 @@ type Dispatcher struct {
 	sessions   func(id string) (sender, bool)
 	hubVersion string
 	webPort    func() int
+	agentSums  func() map[string]string
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -155,7 +159,7 @@ func newDispatcher(cfg DispatcherConfig, sessions func(string) (sender, bool)) (
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &Dispatcher{
 		inst: cfg.Instances, devs: cfg.Devices, plugs: cfg.Plugins, clk: cfg.Clock, log: cfg.Log, sessions: sessions,
-		hubVersion: cfg.HubVersion, webPort: cfg.WebPort,
+		hubVersion: cfg.HubVersion, webPort: cfg.WebPort, agentSums: cfg.AgentChecksums,
 		ctx: ctx, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1),
 		pending: map[string]bool{}, due: map[string]bool{},
 		dueWaiters: map[string][]chan struct{}{}, running: map[string][]chan struct{}{},

@@ -287,7 +287,13 @@ func (d *Dispatcher) replyUpgradeInfo(s sender, deviceID string, m *agent.Upgrad
 		d.log.Warn("网页端口未知，暂不回复升级信息", "device_id", deviceID, "web_port", port)
 		return
 	}
-	err := s.Send(&agent.UpgradeInfo{RequestID: m.RequestID, HubVersion: d.hubVersion, WebPort: port, Agents: map[string]string{}})
+	sums := map[string]string{}
+	if d.agentSums != nil {
+		for k, v := range d.agentSums() {
+			sums[k] = v
+		}
+	}
+	err := s.Send(&agent.UpgradeInfo{RequestID: m.RequestID, HubVersion: d.hubVersion, WebPort: port, Agents: sums})
 	if err != nil {
 		d.log.Warn("回复升级信息失败", "device_id", deviceID, "err", err)
 	}
