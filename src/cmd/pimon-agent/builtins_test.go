@@ -14,8 +14,8 @@ import (
 // agent 带的内置插件都必须能在 agent 运行（runs_on 含 agent），进入 agent 注册表后一个不少；
 // 同时能在 hub 运行的插件须在 alsoHub 表里登记，登记的必须同时含 hub。
 func TestAgent内置插件均可在agent运行(t *testing.T) {
-	want := []string{"docker", "host-metrics", "http-check", "http-json", "ping", "tcp-check"}
-	alsoHub := map[string]bool{"host-metrics": true, "http-check": true, "http-json": true, "ping": true, "tcp-check": true}
+	want := []string{"docker", "host-metrics", "http-check", "http-json", "ping", "systemd", "tcp-check"}
+	alsoHub := map[string]bool{"host-metrics": true, "http-check": true, "http-json": true, "ping": true, "systemd": true, "tcp-check": true}
 	var got []string
 	for _, s := range runtime.Builtins() {
 		m := s.Manifest()

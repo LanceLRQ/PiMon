@@ -1,0 +1,8 @@
+Id=old.service
+LoadState=masked
+ActiveState=inactive
+SubState=dead
+Result=success
+Type=simple
+NRestarts=0
+
