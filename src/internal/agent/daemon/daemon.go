@@ -110,6 +110,8 @@ type Daemon struct {
 
 	// testHookLoaded 在连接循环每轮读完配置后调用（只供测试复现竞争窗口）。
 	testHookLoaded func()
+	// testHookSessionEnd 在会话结束回调开头调用（只供测试固定与重连循环停止处理的先后）。
+	testHookSessionEnd func()
 }
 
 // New 按 cfg 创建守护进程，填好缺省依赖；不触碰磁盘与网络。

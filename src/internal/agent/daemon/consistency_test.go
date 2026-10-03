@@ -2,10 +2,13 @@ package daemon
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/LanceLRQ/PiMon/src/internal/agent/config"
+	"github.com/LanceLRQ/PiMon/src/internal/agent/hubtest"
 	"github.com/LanceLRQ/PiMon/src/internal/agentlink/agentlinktest"
 	"github.com/LanceLRQ/PiMon/src/pkg/protocol/agent"
 )
@@ -74,5 +77,30 @@ func TestSession_非当前会话的不兼容不改全局状态(t *testing.T) {
 	}
 	if isClosed(a.sess) {
 		t.Fatal("当前会话 A 不应受影响")
+	}
+}
+
+// 吊销时重连循环的停止处理（清凭据、记「已被吊销」）与会话结束回调并发；无论谁先完成，
+// 最终的最近错误都应是吊销文案。这里让会话结束回调固定落在停止处理之后（Linux 上 fsync 快时的顺序）。
+func TestDialIn_吊销文案不被随后的会话结束覆盖(t *testing.T) {
+	hub := hubtest.Start(t)
+	h := newHarness(t, nil)
+	_, id := pairedHub(t, hub, h)
+	h.d.testHookSessionEnd = func() {
+		deadline := time.Now().Add(5 * time.Second)
+		for h.d.Status().State != StateRevoked && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+	}
+	h.start()
+	waitUntil(t, "连上", func() bool { return h.status().Connected && hub.Online(id) })
+	hub.Revoke(t, id)
+	waitUntil(t, "会话结束已处理", func() bool {
+		h.d.mu.Lock()
+		defer h.d.mu.Unlock()
+		return h.d.state == StateRevoked && h.d.cur == nil && len(h.d.conns) == 0
+	})
+	if st := h.status(); !strings.Contains(st.LastError, "已被吊销") {
+		t.Fatalf("状态 = %+v", st)
 	}
 }

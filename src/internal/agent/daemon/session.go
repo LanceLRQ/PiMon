@@ -144,13 +144,18 @@ func (d *Daemon) onIncompatible(s *agentlink.Session, m *agent.Incompatible) {
 // 拨出方向对端 bye{revoked} 时清除对应凭据哈希。
 func (d *Daemon) onSessionEnd(c *conn) {
 	r := c.s.Err()
+	if d.testHookSessionEnd != nil {
+		d.testHookSessionEnd()
+	}
 	d.mu.Lock()
 	c.ended = true
 	delete(d.conns, c.s)
 	b := c.binding
 	if d.cur == c {
 		d.cur, d.since = nil, time.Time{}
-		if msg := describeClose(r); msg != "" {
+		// 只在连接循环仍在运行时记断开原因：重连循环的停止处理（吊销、凭据无效）与本回调并发，
+		// 它若先完成，状态已不是 running，其停止原因（如「已被吊销」）不能被通用的断开文案覆盖。
+		if msg := describeClose(r); msg != "" && d.state == StateRunning {
 			d.lastErr = msg
 		}
 	}
