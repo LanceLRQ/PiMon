@@ -1,6 +1,6 @@
 //go:build unix
 
-package plugins
+package pluginscan
 
 import (
 	"io/fs"

@@ -41,31 +41,6 @@ type Plugin struct {
 	RunPath string
 }
 
-// IssueKind 是加载问题的类别。
-type IssueKind string
-
-// 加载问题类别。
-const (
-	IssueInvalidManifest IssueKind = "invalid_manifest"
-	IssueIDMismatch      IssueKind = "id_mismatch"
-	IssueNotExec         IssueKind = "runtime_not_exec"
-	IssueMissingRun      IssueKind = "missing_run"
-	IssueNotExecutable   IssueKind = "not_executable"
-	IssueInsecure        IssueKind = "insecure"
-	IssueConflict        IssueKind = "conflict"
-	// IssueDirUnreadable 表示插件根目录本身读取失败（权限、不是目录等），此时只有内置插件可用。
-	IssueDirUnreadable IssueKind = "dir_unreadable"
-)
-
-// Issue 是某个插件目录未能加载的原因。
-type Issue struct {
-	Dir      string
-	ID       string
-	Kind     IssueKind
-	Message  string
-	Problems []manifest.Problem
-}
-
 // Snapshot 是一次扫描后的结果。
 type Snapshot struct {
 	Plugins []Plugin
