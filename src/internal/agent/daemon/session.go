@@ -128,12 +128,16 @@ func (d *Daemon) onIncompatible(s *agentlink.Session, m *agent.Incompatible) {
 		d.mu.Unlock()
 		return
 	}
-	d.state, d.incompat = StateIncompatible, &inc
-	d.lastErr = fmt.Sprintf("与 hub 协议版本不兼容（%s，需要协议版本 ≥ %d，hub 版本 %s），等待升级", inc.Reason, inc.RequiredMin, inc.HubVersion)
+	// 只有当前会话（或尚无当前会话）才改全局状态；被顶替途中的其他会话只记日志并关闭。
+	global := d.cur == nil || d.cur == c
+	if global {
+		d.state, d.incompat = StateIncompatible, &inc
+		d.lastErr = fmt.Sprintf("与 hub 协议版本不兼容（%s，需要协议版本 ≥ %d，hub 版本 %s），等待升级", inc.Reason, inc.RequiredMin, inc.HubVersion)
+	}
 	d.spawnLocked(func() { s.Close(m.Reason) })
 	d.mu.Unlock()
 	d.log.Warn("hub 判定协议版本不兼容", "reason", inc.Reason, "required_min", inc.RequiredMin,
-		"hub_version", inc.HubVersion, "protocol", agent.ProtocolVersion)
+		"hub_version", inc.HubVersion, "protocol", agent.ProtocolVersion, "current", global)
 }
 
 // onSessionEnd 在会话结束后善后：摘除登记；若是当前会话则记为断开与最近错误；等运行器绑定收尾；

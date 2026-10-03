@@ -237,10 +237,18 @@ func (a outAuth) Pair(ctx context.Context, m agent.Pair) (agent.PairOK, error) {
 		return agent.PairOK{}, err
 	}
 	h := agent.CredentialHash(cred)
+	notDialOut := false
 	err = d.updateConfig(func(c *config.Config) bool {
+		if c.Mode != config.ModeDialOut { // 配置已被改成拨入（如重新 install），不得写入哈希
+			notDialOut = true
+			return false
+		}
 		c.PrevCredentialHash, c.CredentialHash = c.CredentialHash, h
 		return true
 	})
+	if err == nil && notDialOut {
+		err = fmt.Errorf("配置已不是拨出模式，拒绝配对：%w", ErrNotDialOut)
+	}
 	if err != nil {
 		restore()
 		d.log.Error("拨出配对：保存凭据哈希失败", "err", err)

@@ -106,6 +106,9 @@ type Daemon struct {
 	wake      chan struct{}                // 唤醒空闲等待
 	closing   bool                         // Run 正在退出，不再起新协程
 	wg        sync.WaitGroup               // spawn 起的协程
+
+	// testHookLoaded 在连接循环每轮读完配置后调用（只供测试复现竞争窗口）。
+	testHookLoaded func()
 }
 
 // New 按 cfg 创建守护进程，填好缺省依赖；不触碰磁盘与网络。
@@ -196,16 +199,27 @@ func (d *Daemon) connLoop(ctx context.Context) {
 		case <-d.wake:
 		default:
 		}
+		// 先清重建请求并登记本轮的取消函数，再读配置：读配置之后到达的 Repin/Reload 会取消本轮并保留 restart，
+		// 不会被清掉而让本轮用旧配置一直跑下去。
+		runCtx, cancel := context.WithCancel(ctx)
+		d.mu.Lock()
+		d.runCancel, d.restart = cancel, false
+		d.mu.Unlock()
 		conf, err := d.loadConfig()
+		if err == nil && d.testHookLoaded != nil {
+			d.testHookLoaded()
+		}
 		if err != nil {
+			cancel()
+			d.mu.Lock()
+			d.runCancel = nil
+			d.mu.Unlock()
 			d.setStopped(StateConfigError, "配置错误："+err.Error())
 			d.log.Error("读取 agent 配置失败，等待修正后 reload", "path", d.cfg.Paths.Config, "err", err)
 			d.idle(ctx)
 			continue
 		}
-		runCtx, cancel := context.WithCancel(ctx)
 		d.mu.Lock()
-		d.runCancel, d.restart = cancel, false
 		d.state, d.lastErr, d.incompat = StateRunning, "", nil
 		d.mu.Unlock()
 
