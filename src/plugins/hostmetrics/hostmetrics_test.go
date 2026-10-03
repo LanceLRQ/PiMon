@@ -12,6 +12,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
+	"github.com/LanceLRQ/PiMon/src/plugins/internal/plugintest"
 )
 
 var errNA = errors.New("不可用")
@@ -371,28 +372,9 @@ func TestSystemSamplerSmoke(t *testing.T) {
 	}
 }
 
-// 断言报告通过 Validate，且每个键都落在 manifest outputs 声明内（动态集合按前缀匹配）。
 func assertValidAgainstManifest(t *testing.T, p *Plugin, rep *report.Report) {
 	t.Helper()
-	if err := rep.Validate(nil); err != nil {
-		t.Fatalf("报告应通过 Validate: %v", err)
-	}
-	for _, it := range rep.Items {
-		ok := false
-		for _, o := range p.Manifest().Outputs {
-			k, err := report.ParseKey(o.Key)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if k.Matches(it.Key) || (!k.Dynamic && o.Key == it.Key) {
-				ok = o.Type == it.Type
-				break
-			}
-		}
-		if !ok {
-			t.Errorf("键 %s（%s）不在 manifest outputs 内或类型不符", it.Key, it.Type)
-		}
-	}
+	plugintest.AssertValidAgainstManifest(t, p.Manifest(), rep)
 }
 
 func diskSampler(parts ...Partition) *fakeSampler {
@@ -465,4 +447,8 @@ func TestSumNICExcludesOverlayInterfaces(t *testing.T) {
 	if !ok || rx != 12 || tx != 5 {
 		t.Fatalf("应只统计 eth0 与 apcli0: %d %d %v", rx, tx, ok)
 	}
+}
+
+func TestWidgetSizesSupportedByTemplates(t *testing.T) {
+	plugintest.AssertWidgetSizes(t, New(&fakeSampler{}).Manifest())
 }
