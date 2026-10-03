@@ -11,14 +11,19 @@ import (
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
 )
 
-// agent 只带 5 个内置插件，且它们的 runs_on 都含 agent，进入 agent 注册表后一个不少。
+// agent 带的内置插件都必须能在 agent 运行（runs_on 含 agent），进入 agent 注册表后一个不少；
+// 同时能在 hub 运行的插件须在 alsoHub 表里登记，登记的必须同时含 hub。
 func TestAgent内置插件均可在agent运行(t *testing.T) {
-	want := []string{"host-metrics", "http-check", "http-json", "ping", "tcp-check"}
+	want := []string{"docker", "host-metrics", "http-check", "http-json", "ping", "tcp-check"}
+	alsoHub := map[string]bool{"host-metrics": true, "http-check": true, "http-json": true, "ping": true, "tcp-check": true}
 	var got []string
 	for _, s := range runtime.Builtins() {
 		m := s.Manifest()
 		got = append(got, m.ID)
-		if !slices.Contains(m.RunsOn, manifest.RunsOnAgent) || !slices.Contains(m.RunsOn, manifest.RunsOnHub) {
+		if !slices.Contains(m.RunsOn, manifest.RunsOnAgent) {
+			t.Errorf("%s 的 runs_on = %v，必须含 agent", m.ID, m.RunsOn)
+		}
+		if alsoHub[m.ID] && !slices.Contains(m.RunsOn, manifest.RunsOnHub) {
 			t.Errorf("%s 的 runs_on = %v，应为 [hub, agent]", m.ID, m.RunsOn)
 		}
 	}

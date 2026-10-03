@@ -1,0 +1,8 @@
+[
+  {"Id":"aaa1","Names":["/web-1"],"Image":"nginx:1.27","State":"running","Status":"Up 3 hours (healthy)"},
+  {"Id":"bbb2","Names":["/db"],"Image":"postgres:17","State":"running","Status":"Up 3 hours (unhealthy)"},
+  {"Id":"ccc3","Names":["/job"],"Image":"alpine:3","State":"exited","Status":"Exited (0) 2 hours ago"},
+  {"Id":"ddd4","Names":["/crash"],"Image":"app:1","State":"exited","Status":"Exited (1) 1 hour ago"},
+  {"Id":"eee5","Names":["/loop"],"Image":"app:2","State":"restarting","Status":"Restarting (1) 5 seconds ago"},
+  {"Id":"fff6","Names":["/web-2","/web-1/alias"],"Image":"nginx:1.27","State":"running","Status":"Up 10 seconds (health: starting)"}
+]

@@ -1,0 +1,48 @@
+id: docker
+version: 1.0.0
+api_version: 1
+name: {zh: Docker 容器, en: Docker containers}
+kind: source
+runtime: builtin
+runs_on: [agent]
+interval: 30s
+timeout: 20s
+config_schema:
+  - key: socket
+    type: string
+    title: {zh: Docker socket 路径, en: Docker socket path}
+    help: {zh: "默认 /var/run/docker.sock。读取它需要 agent 运行用户在 docker 组内，这近似授予 root 权限。", en: "Defaults to /var/run/docker.sock. Reading it requires the agent user to be in the docker group, which is close to granting root."}
+    default: /var/run/docker.sock
+  - key: include_stopped
+    type: boolean
+    title: {zh: 包含已停止的容器, en: Include stopped containers}
+    help: {zh: "关闭后只统计正在运行的容器，已停止的不计入总数。", en: "When off, only running containers are counted; stopped ones are left out of the total."}
+    default: true
+  - key: names
+    type: list
+    title: {zh: 名称过滤, en: Name filter}
+    help: {zh: "留空表示全部容器。每项是容器名，支持 * 通配，如「web-*」。", en: "Empty means all containers. Each entry is a container name; * wildcards are allowed, e.g. web-*."}
+outputs:
+  - {key: "container[*]",      type: state,  title: {zh: 容器, en: Containers}}
+  - {key: containers.running,  type: number, title: {zh: 运行中容器数, en: Running containers}}
+  - {key: containers.total,    type: number, title: {zh: 容器总数, en: Total containers}}
+widgets:
+  - id: containers
+    name: {zh: 容器灯组, en: Container lights}
+    sizes:
+      2x2: {template: status-grid, bind: {items: {item: "container[*]"}}}
+      4x2: {template: status-grid, bind: {items: {item: "container[*]"}}}
+  - id: container-list
+    name: {zh: 容器列表, en: Container list}
+    sizes:
+      2x2: {template: list, bind: {items: {item: "container[*]"}}}
+      4x2: {template: list, bind: {items: {item: "container[*]"}}}
+  - id: counts
+    name: {zh: 容器数量, en: Container counts}
+    sizes:
+      2x1:
+        template: list
+        bind:
+          items:
+            - {item: containers.running}
+            - {item: containers.total}
