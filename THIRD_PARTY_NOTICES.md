@@ -1,5 +1,16 @@
 # 第三方声明
 
+## Go 依赖
+
+本节只登记各里程碑新增的 Go 依赖（含其必需的间接依赖），已有依赖不补登记。以下均为纯 Go，不需要 CGO：
+
+| 依赖 | 用途 | 版本 | 许可 | 链接 |
+|---|---|---|---|---|
+| `filippo.io/age`（直接） | NAS 备份的口令加密（scrypt 模式）与恢复时解密 | v1.3.2 | BSD-3-Clause | https://github.com/FiloSottile/age |
+| `filippo.io/hpke`（间接，age 依赖） | age 内部使用的 HPKE 实现 | v0.4.0 | BSD-3-Clause | https://github.com/FiloSottile/hpke |
+
+引入 age 时 `golang.org/x/crypto` 随之升级到 v0.55.0（BSD-3-Clause，Go Authors），`golang.org/x/net` 升级到 v0.57.0。
+
 ## 字体
 
 随前端打包（本地 woff2，不从 CDN 加载）的字体，均为 SIL Open Font License 1.1（OFL-1.1）：

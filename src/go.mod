@@ -3,19 +3,21 @@ module github.com/LanceLRQ/PiMon/src
 go 1.27.1
 
 require (
+	filippo.io/age v1.3.2
 	github.com/coder/websocket v1.8.15
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/shirou/gopsutil/v4 v4.26.8
 	go.yaml.in/yaml/v3 v3.0.5
-	golang.org/x/crypto v0.54.0
-	golang.org/x/net v0.56.0
+	golang.org/x/crypto v0.55.0
+	golang.org/x/net v0.57.0
 	golang.org/x/sys v0.48.0
 	golang.org/x/term v0.45.0
 	modernc.org/sqlite v1.60.1
 )
 
 require (
+	filippo.io/hpke v0.4.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
