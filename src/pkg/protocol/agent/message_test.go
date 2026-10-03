@@ -253,3 +253,18 @@ func TestRunOutcome_ConfigHash可选且向后兼容(t *testing.T) {
 		t.Fatalf("旧格式报告 = %#v", r)
 	}
 }
+
+func TestRunOutcome_有ErrorKind时Error不能为空(t *testing.T) {
+	for _, kind := range []string{ErrorKindTimeout, ErrorKindFailed, ErrorKindBusy, ErrorKindNotAssigned} {
+		r := &Report{InstanceID: "i", Seq: 1, RunOutcome: RunOutcome{ErrorKind: kind, CollectedAt: testTime}}
+		err := r.Validate()
+		var ie *InvalidMessageError
+		if !errors.As(err, &ie) || ie.Field != "error" {
+			t.Errorf("%s: 无错误文字应被拒绝，得到 %v", kind, err)
+		}
+		rr := &RunResult{RequestID: "q", InstanceID: "i", RunOutcome: RunOutcome{ErrorKind: kind}}
+		if err := rr.Validate(); !errors.As(err, &ie) || ie.Field != "error" {
+			t.Errorf("%s: run_result 无错误文字应被拒绝，得到 %v", kind, err)
+		}
+	}
+}

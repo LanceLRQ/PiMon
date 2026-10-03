@@ -84,12 +84,17 @@ func (a AssignedInstance) LogValue() slog.Value {
 		slog.String("config_hash", a.ConfigHash))
 }
 
-// LogValue 让 slog 输出 assign 时逐实例脱敏，而不是把结构体按 JSON 展开。
-func (m Assign) LogValue() slog.Value {
-	attrs := make([]slog.Attr, 0, len(m.Instances)+2)
-	attrs = append(attrs, slog.Int64("version", m.Version), slog.Int("instance_count", len(m.Instances)))
-	for i, in := range m.Instances {
+// LogValue 让 slog 输出实例列表时逐实例脱敏，而不是把切片按 JSON 展开。
+func (l AssignedInstances) LogValue() slog.Value {
+	attrs := make([]slog.Attr, 0, len(l)+1)
+	attrs = append(attrs, slog.Int("count", len(l)))
+	for i, in := range l {
 		attrs = append(attrs, slog.Any(fmt.Sprintf("instance_%d", i), in))
 	}
 	return slog.GroupValue(attrs...)
+}
+
+// LogValue 让 slog 输出 assign 时逐实例脱敏，而不是把结构体按 JSON 展开。
+func (m Assign) LogValue() slog.Value {
+	return slog.GroupValue(slog.Int64("version", m.Version), slog.Any("instances", m.Instances))
 }

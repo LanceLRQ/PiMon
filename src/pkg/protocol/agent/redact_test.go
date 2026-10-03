@@ -54,3 +54,28 @@ func TestRedact_不影响JSON编码(t *testing.T) {
 		t.Fatalf("编码应保留原文: %s %v", data, err)
 	}
 }
+
+func TestRedact_实例切片单独记录也脱敏(t *testing.T) {
+	list := AssignedInstances{{
+		ID: "i1", PluginID: "p", Secrets: map[string]string{"token": "S3CRET-VALUE"},
+		ProxyURL: "http://user:PROXYPW@127.0.0.1:8080",
+	}}
+	var buf bytes.Buffer
+	slog.New(slog.NewJSONHandler(&buf, nil)).Info("m", "instances", list)
+	slog.New(slog.NewTextHandler(&buf, nil)).Info("m", "instances", list)
+	out := buf.String()
+	for _, s := range []string{"S3CRET-VALUE", "PROXYPW"} {
+		if strings.Contains(out, s) {
+			t.Errorf("输出泄露 %q: %s", s, out)
+		}
+	}
+	if !strings.Contains(out, "i1") || !strings.Contains(out, "token") {
+		t.Errorf("应保留 id 与密钥键名: %s", out)
+	}
+	// Assign.Instances 就是该命名类型，可直接赋值 []AssignedInstance
+	var a Assign
+	a.Instances = []AssignedInstance{{ID: "x"}}
+	if len(a.Instances) != 1 {
+		t.Fatal("赋值失败")
+	}
+}

@@ -202,10 +202,13 @@ type AssignedInstance struct {
 	ConfigHash string `json:"config_hash"`
 }
 
+// AssignedInstances 是一组下发实例；单独记录时 LogValue 逐实例脱敏（JSON 处理器不会展开明文）。
+type AssignedInstances []AssignedInstance
+
 // Assign 是 hub 下发的全量实例集合。
 type Assign struct {
-	Version   int64              `json:"version"`
-	Instances []AssignedInstance `json:"instances"`
+	Version   int64             `json:"version"`
+	Instances AssignedInstances `json:"instances"`
 }
 
 func (Assign) MsgType() Type { return TypeAssign }
@@ -312,6 +315,9 @@ func (o RunOutcome) check() (field, reason string) {
 		return "report.state", "协议不携带插件私有 state"
 	}
 	if hasErr {
+		if o.Error == "" {
+			return "error", "有 error_kind 时不能为空"
+		}
 		switch o.ErrorKind {
 		case ErrorKindTimeout, ErrorKindFailed, ErrorKindBusy, ErrorKindNotAssigned:
 		default:
