@@ -8,6 +8,8 @@
 |---|---|---|---|---|
 | `filippo.io/age`（直接） | NAS 备份的口令加密（scrypt 模式）与恢复时解密 | v1.3.2 | BSD-3-Clause | https://github.com/FiloSottile/age |
 | `filippo.io/hpke`（间接，age 依赖） | age 内部使用的 HPKE 实现 | v0.4.0 | BSD-3-Clause | https://github.com/FiloSottile/hpke |
+| `github.com/hirochachacha/go-smb2`（直接） | NAS 备份的 SMB 目标（NTLM 认证） | v1.1.0 | BSD-2-Clause | https://github.com/hirochachacha/go-smb2 |
+| `github.com/geoffgarside/ber`（间接，go-smb2 依赖） | go-smb2 使用的 ASN.1 BER 解码 | v1.1.0 | BSD-3-Clause | https://github.com/geoffgarside/ber |
 
 引入 age 时 `golang.org/x/crypto` 随之升级到 v0.55.0（BSD-3-Clause，Go Authors），`golang.org/x/net` 升级到 v0.57.0。
 

@@ -6,6 +6,7 @@ require (
 	filippo.io/age v1.3.2
 	github.com/coder/websocket v1.8.15
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/hirochachacha/go-smb2 v1.1.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/shirou/gopsutil/v4 v4.26.8
 	go.yaml.in/yaml/v3 v3.0.5
@@ -22,6 +23,7 @@ require (
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.10.2 // indirect
+	github.com/geoffgarside/ber v1.1.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
