@@ -44,6 +44,7 @@ type SMBConfig struct {
 // NTSTATUS 取值（go-smb2 未导出这些常量，只在 ResponseError.Code 里给出数值）。
 const (
 	statusObjectNameNotFound  uint32 = 0xC0000034
+	statusObjectNameCollision uint32 = 0xC0000035
 	statusObjectPathNotFound  uint32 = 0xC000003A
 	statusNoSuchUser          uint32 = 0xC0000064
 	statusWrongPassword       uint32 = 0xC000006A
@@ -95,7 +96,10 @@ type SMB struct {
 	share smbShare
 }
 
-var _ Target = (*SMB)(nil)
+var (
+	_ Target   = (*SMB)(nil)
+	_ smbShare = (*realShare)(nil)
+)
 
 // NewSMB 校验配置并构造目标，此时不连接。
 func NewSMB(cfg SMBConfig) (*SMB, error) {
@@ -199,10 +203,6 @@ func (s *SMB) classify(ctx context.Context, err error) error {
 	case errors.Is(err, fs.ErrPermission):
 		return NewError(ReasonNotWritable, msg, err)
 	}
-	var op *net.OpError
-	if errors.As(err, &op) {
-		return NewError(ReasonConnect, msg, err)
-	}
 	return NewError(ReasonIO, msg, err)
 }
 
@@ -278,7 +278,6 @@ func (s *SMB) Put(ctx context.Context, name string, r io.Reader) error {
 		return err
 	}
 	stop := context.AfterFunc(ctx, sh.Abort)
-	defer stop()
 	werr := func() error {
 		f, err := sh.Create(ctx, p)
 		if err != nil {
@@ -290,11 +289,13 @@ func (s *SMB) Put(ctx context.Context, name string, r io.Reader) error {
 		}
 		return err
 	}()
-	if werr == nil {
-		if ctx.Err() != nil {
-			s.drop(sh)
+	if !stop() {
+		// AfterFunc 已执行，连接已被切断。
+		s.drop(sh)
+		if werr == nil {
 			return ctx.Err()
 		}
+	} else if werr == nil {
 		return nil
 	}
 	cerr := s.classify(ctx, werr)
@@ -305,7 +306,7 @@ func (s *SMB) Put(ctx context.Context, name string, r io.Reader) error {
 	return cerr
 }
 
-// Rename 改名；SMB 的改名不覆盖已存在的目标，所以先删除正式名再改名（非原子，调用方串行使用）。
+// Rename 改名；SMB 的改名不覆盖已存在的目标，遇到冲突时经旁路名交换，任何一步失败都不丢旧文件。
 func (s *SMB) Rename(ctx context.Context, from, to string) error {
 	src, err := s.filePath(from)
 	if err != nil {
@@ -316,11 +317,32 @@ func (s *SMB) Rename(ctx context.Context, from, to string) error {
 		return NewError(ReasonIO, err.Error(), nil)
 	}
 	return s.run(ctx, func(sh smbShare) error {
-		if err := sh.Remove(ctx, dst); err != nil && !isNotFound(err) {
+		err := sh.Rename(ctx, src, dst)
+		if !isCollision(err) {
 			return err
 		}
-		return sh.Rename(ctx, src, dst)
+		// 目标已存在：先把旧文件改成本项目的 .part 旁路名（不会被当作正式备份，残留清理能认出），
+		// 再改名新文件；新文件改名失败时尽力把旧文件改回，成功后才删除旁路文件。
+		aside, aerr := s.filePath(tempPrefix + to + ".old.part")
+		if aerr != nil {
+			return aerr
+		}
+		_ = sh.Remove(ctx, aside)
+		if err := sh.Rename(ctx, dst, aside); err != nil {
+			return err
+		}
+		if err := sh.Rename(ctx, src, dst); err != nil {
+			_ = sh.Rename(context.WithoutCancel(ctx), aside, dst)
+			return err
+		}
+		_ = sh.Remove(ctx, aside)
+		return nil
 	})
+}
+
+func isCollision(err error) bool {
+	var rerr *smb2.ResponseError
+	return errors.As(err, &rerr) && rerr.Code == statusObjectNameCollision
 }
 
 // List 列出备份目录的直接子项。
@@ -446,4 +468,3 @@ func (r *realShare) Close() error {
 	_ = r.session.WithContext(ctx).Logoff()
 	return r.tcp.Close()
 }
-

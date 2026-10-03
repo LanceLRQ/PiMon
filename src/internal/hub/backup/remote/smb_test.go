@@ -62,16 +62,18 @@ func (i fakeInfo) IsDir() bool        { return i.dir }
 func (i fakeInfo) Sys() any           { return nil }
 
 type fakeShare struct {
-	mu         sync.Mutex
-	files      map[string][]byte
-	dirs       map[string]bool
-	ops        []string
-	opErr      map[string]error // 按操作名注入错误
-	writeErr   error
-	blockWrite chan struct{} // 非 nil 时 Write 阻塞直到被关闭
-	aborted    chan struct{}
-	abortOnce  sync.Once
-	closed     bool
+	mu          sync.Mutex
+	files       map[string][]byte
+	dirs        map[string]bool
+	ops         []string
+	opErr       map[string]error // 按操作名注入错误
+	writeErr    error
+	blockWrite  chan struct{} // 非 nil 时 Write 阻塞直到被关闭
+	aborted     chan struct{}
+	abortOnce   sync.Once
+	closed      bool
+	renames     int
+	failRenameN int // 第 N 次 Rename 调用失败（从 1 计）
 }
 
 func newFakeShare() *fakeShare {
@@ -106,13 +108,21 @@ func (f *fakeShare) Create(_ context.Context, name string) (io.WriteCloser, erro
 }
 
 func (f *fakeShare) Rename(_ context.Context, from, to string) error {
+	f.mu.Lock()
+	f.renames++
+	n := f.renames
+	f.mu.Unlock()
+	if f.failRenameN == n {
+		_ = f.rec("rename-fail")
+		return &smb2.TransportError{Err: io.EOF}
+	}
 	if err := f.rec("rename " + from + " " + to); err != nil {
 		return err
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if _, ok := f.files[to]; ok {
-		return &smb2.ResponseError{Code: 0xC0000035} // 目标已存在时 go-smb2 的改名会失败
+		return &os.LinkError{Op: "rename", Old: from, New: to, Err: &smb2.ResponseError{Code: statusObjectNameCollision}} // 目标已存在时 go-smb2 的改名会失败
 	}
 	b, ok := f.files[from]
 	if !ok {
@@ -471,5 +481,77 @@ func TestSMB握手受ctx约束(t *testing.T) {
 	err = tg.EnsureDir(ctx)
 	if err == nil || time.Since(start) > 5*time.Second {
 		t.Fatalf("握手应随 ctx 终止，耗时 %v，err=%v", time.Since(start), err)
+	}
+}
+
+func countOps(sh *fakeShare, prefix string) int {
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	n := 0
+	for _, o := range sh.ops {
+		if strings.HasPrefix(o, prefix) {
+			n++
+		}
+	}
+	return n
+}
+
+func TestSMBRename正常路径不删除(t *testing.T) {
+	sh := newFakeShare()
+	tg, _ := newSMBTarget(t, "b", sh)
+	ctx := context.Background()
+	_ = tg.Put(ctx, "t.part", strings.NewReader("x"))
+	if err := tg.Rename(ctx, "t.part", "final"); err != nil {
+		t.Fatal(err)
+	}
+	if countOps(sh, "remove") != 0 {
+		t.Fatalf("正常改名不应删除: %v", sh.ops)
+	}
+}
+
+func TestSMBRename冲突路径成功(t *testing.T) {
+	sh := newFakeShare()
+	tg, _ := newSMBTarget(t, "b", sh)
+	ctx := context.Background()
+	_ = tg.Put(ctx, "t.part", strings.NewReader("新"))
+	_ = tg.Put(ctx, "final", strings.NewReader("旧"))
+	if err := tg.Rename(ctx, "t.part", "final"); err != nil {
+		t.Fatal(err)
+	}
+	if string(sh.files["b/final"]) != "新" || len(sh.files) != 1 {
+		t.Fatalf("结果不对: %v", sh.files)
+	}
+}
+
+func TestSMBRename冲突后二次改名失败恢复旧文件(t *testing.T) {
+	sh := newFakeShare()
+	tg, _ := newSMBTarget(t, "b", sh)
+	ctx := context.Background()
+	_ = tg.Put(ctx, "t.part", strings.NewReader("新"))
+	_ = tg.Put(ctx, "final", strings.NewReader("旧"))
+	sh.failRenameN = 3 // 1 冲突，2 旁路，3 新文件改名
+	if err := tg.Rename(ctx, "t.part", "final"); err == nil {
+		t.Fatal("应失败")
+	}
+	if string(sh.files["b/final"]) != "旧" {
+		t.Fatalf("旧正式备份未恢复: %v", sh.files)
+	}
+	if _, ok := sh.files["b/t.part"]; !ok {
+		t.Fatal("临时文件应保留")
+	}
+}
+
+func TestSMBPut取消落在成功之后也丢弃连接(t *testing.T) {
+	sh := newFakeShare()
+	tg, dials := newSMBTarget(t, "b", sh)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cancel()
+	if err := tg.Put(ctx, "x", strings.NewReader("d")); err == nil {
+		t.Fatal("已取消应返回错误")
+	}
+	_ = tg.EnsureDir(context.Background())
+	if *dials != 2 {
+		t.Fatalf("死连接应被丢弃，拨号 %d 次", *dials)
 	}
 }
