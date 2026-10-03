@@ -1,5 +1,8 @@
 // Package cmdexec 给内置插件提供可注入的外部命令执行器：
 // 带 stdout 上限、stderr 尾部截取、超时杀整个进程组，环境固定 LC_ALL=C。
+//
+// 注意：超时杀进程组对经 sudo 提权的子进程是尽力而为——非 root 的 agent 向 root 属主的进程
+// 发 SIGKILL 会 EPERM，root 子进程可能残留。调用方应只运行有界的只读命令，必要时让命令自带超时。
 package cmdexec
 
 import (
@@ -26,6 +29,10 @@ const (
 // ErrOutputTooLarge 表示命令 stdout 超过上限。
 var ErrOutputTooLarge = errors.New("命令 stdout 超过上限")
 
+// ErrSignaled 表示命令被信号终止（ctx 未结束）。此时没有真实退出码，Run 返回 error，
+// 以便调用方区分「退出码位」与「被信号终止」。
+var ErrSignaled = errors.New("命令被信号终止")
+
 // Result 是一次命令执行的结果。
 type Result struct {
 	Stdout   []byte
@@ -34,7 +41,8 @@ type Result struct {
 }
 
 // Runner 执行外部命令。非 0 退出不算 error（照样返回 stdout 与退出码），
-// 只有启动失败、ctx 结束（超时或取消）、stdout 超限才返回 error。
+// 只有启动失败、ctx 结束（超时或取消）、stdout 超限、被信号终止（ErrSignaled）才返回 error；
+// ExitCode 只保存真实退出码。
 type Runner interface {
 	Run(ctx context.Context, name string, args ...string) (Result, error)
 }
@@ -76,6 +84,9 @@ func (system) Run(ctx context.Context, name string, args ...string) (Result, err
 		var ee *exec.ExitError
 		if !errors.As(waitErr, &ee) {
 			return Result{}, fmt.Errorf("运行 %s 失败: %w", name, waitErr)
+		}
+		if ee.ExitCode() < 0 {
+			return Result{}, fmt.Errorf("%s: %w（%s）", name, ErrSignaled, ee.String())
 		}
 		res.ExitCode = ee.ExitCode()
 	}

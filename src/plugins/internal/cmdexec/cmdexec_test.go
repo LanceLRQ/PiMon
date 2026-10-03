@@ -2,7 +2,12 @@ package cmdexec
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -31,16 +36,50 @@ func TestRunStartFailure(t *testing.T) {
 }
 
 func TestRunTimeoutKillsProcessGroup(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	pidFile := filepath.Join(t.TempDir(), "child.pid")
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	// 孙进程持有 stdout 管道，若只杀主进程会一直等到 sleep 结束。
-	_, err := New().Run(ctx, "sh", "-c", "sleep 30 & sleep 30")
+	// 孙进程持有 stdout 管道并记录自己的 pid；只杀主进程时它会残留。
+	_, err := New().Run(ctx, "sh", "-c", "sleep 30 & echo $! > "+pidFile+"; sleep 30")
 	if err == nil {
 		t.Fatal("超时应返回 error")
 	}
-	if time.Since(start) > 10*time.Second {
-		t.Fatalf("超时后未及时返回: %v", time.Since(start))
+	if d := time.Since(start); d > time.Second+300*time.Millisecond {
+		t.Fatalf("超时后返回过慢（应小于 WaitDelay）: %v", d)
+	}
+	raw, rerr := os.ReadFile(pidFile)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	pid, perr := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if perr != nil {
+		t.Fatal(perr)
+	}
+	for i := 0; i < 50; i++ {
+		if errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	_ = syscall.Kill(pid, syscall.SIGKILL)
+	t.Fatalf("孙进程 %d 超时后仍存活", pid)
+}
+
+func TestRunSignaledIsError(t *testing.T) {
+	_, err := New().Run(context.Background(), "sh", "-c", "kill -TERM $$")
+	if !errors.Is(err, ErrSignaled) {
+		t.Fatalf("被信号终止应返回 ErrSignaled: %v", err)
+	}
+}
+
+func TestRunStdoutLimitBoundary(t *testing.T) {
+	res, err := New().Run(context.Background(), "sh", "-c", "head -c 1048576 /dev/zero")
+	if err != nil || len(res.Stdout) != MaxStdoutBytes {
+		t.Fatalf("恰好 1 MiB 应成功: len=%d err=%v", len(res.Stdout), err)
+	}
+	if _, err := New().Run(context.Background(), "sh", "-c", "head -c 1048577 /dev/zero"); !errors.Is(err, ErrOutputTooLarge) {
+		t.Fatalf("1 MiB+1 应失败: %v", err)
 	}
 }
 
