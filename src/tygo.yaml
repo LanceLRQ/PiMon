@@ -23,6 +23,7 @@ packages:
     type_mappings:
       time.Time: string
       model.Instance: Instance
+      model.Device: Device
       model.Settings: Settings
       model.ScreenDisplaySettings: ScreenDisplaySettings
       model.LayoutState: LayoutState
@@ -33,6 +34,7 @@ packages:
       model.KioskReport: KioskReport
     frontmatter: |
       import type {
+        Device,
         Instance,
         KioskReport,
         LayoutState,

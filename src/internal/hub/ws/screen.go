@@ -51,7 +51,7 @@ type ScreenSink interface {
 
 func knownTopic(t string) bool {
 	switch t {
-	case ui.TopicInstances, ui.TopicSettings, ui.TopicLayout, ui.TopicScreenState, ui.TopicScreenData:
+	case ui.TopicInstances, ui.TopicSettings, ui.TopicLayout, ui.TopicScreenState, ui.TopicScreenData, ui.TopicDevices:
 		return true
 	}
 	return false

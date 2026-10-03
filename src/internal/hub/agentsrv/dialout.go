@@ -172,6 +172,8 @@ type DialOut struct {
 	tails   map[string]chan struct{}
 	pairing map[string]bool // 配对会话仍在进行，循环暂不接手
 	connErr map[string]string
+	// onConnErr 在连接错误发生变化后调用（锁外同步调用，须非阻塞）。
+	onConnErr func(id string)
 
 	// beforeSave 仅供测试：在凭据入库之前调用。
 	beforeSave func()
@@ -232,10 +234,40 @@ func (d *DialOut) Remove(id string) {
 		d.ops.Lock()
 		defer d.ops.Unlock()
 		d.replace(id, nil)
-		d.mu.Lock()
-		delete(d.connErr, id)
-		d.mu.Unlock()
+		d.putConnErr(id, "")
 	})
+}
+
+// OnConnErrChange 登记连接错误变化的回调：设备的连接错误值发生变化（含清除）时同步调用，
+// 调用时不持有管理器的锁，但可能在重连循环、设备变更回调等路径上触发，回调必须非阻塞、不得读库。
+// 只保留最后一次登记。
+func (d *DialOut) OnConnErrChange(fn func(id string)) {
+	d.mu.Lock()
+	d.onConnErr = fn
+	d.mu.Unlock()
+}
+
+// putConnErr 写入（空串为清除）设备的连接错误，值有变化时通知回调。
+func (d *DialOut) putConnErr(id, v string) {
+	d.mu.Lock()
+	changed := d.storeConnErrLocked(id, v)
+	fn := d.onConnErr
+	d.mu.Unlock()
+	if changed && fn != nil {
+		fn(id)
+	}
+}
+
+func (d *DialOut) storeConnErrLocked(id, v string) bool {
+	if d.connErr[id] == v {
+		return false
+	}
+	if v == "" {
+		delete(d.connErr, id)
+	} else {
+		d.connErr[id] = v
+	}
+	return true
 }
 
 // ConnError 返回拨出设备最近的连接错误（见 ConnErr* 与拨号失败原因），没有时为空串。
@@ -382,15 +414,11 @@ func (d *DialOut) reconcile(id string) {
 	switch {
 	case errors.Is(err, errNotDialOut):
 		d.replace(id, nil)
-		d.mu.Lock()
-		delete(d.connErr, id)
-		d.mu.Unlock()
+		d.putConnErr(id, "")
 		return
 	case errors.Is(err, proxies.ErrNotFound):
 		d.replace(id, nil)
-		d.mu.Lock()
-		d.connErr[id] = ConnErrProxyRemoved
-		d.mu.Unlock()
+		d.putConnErr(id, ConnErrProxyRemoved)
 		d.log.Warn("拨出设备的代理已被删除，停止拨号（不退回直连）", "device_id", id)
 		return
 	case err != nil:
@@ -405,9 +433,7 @@ func (d *DialOut) reconcile(id string) {
 	if cur != nil && cur.key == t.key && !cur.stale() {
 		return
 	}
-	d.mu.Lock()
-	delete(d.connErr, id)
-	d.mu.Unlock()
+	d.putConnErr(id, "")
 	d.replace(id, d.newLoop(id, t))
 }
 
@@ -440,14 +466,15 @@ func (d *DialOut) newLoop(id string, t dialTarget) *dialLoop {
 // setConnErr 在 l 仍是设备当前循环时记录连接错误（空串表示清除）。
 func (d *DialOut) setConnErr(id string, l *dialLoop, v string) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	if d.loops[id] != l {
+		d.mu.Unlock()
 		return
 	}
-	if v == "" {
-		delete(d.connErr, id)
-	} else {
-		d.connErr[id] = v
+	changed := d.storeConnErrLocked(id, v)
+	fn := d.onConnErr
+	d.mu.Unlock()
+	if changed && fn != nil {
+		fn(id)
 	}
 }
 

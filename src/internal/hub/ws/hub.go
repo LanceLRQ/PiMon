@@ -13,6 +13,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/devices"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
@@ -40,6 +41,13 @@ type InstanceSource interface {
 	View(ctx context.Context, id string) (model.Instance, error)
 }
 
+// DeviceSource 是设备状态的来源，由 devices.Viewer 实现（与 GET /api/devices 同一视图）。
+// View 在设备不存在时返回 devices.ErrNotFound。
+type DeviceSource interface {
+	List(ctx context.Context) ([]model.Device, error)
+	View(ctx context.Context, id string) (model.Device, error)
+}
+
 // SettingsSource 是全局设置的来源，由 settings.Service 实现。
 type SettingsSource interface {
 	Get() model.Settings
@@ -56,8 +64,10 @@ type Config struct {
 	// Build 是构建版本，随 snapshot 下发，须与注入 index.html 的值同源。
 	Build     string
 	Instances InstanceSource
-	Settings  SettingsSource
-	Sessions  SessionLookup
+	// Devices 接入 devices 主题；为空时该主题不下发内容。
+	Devices  DeviceSource
+	Settings SettingsSource
+	Sessions SessionLookup
 	// 以下四项接入屏幕相关主题；为空时对应主题不下发内容。
 	Layouts     LayoutSource
 	ScreenState ScreenStateSource
@@ -88,6 +98,7 @@ type Hub struct {
 	bmu     sync.Mutex
 	conns   map[*client]struct{}
 	last    map[string]model.Instance // 最近一次广播给客户端的实例状态，对账与去重用
+	lastDev map[string]model.Device   // 最近一次广播给管理员的设备状态，对账与去重用
 	changed chan struct{}             // 连接集合变化时关闭并换新，测试等待用
 	closed  bool
 
@@ -101,6 +112,7 @@ type Hub struct {
 	// mu 保护待推送集合，只做内存操作，供业务路径上的回调调用。
 	mu           sync.Mutex
 	pendInst     map[string]struct{}
+	pendDev      map[string]struct{}
 	pendSettings bool
 	armed        bool
 
@@ -119,7 +131,7 @@ func New(c Config) *Hub {
 	return &Hub{
 		cfg: c, clk: c.Clock,
 		conns: map[*client]struct{}{}, changed: make(chan struct{}),
-		pendInst: map[string]struct{}{}, stop: make(chan struct{}),
+		pendInst: map[string]struct{}{}, pendDev: map[string]struct{}{}, stop: make(chan struct{}),
 	}
 }
 
@@ -128,6 +140,15 @@ func New(c Config) *Hub {
 func (h *Hub) NotifyInstance(id string) {
 	h.mu.Lock()
 	h.pendInst[id] = struct{}{}
+	h.armLocked()
+	h.mu.Unlock()
+}
+
+// NotifyDevice 登记一个设备发生了变化（在线状态、属性、连接错误、吊销等），约一秒后合并推送给订阅者。
+// 只做内存登记、不读库，可在持有 agentsrv 内部锁的回调里同步调用；设备已不存在时推 device_removed。
+func (h *Hub) NotifyDevice(id string) {
+	h.mu.Lock()
+	h.pendDev[id] = struct{}{}
 	h.armLocked()
 	h.mu.Unlock()
 }
@@ -166,6 +187,16 @@ func (h *Hub) Start(ctx context.Context) <-chan struct{} {
 		h.last = make(map[string]model.Instance, len(list))
 		for _, in := range list {
 			h.last[in.ID] = in
+		}
+	}
+	if h.cfg.Devices != nil {
+		if list, err := h.cfg.Devices.List(ctx); err != nil {
+			slog.Warn("读取设备列表失败，设备推送去重基线为空", "err", err)
+		} else {
+			h.lastDev = make(map[string]model.Device, len(list))
+			for _, d := range list {
+				h.lastDev[d.ID] = d
+			}
 		}
 	}
 	if h.cfg.Layouts != nil {
@@ -341,6 +372,16 @@ func (h *Hub) resubscribeLocked(ctx context.Context, c *client, topics []string)
 			snap.ScreenSettings = &ss
 		}
 	}
+	if set[ui.TopicDevices] {
+		list := []model.Device{}
+		if h.cfg.Devices != nil {
+			var err error
+			if list, err = h.cfg.Devices.List(ctx); err != nil {
+				return err
+			}
+		}
+		snap.Devices = &list
+	}
 	h.screenSnapshotLocked(ctx, c, set, &snap)
 	raw, err := json.Marshal(snap)
 	if err != nil {
@@ -368,12 +409,18 @@ func (h *Hub) flush() {
 	for id := range h.pendInst {
 		ids = append(ids, id)
 	}
+	devIDs := make([]string, 0, len(h.pendDev))
+	for id := range h.pendDev {
+		devIDs = append(devIDs, id)
+	}
 	settingsChanged := h.pendSettings
 	h.pendInst = map[string]struct{}{}
+	h.pendDev = map[string]struct{}{}
 	h.pendSettings = false
 	h.armed = false
 	h.mu.Unlock()
 	slices.Sort(ids)
+	slices.Sort(devIDs)
 
 	ctx := context.Background()
 	h.bmu.Lock()
@@ -392,6 +439,19 @@ func (h *Hub) flush() {
 			slog.Warn("读取实例失败，等待下一轮对账", "instance", id, "err", err)
 		default:
 			msgs = appendMsg(msgs, h.instanceMsgLocked(in))
+		}
+	}
+	if h.cfg.Devices != nil {
+		for _, id := range devIDs {
+			d, err := h.cfg.Devices.View(ctx, id)
+			switch {
+			case errors.Is(err, devices.ErrNotFound):
+				msgs = appendMsg(msgs, h.deviceRemovedMsgLocked(id))
+			case err != nil:
+				slog.Warn("读取设备失败，等待下一轮对账", "device", id, "err", err)
+			default:
+				msgs = appendMsg(msgs, h.deviceMsgLocked(d))
+			}
 		}
 	}
 	if settingsChanged {
@@ -427,8 +487,33 @@ func (h *Hub) reconcile(ctx context.Context) {
 			msgs = appendMsg(msgs, h.removedMsgLocked(id))
 		}
 	}
+	msgs = append(msgs, h.reconcileDevicesLocked(ctx)...)
 	msgs = append(msgs, h.screenRefreshLocked(ctx)...)
 	h.deliverLocked(ctx, msgs)
+}
+
+// reconcileDevicesLocked 对账设备：与最近一次广播的状态比较，推出没有通知的变化（连接错误、时钟偏移等）与删除。
+func (h *Hub) reconcileDevicesLocked(ctx context.Context) []outMsg {
+	if h.cfg.Devices == nil {
+		return nil
+	}
+	list, err := h.cfg.Devices.List(ctx)
+	if err != nil {
+		slog.Warn("对账时读取设备列表失败", "err", err)
+		return nil
+	}
+	var msgs []outMsg
+	seen := make(map[string]bool, len(list))
+	for _, d := range list {
+		seen[d.ID] = true
+		msgs = appendMsg(msgs, h.deviceMsgLocked(d))
+	}
+	for id := range h.lastDev {
+		if !seen[id] {
+			msgs = appendMsg(msgs, h.deviceRemovedMsgLocked(id))
+		}
+	}
+	return msgs
 }
 
 func (m outMsg) payload(kind auth.SessionKind) []byte {
@@ -463,6 +548,27 @@ func (h *Hub) removedMsgLocked(id string) *outMsg {
 	delete(h.last, id)
 	return h.patchMsg(ui.TopicInstances, ui.Patch{
 		Type: ui.TypePatch, ServerTime: h.clk.Now().UTC(), Entity: ui.EntityInstanceRemoved, ID: id,
+	}, nil)
+}
+
+// deviceMsgLocked 记下并序列化设备状态；与最近一次广播的状态相同时返回 nil。
+func (h *Hub) deviceMsgLocked(d model.Device) *outMsg {
+	if h.lastDev == nil {
+		h.lastDev = map[string]model.Device{}
+	}
+	if prev, ok := h.lastDev[d.ID]; ok && reflect.DeepEqual(prev, d) {
+		return nil
+	}
+	h.lastDev[d.ID] = d
+	return h.patchMsg(ui.TopicDevices, ui.Patch{
+		Type: ui.TypePatch, ServerTime: h.clk.Now().UTC(), Entity: ui.EntityDevice, Device: &d,
+	}, nil)
+}
+
+func (h *Hub) deviceRemovedMsgLocked(id string) *outMsg {
+	delete(h.lastDev, id)
+	return h.patchMsg(ui.TopicDevices, ui.Patch{
+		Type: ui.TypePatch, ServerTime: h.clk.Now().UTC(), Entity: ui.EntityDeviceRemoved, ID: id,
 	}, nil)
 }
 
@@ -566,10 +672,11 @@ func defaultTopics(kind auth.SessionKind) []string {
 	return []string{ui.TopicSettings, ui.TopicLayout, ui.TopicScreenState, ui.TopicScreenData}
 }
 
-// allowedTopics 是会话可订阅的主题：管理员在默认之外可订阅 screen_data 做预览；屏幕会话不能订阅 instances。
+// allowedTopics 是会话可订阅的主题：管理员在默认之外可订阅 screen_data 做预览、devices 看设备；
+// 屏幕会话不能订阅 instances 与 devices。
 func allowedTopics(kind auth.SessionKind) []string {
 	if kind == auth.KindAdmin {
-		return append(defaultTopics(kind), ui.TopicScreenData)
+		return append(defaultTopics(kind), ui.TopicScreenData, ui.TopicDevices)
 	}
 	return defaultTopics(kind)
 }

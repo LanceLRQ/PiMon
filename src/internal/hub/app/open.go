@@ -64,6 +64,8 @@ type App struct {
 	screenState *screenstate.Service
 	devices     *devices.Store
 	presence    *devices.Presence
+	// deviceViews 是设备的对外视图，REST 与 WS 共用。
+	deviceViews *devices.Viewer
 	// machineNotes 把设备状态变化转成其上实例的变化通知。
 	machineNotes *machineNotifier
 	agents       *agentsrv.Server
@@ -242,6 +244,10 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	if a.dialout, err = agentsrv.NewDialOut(agentsrv.DialOutConfig{Server: a.agents, Proxies: proxyStore}); err != nil {
 		return fmt.Errorf("创建拨出管理器: %w", err)
 	}
+	// 设备视图在 REST 与 WS 里共用：在线状态读内存，连接错误来自拨出管理器，时钟偏移来自会话。
+	a.deviceViews = devices.NewViewer(devices.ViewerConfig{
+		Store: a.devices, Presence: a.presence, ConnError: a.dialout.ConnError, ClockSkew: a.agents.ClockSkew,
+	})
 	// hub-self 的统计来源在 instances 与 history 就绪后才能绑定，先于 Load 以便首次采集就有数据。
 	hubself.Bind(hubStats{
 		inst: a.instances, hist: a.history, started: o.clk.Now(), dataDir: a.cfg.DataDir,
@@ -270,11 +276,16 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	limiter := auth.NewLimiter(o.clk, loginMaxFailures, loginLockTime)
 	// 实例与设置的变化经广播中心合并后推给 UI WebSocket 的订阅者。
 	a.ws = ws.New(ws.Config{
-		Clock: o.clk, Build: o.version, Instances: a.instances, Settings: st, Sessions: a.sessions,
+		Clock: o.clk, Build: o.version, Instances: a.instances, Devices: a.deviceViews, Settings: st, Sessions: a.sessions,
 		Layouts: a.screens, ScreenState: a.screenState, ScreenData: a.instances, Sink: a.screenState,
 		KioskAuth: &kioskGate{tokens: a.screen, limiter: limiter}, Kiosk: a.screenState,
 	})
 	a.instances.OnChange(a.ws.NotifyInstance)
+	// 设备的在线状态、属性与连接错误变化经广播中心合并后推给订阅 devices 的管理员。
+	// 这三个回调可能在 agentsrv 的会话流程锁内触发，NotifyDevice 只做内存登记，读库与拼视图都在广播中心自己的协程里。
+	a.presence.OnChange(a.ws.NotifyDevice)
+	a.devices.OnChange(func(id string, _ bool) { a.ws.NotifyDevice(id) })
+	a.dialout.OnConnErrChange(a.ws.NotifyDevice)
 	// 屏幕布局、状态、一次性指令不进合并窗口，变化时立即推送。
 	a.screens.OnChange(a.ws.NotifyLayout)
 	a.screenState.OnChange(a.ws.NotifyScreenState)
@@ -300,22 +311,19 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		System: system.New(system.Config{
 			Clock: o.clk, Version: o.version, DataDir: a.cfg.DataDir, Plugins: a.plugins, Ring: o.logRing,
 		}),
-		Settings:     st,
-		Hasher:       auth.Hasher{Params: o.params},
-		Limiter:      limiter,
-		SetupCodes:   a.setupCodes,
-		Admins:       a.admins,
-		Sessions:     a.sessions,
-		ScreenTokens: a.screen,
-		Backups:      a.backups,
-		Proxies:      proxyStore,
-		Devices:      a.devices,
-		DeviceLogs:   a.dispatcher,
-		DialOut:      a.dialout,
-		// 设备视图在 REST 与（之后的）WS 里共用：在线状态读内存，连接错误来自拨出管理器，时钟偏移来自会话。
-		DeviceViews: devices.NewViewer(devices.ViewerConfig{
-			Store: a.devices, Presence: a.presence, ConnError: a.dialout.ConnError, ClockSkew: a.agents.ClockSkew,
-		}),
+		Settings:       st,
+		Hasher:         auth.Hasher{Params: o.params},
+		Limiter:        limiter,
+		SetupCodes:     a.setupCodes,
+		Admins:         a.admins,
+		Sessions:       a.sessions,
+		ScreenTokens:   a.screen,
+		Backups:        a.backups,
+		Proxies:        proxyStore,
+		Devices:        a.devices,
+		DeviceLogs:     a.dispatcher,
+		DialOut:        a.dialout,
+		DeviceViews:    a.deviceViews,
 		DeviceSessions: a.agents,
 		AgentInfo: func() api.AgentChannel {
 			return api.AgentChannel{Addr: a.AgentAddr(), Fingerprint: a.spki.String(), HubVersion: o.version}
@@ -373,7 +381,7 @@ func (a *App) AgentAddr() string {
 // AgentSPKI 返回中枢证书的 SPKI 指纹，agent 配对时用它钉扎。
 func (a *App) AgentSPKI() certs.SPKI { return a.spki }
 
-// stopAgents 按「拨出管理器、下发器、会话服务、在线状态」的顺序释放 agent 通道相关资源，须在关闭数据库之前调用。
+// stopAgents 按「拨出管理器、下发器、会话服务、在线状态、设备通知、广播中心」的顺序释放 agent 通道相关资源，须在关闭数据库之前调用。
 // 调用前监听必须已停止（Serve 返回），否则新连接会在关闭后到达；拨出管理器先停，关停期间不再新建拨出会话；
 // 下发器停止后会话的回调一律忽略，不再读库。
 func (a *App) stopAgents() {
@@ -391,6 +399,10 @@ func (a *App) stopAgents() {
 	}
 	if a.machineNotes != nil {
 		a.machineNotes.Close()
+	}
+	// 广播中心最后关：前面各步触发的设备变化通知在它关闭后一律作废，之后不会再读库推送。
+	if a.ws != nil {
+		a.ws.Close()
 	}
 }
 

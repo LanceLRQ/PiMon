@@ -654,3 +654,37 @@ func TestDialOut重新配对失败保留旧设备(t *testing.T) {
 		t.Fatalf("设备数 = %d，旧设备应保持原样且无占位", n)
 	}
 }
+
+func TestDialOut连接错误变化触发钩子(t *testing.T) {
+	e := newOutEnv(t)
+	ctx := context.Background()
+	a := startFakeAgent(t, "C")
+	dev := e.pairOK(t, a, "C")
+	got := make(chan string, 16)
+	e.d.OnConnErrChange(func(id string) { got <- id })
+
+	socks := proxytest.NewSocks5Forward(t, "", "")
+	px, err := e.prox.Create(ctx, model.ProxyInput{Name: "s5", Scheme: "socks5", Address: socks.Addr})
+	must(t, err)
+	_, err = e.devs.Update(ctx, dev.ID, model.DeviceInput{Name: dev.Name, Role: dev.Role, ProxyID: &px.ID})
+	must(t, err)
+	s0, _ := e.srv.Session(dev.ID)
+	e.waitNewSession(t, dev.ID, s0)
+	// 代理被删除：记 proxy_removed，钩子收到设备 ID，此时读到的值已是新值。
+	must(t, e.prox.Delete(ctx, px.ID, false))
+	waitFor(t, "代理删除后停止", func() bool { return e.d.ConnError(dev.ID) == ConnErrProxyRemoved })
+	if id := <-got; id != dev.ID {
+		t.Fatalf("钩子设备 ID = %q，期望 %q", id, dev.ID)
+	}
+	// 吊销清除连接错误：值由非空变空，同样触发钩子；值没变时不重复触发。
+	e.d.Remove(dev.ID)
+	waitFor(t, "连接错误已清除", func() bool { return e.d.ConnError(dev.ID) == "" })
+	if id := <-got; id != dev.ID {
+		t.Fatalf("清除时钩子设备 ID = %q，期望 %q", id, dev.ID)
+	}
+	select {
+	case id := <-got:
+		t.Fatalf("值未变化不应再触发钩子，收到 %q", id)
+	default:
+	}
+}
