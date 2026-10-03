@@ -6,12 +6,8 @@ package devices
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
-	"encoding/base32"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -23,6 +19,7 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
+	"github.com/LanceLRQ/PiMon/src/internal/paircode"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 	"github.com/LanceLRQ/PiMon/src/pkg/protocol/agent"
@@ -36,8 +33,7 @@ const (
 	// MaxActivePairingCodes 是同时有效的配对码上限，超出时淘汰最旧的。
 	MaxActivePairingCodes = 20
 
-	pairingCodeBytes = 20 // 160 bit，编成 32 位 Crockford
-	maxNameRunes     = 64
+	maxNameRunes = 64
 )
 
 var (
@@ -50,9 +46,6 @@ var (
 	// ErrInvalidRole 表示设备角色不合法。
 	ErrInvalidRole = errors.New("设备角色不合法")
 )
-
-// Crockford base32 字母表（不含 I L O U）。
-var crockford = base32.NewEncoding("0123456789ABCDEFGHJKMNPQRSTVWXYZ").WithPadding(base32.NoPadding)
 
 // Config 是设备仓库的依赖。
 type Config struct {
@@ -189,29 +182,8 @@ func boolInt(b bool) int {
 	return 0
 }
 
-// normalizeCode 转大写、去掉分隔符与空白，并按 Crockford 规则归一易混字符（O→0，I/L→1），
-// 与 auth 包设置码的规则一致。
-func normalizeCode(in string) string {
-	var b strings.Builder
-	for _, r := range strings.ToUpper(in) {
-		switch r {
-		case '-', ' ', '\t', '\r', '\n':
-			continue
-		case 'O':
-			r = '0'
-		case 'I', 'L':
-			r = '1'
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
-}
-
-// HashPairingCode 返回用户输入的配对码规范化后的 sha256 十六进制，库中只存这个值。
-func HashPairingCode(code string) string {
-	sum := sha256.Sum256([]byte(normalizeCode(code)))
-	return hex.EncodeToString(sum[:])
-}
+// HashPairingCode 返回用户输入的配对码规范化后的 sha256 十六进制，库中只存这个值（规则见 paircode.Hash）。
+func HashPairingCode(code string) string { return paircode.Hash(code) }
 
 // NewPairingCode 生成一次性拨入配对码，返回展示形式（8 组 × 4 位）与过期时间。
 // 同时有效的配对码超过上限时删除最旧的。
@@ -228,16 +200,10 @@ func (s *Store) NewPairingCode(ctx context.Context, o PairingOptions) (string, t
 	if o.AutoHostMetrics != nil {
 		auto = *o.AutoHostMetrics
 	}
-	raw := make([]byte, pairingCodeBytes)
-	if _, err := rand.Read(raw); err != nil {
-		return "", time.Time{}, fmt.Errorf("生成配对码: %w", err)
+	display, err := paircode.New()
+	if err != nil {
+		return "", time.Time{}, err
 	}
-	plain := crockford.EncodeToString(raw)
-	groups := make([]string, 0, len(plain)/4)
-	for i := 0; i < len(plain); i += 4 {
-		groups = append(groups, plain[i:i+4])
-	}
-	display := strings.Join(groups, "-")
 
 	now := s.clk.Now()
 	exp := now.Add(PairingCodeTTL)
@@ -259,7 +225,7 @@ func (s *Store) NewPairingCode(ctx context.Context, o PairingOptions) (string, t
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO pairing_codes (code_hash, expires_at, name, role, allow_offline, auto_host_metrics, repair_device_id, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		HashPairingCode(plain), store.FormatTime(exp), strings.TrimSpace(o.Name), role,
+		HashPairingCode(display), store.FormatTime(exp), strings.TrimSpace(o.Name), role,
 		boolInt(allow), boolInt(auto), o.RepairDeviceID, store.FormatTime(now)); err != nil {
 		return "", time.Time{}, err
 	}
