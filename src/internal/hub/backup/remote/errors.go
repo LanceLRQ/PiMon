@@ -7,6 +7,8 @@ import (
 	"net"
 	"regexp"
 	"time"
+
+	"github.com/LanceLRQ/PiMon/src/pkg/model"
 )
 
 // Reason 是远端失败的原因分类，对应错误码 backup.remote_failed 的 details.reason，也是前端翻译的依据。
@@ -74,4 +76,21 @@ func Classify(err error) *Error {
 	default:
 		return NewError(ReasonIO, err.Error(), err)
 	}
+}
+
+// ConfigError 是构造目标时的配置校验错误（地址、端口、目录等），对应 API 的 validation.failed 字段错误，
+// 而不是远端失败。Field 是配置字段键（与 model.BackupRemoteInput 的 JSON 键一致），Code 是 model.Field* 取值。
+type ConfigError struct {
+	Field   string
+	Code    string
+	Message string
+}
+
+func (e *ConfigError) Error() string { return e.Message }
+
+// FieldErrors 把配置错误转成字段错误。
+func (e *ConfigError) FieldErrors() model.FieldErrors { return model.FieldErrors{e.Field: e.Code} }
+
+func configErr(field, code, msg string) *ConfigError {
+	return &ConfigError{Field: field, Code: code, Message: msg}
 }

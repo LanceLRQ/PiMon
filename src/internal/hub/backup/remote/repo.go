@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/secret"
@@ -250,11 +251,17 @@ func validate(c Config, submittedPassphrase string) model.FieldErrors {
 	if c.SMBPort < 1 || c.SMBPort > 65535 {
 		fe["smb_port"] = model.FieldOutOfRange
 	}
-	if c.SMBHost != "" && strings.ContainsAny(c.SMBHost, " \t/\\@") {
+	if hasSpaceOrControl(c.SMBHost) || strings.ContainsAny(c.SMBHost, "/\\@") {
 		fe["smb_host"] = model.FieldInvalid
 	}
-	if strings.ContainsAny(c.SMBShare, "/\\") {
+	if hasSpaceOrControl(c.SMBShare) || strings.ContainsAny(c.SMBShare, "/\\") || strings.Contains(c.SMBShare, "..") {
 		fe["smb_share"] = model.FieldInvalid
+	}
+	if hasSpaceOrControl(c.SMBUsername) {
+		fe["smb_username"] = model.FieldInvalid
+	}
+	if hasSpaceOrControl(c.WebDAVUsername) {
+		fe["webdav_username"] = model.FieldInvalid
 	}
 	if badDir(c.SMBDir) {
 		fe["smb_dir"] = model.FieldInvalid
@@ -290,6 +297,11 @@ func validate(c Config, submittedPassphrase string) model.FieldErrors {
 		return nil
 	}
 	return fe
+}
+
+// hasSpaceOrControl 判断字符串是否含空白（含全角空格）或控制字符。
+func hasSpaceOrControl(s string) bool {
+	return strings.IndexFunc(s, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0
 }
 
 // badDir 判断目录是否含 .. 路径段（目录用 / 或 \ 分隔）。

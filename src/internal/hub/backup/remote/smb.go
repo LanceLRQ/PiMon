@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/hirochachacha/go-smb2"
+
+	"github.com/LanceLRQ/PiMon/src/pkg/model"
 )
 
 // 已知风险：SMB 协议层（NTLM 协商、重命名语义、飞牛 NAS 的 Samba 行为）没有可用的测试服务器，
@@ -109,24 +111,24 @@ func NewSMB(cfg SMBConfig) (*SMB, error) {
 func newSMB(cfg SMBConfig, dial smbDialFunc) (*SMB, error) {
 	cfg.Host = strings.TrimSpace(cfg.Host)
 	if cfg.Host == "" || strings.ContainsAny(cfg.Host, " \t/\\@") {
-		return nil, errors.New("SMB 主机地址无效")
+		return nil, configErr("smb_host", model.FieldInvalid, "SMB 主机地址无效")
 	}
 	if cfg.Port == 0 {
 		cfg.Port = smbDefaultPort
 	}
 	if cfg.Port < 1 || cfg.Port > 65535 {
-		return nil, errors.New("SMB 端口无效")
+		return nil, configErr("smb_port", model.FieldOutOfRange, "SMB 端口无效")
 	}
 	if cfg.Share == "" || strings.ContainsAny(cfg.Share, "/\\") {
-		return nil, errors.New("SMB 共享名无效")
+		return nil, configErr("smb_share", model.FieldInvalid, "SMB 共享名无效")
 	}
 	if cfg.Username == "" {
-		return nil, errors.New("SMB 用户名不能为空")
+		return nil, configErr("smb_username", model.FieldRequired, "SMB 用户名不能为空")
 	}
 	segs := splitSegments(strings.ReplaceAll(cfg.Dir, "\\", "/"))
 	for _, s := range segs {
 		if s == ".." || s == "." {
-			return nil, errors.New("SMB 目录不能含有点号路径段")
+			return nil, configErr("smb_dir", model.FieldInvalid, "SMB 目录不能含有点号路径段")
 		}
 	}
 	return &SMB{cfg: cfg, segments: segs, dial: dial}, nil

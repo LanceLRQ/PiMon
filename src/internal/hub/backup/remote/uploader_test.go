@@ -259,10 +259,14 @@ func TestUploadPutFailureCleansTempAndKeepsReason(t *testing.T) {
 	m := newMem()
 	m.files["pimon-backup-20260901-020000-daily.tar.gz.age"] = []byte("x")
 	m.putErr = NewError(ReasonAuth, "用户名或密码错误", nil)
-	_, err := newUploader(clock.Real{}).Upload(context.Background(), m, path, localNew, 3)
+	res, err := newUploader(clock.Real{}).Upload(context.Background(), m, path, localNew, 3)
 	var re *Error
 	if !errors.As(err, &re) || re.Reason != ReasonAuth {
 		t.Fatalf("err = %v，期望 auth", err)
+	}
+	// 失败时也报告已读出（写往远端）的密文字节数，供上传记录使用。
+	if res.Bytes <= 0 || res.RemoteName != localNew+".age" {
+		t.Fatalf("失败时 Result = %+v，期望带已写入字节数与远端名", res)
 	}
 	if got := m.names(); len(got) != 1 || got[0] != "pimon-backup-20260901-020000-daily.tar.gz.age" {
 		t.Fatalf("失败后应删除临时文件且不动旧备份，得到 %v", got)

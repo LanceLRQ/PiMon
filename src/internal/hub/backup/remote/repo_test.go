@@ -170,7 +170,9 @@ func TestValidate(t *testing.T) {
 		{"启用缺密码", func(i *model.BackupRemoteInput) { i.SMBPassword = "" }, model.FieldErrors{"smb_password": model.FieldRequired}},
 		{"启用缺口令", func(i *model.BackupRemoteInput) { i.Passphrase = "" }, model.FieldErrors{"passphrase": model.FieldRequired}},
 		{"口令过短", func(i *model.BackupRemoteInput) { i.Passphrase = "12345678901" }, model.FieldErrors{"passphrase": model.FieldOutOfRange}},
-		{"口令按字符数计", func(i *model.BackupRemoteInput) { i.Passphrase = "口令口令口令口令口令口令口令口令口令口令口令" }, nil},
+		{"口令按字符数计", func(i *model.BackupRemoteInput) {
+			i.Passphrase = "口令口令口令口令口令口令口令口令口令口令口令"
+		}, nil},
 		{"类型非法", func(i *model.BackupRemoteInput) { i.Type = "ftp" }, model.FieldErrors{"type": model.FieldInvalid}},
 		{"保留份数 0", func(i *model.BackupRemoteInput) { i.Keep = 0 }, model.FieldErrors{"keep": model.FieldOutOfRange}},
 		{"保留份数 366", func(i *model.BackupRemoteInput) { i.Keep = 366 }, model.FieldErrors{"keep": model.FieldOutOfRange}},
@@ -179,9 +181,29 @@ func TestValidate(t *testing.T) {
 		{"共享名含斜杠", func(i *model.BackupRemoteInput) { i.SMBShare = "a/b" }, model.FieldErrors{"smb_share": model.FieldInvalid}},
 		{"目录含 ..", func(i *model.BackupRemoteInput) { i.SMBDir = "a/../b" }, model.FieldErrors{"smb_dir": model.FieldInvalid}},
 		{"主机含空白", func(i *model.BackupRemoteInput) { i.SMBHost = "a b" }, model.FieldErrors{"smb_host": model.FieldInvalid}},
+		{"主机含控制字符", func(i *model.BackupRemoteInput) { i.SMBHost = "nas\x00.lan" }, model.FieldErrors{"smb_host": model.FieldInvalid}},
+		{"主机含全角空格", func(i *model.BackupRemoteInput) { i.SMBHost = "nas　lan" }, model.FieldErrors{"smb_host": model.FieldInvalid}},
+		{"共享名含空白", func(i *model.BackupRemoteInput) { i.SMBShare = "back up" }, model.FieldErrors{"smb_share": model.FieldInvalid}},
+		{"共享名含控制字符", func(i *model.BackupRemoteInput) { i.SMBShare = "bak\x1f" }, model.FieldErrors{"smb_share": model.FieldInvalid}},
+		{"共享名为 ..", func(i *model.BackupRemoteInput) { i.SMBShare = ".." }, model.FieldErrors{"smb_share": model.FieldInvalid}},
+		{"共享名含 ..", func(i *model.BackupRemoteInput) { i.SMBShare = "a..b" }, model.FieldErrors{"smb_share": model.FieldInvalid}},
+		{"SMB 用户名含空白", func(i *model.BackupRemoteInput) { i.SMBUsername = "ad min" }, model.FieldErrors{"smb_username": model.FieldInvalid}},
+		{"SMB 用户名首尾空白", func(i *model.BackupRemoteInput) { i.SMBUsername = " admin" }, model.FieldErrors{"smb_username": model.FieldInvalid}},
+		{"SMB 用户名含换行", func(i *model.BackupRemoteInput) { i.SMBUsername = "admin\n" }, model.FieldErrors{"smb_username": model.FieldInvalid}},
+		{"WebDAV 用户名含空白", func(i *model.BackupRemoteInput) {
+			i.Type, i.WebDAVURL, i.WebDAVUsername, i.WebDAVPassword = "webdav", "https://nas.lan/d", "u v", "p"
+		}, model.FieldErrors{"webdav_username": model.FieldInvalid}},
+		{"WebDAV 用户名含控制字符", func(i *model.BackupRemoteInput) {
+			i.Type, i.WebDAVURL, i.WebDAVUsername, i.WebDAVPassword = "webdav", "https://nas.lan/d", "u\x7f", "p"
+		}, model.FieldErrors{"webdav_username": model.FieldInvalid}},
+		{"未启用也校验用户名格式", func(i *model.BackupRemoteInput) {
+			*i = model.BackupRemoteInput{Type: "smb", Keep: 30, WebDAVUsername: "a\tb"}
+		}, model.FieldErrors{"webdav_username": model.FieldInvalid}},
 		{"未启用允许空必填", func(i *model.BackupRemoteInput) { *i = model.BackupRemoteInput{Type: "smb", Keep: 30} }, nil},
 		{"未启用仍校验格式", func(i *model.BackupRemoteInput) { *i = model.BackupRemoteInput{Type: "smb", Keep: 30, SMBShare: "a/b"} }, model.FieldErrors{"smb_share": model.FieldInvalid}},
-		{"未启用口令过短也拒绝", func(i *model.BackupRemoteInput) { *i = model.BackupRemoteInput{Type: "smb", Keep: 30, Passphrase: "short"} }, model.FieldErrors{"passphrase": model.FieldOutOfRange}},
+		{"未启用口令过短也拒绝", func(i *model.BackupRemoteInput) {
+			*i = model.BackupRemoteInput{Type: "smb", Keep: 30, Passphrase: "short"}
+		}, model.FieldErrors{"passphrase": model.FieldOutOfRange}},
 		{"WebDAV 公网 http", func(i *model.BackupRemoteInput) {
 			i.Type, i.WebDAVURL, i.WebDAVUsername, i.WebDAVPassword = "webdav", "http://example.com/dav", "u", "p"
 		}, model.FieldErrors{"webdav_url": model.FieldInvalid}},

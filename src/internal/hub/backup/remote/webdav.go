@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LanceLRQ/PiMon/src/pkg/model"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/schema"
 )
 
@@ -53,22 +54,22 @@ var _ Target = (*WebDAV)(nil)
 // 请求不经环境代理：NAS 在局域网内，且凭据不应绕经意外的中转。
 func NewWebDAV(cfg WebDAVConfig) (*WebDAV, error) {
 	if _, err := url.Parse(cfg.URL); err != nil {
-		return nil, errors.New("WebDAV 地址格式无效")
+		return nil, configErr("webdav_url", model.FieldInvalid, "WebDAV 地址格式无效")
 	}
 	if err := schema.CheckURL(cfg.URL, false, false); err != nil {
-		return nil, fmt.Errorf("WebDAV 地址无效：%s", scrub(err.Error()))
+		return nil, configErr("webdav_url", model.FieldInvalid, "WebDAV 地址无效："+scrub(err.Error()))
 	}
 	root, _ := url.Parse(cfg.URL)
 	segs := splitSegments(root.Path)
 	for _, s := range splitSegments(cfg.Dir) {
 		if s == ".." || s == "." {
-			return nil, errors.New("WebDAV 目录不能含有点号路径段")
+			return nil, configErr("webdav_dir", model.FieldInvalid, "WebDAV 目录不能含有点号路径段")
 		}
 		segs = append(segs, s)
 	}
 	for _, s := range segs {
 		if s == ".." || s == "." {
-			return nil, errors.New("WebDAV 地址路径不能含有点号路径段")
+			return nil, configErr("webdav_url", model.FieldInvalid, "WebDAV 地址路径不能含有点号路径段")
 		}
 	}
 	w := &WebDAV{cfg: cfg, root: root, segments: segs}

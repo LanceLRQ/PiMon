@@ -47,7 +47,8 @@ type Result struct {
 // Upload 把 localPath（本地备份，文件名 name 须符合本项目备份命名）加密后上传到 target，
 // 远端正式名为 name + ".age"，同名已存在时覆盖。keep 是远端保留的份数（含本次，至少 1）。
 // 清理只涉及符合本项目命名的加密备份与自己的 .pimon-upload-*.part 残留，不碰目录里的其他文件。
-// 调用方取消 ctx 时返回 ctx 的错误；其余失败返回 *Error。
+// 调用方取消 ctx 时返回 ctx 的错误；其余失败返回 *Error。上传阶段及之后失败时，Result 仍带远端名与
+// 已写入的密文字节数，供上传记录使用。
 func (u *Uploader) Upload(ctx context.Context, target Target, localPath, name string, keep int) (Result, error) {
 	remoteName, ok := backup.RemoteName(name)
 	if !ok {
@@ -77,20 +78,20 @@ func (u *Uploader) Upload(ctx context.Context, target Target, localPath, name st
 
 	tmpName := tempPrefix + remoteName + tempSuffix
 	size, err := u.put(ctx, target, tmpName, enc)
+	res := Result{RemoteName: remoteName, Bytes: size}
 	if err != nil {
 		removeBestEffort(target, tmpName)
-		return Result{}, err
+		return res, err
 	}
 	if err := target.Rename(ctx, tmpName, remoteName); err != nil {
 		removeBestEffort(target, tmpName)
-		return Result{}, classifyCtx(ctx, err)
+		return res, classifyCtx(ctx, err)
 	}
-	res := Result{RemoteName: remoteName, Bytes: size}
 	res.CleanupErr = pruneOld(ctx, target, keep)
 	return res, nil
 }
 
-// put 在无进展看门狗保护下上传 src，返回已上传的字节数。
+// put 在无进展看门狗保护下上传 src，返回已读出交给目标的字节数（失败时也返回已写入的部分）。
 func (u *Uploader) put(ctx context.Context, target Target, tmpName string, src io.Reader) (int64, error) {
 	stall := u.Stall
 	if stall <= 0 {
@@ -113,15 +114,16 @@ func (u *Uploader) put(ctx context.Context, target Target, tmpName string, src i
 	close(done)
 	wg.Wait()
 
+	n := pr.total()
 	switch {
 	case ctx.Err() != nil:
-		return 0, ctx.Err()
+		return n, ctx.Err()
 	case stalled:
-		return 0, NewError(ReasonIO, fmt.Sprintf("上传超过 %s 没有进展，已中止", stall), err)
+		return n, NewError(ReasonIO, fmt.Sprintf("上传超过 %s 没有进展，已中止", stall), err)
 	case err != nil:
-		return 0, Classify(err)
+		return n, Classify(err)
 	}
-	return pr.total(), nil
+	return n, nil
 }
 
 // watchStall 在 stall 时长内没有读取进展时调用 cancel，返回是否因无进展而取消。
