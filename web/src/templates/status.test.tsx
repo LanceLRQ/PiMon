@@ -11,8 +11,9 @@ describe('resolveStatus（Ruling 15）', () => {
       expect(resolveStatus(s, 'ok')).toEqual({ kind: 'level', level: s })
     }
   })
-  it('stale/offline/maintenance 保留 report_status 的级别并标灰显', () => {
+  it('stale/offline/dormant/maintenance 保留 report_status 的级别并标灰显', () => {
     expect(resolveStatus('stale', 'warning')).toEqual({ kind: 'dim', level: 'warning', reason: 'stale' })
+    expect(resolveStatus('dormant', 'ok')).toEqual({ kind: 'dim', level: 'ok', reason: 'dormant' })
     expect(resolveStatus('offline', 'critical')).toEqual({ kind: 'dim', level: 'critical', reason: 'offline' })
     expect(resolveStatus('maintenance', undefined)).toEqual({ kind: 'dim', level: 'unknown', reason: 'maintenance' })
   })
@@ -41,7 +42,8 @@ describe('StatusMarker', () => {
   })
 })
 
-const states = ['ok', 'warning', 'critical', 'unknown', 'error', 'stale', 'offline', 'maintenance', 'unconfigured', 'broken']
+const states = ['ok', 'warning', 'critical', 'unknown', 'error', 'stale', 'offline', 'dormant', 'maintenance', 'unconfigured', 'broken']
+const dimIconNames: Record<string, string> = { stale: 'clock', offline: 'wifi-off', dormant: 'moon', maintenance: 'wrench' }
 
 describe('WidgetFrame：每种展示状态都有形状或图标', () => {
   it.each(states)('展示状态 %s', async (ds) => {
@@ -60,10 +62,10 @@ describe('WidgetFrame：每种展示状态都有形状或图标', () => {
       expect(container.querySelector('[data-marker]')).not.toBeNull()
       expect(screen.getByText('内容')).toBeInTheDocument()
     }
-    if (['stale', 'offline', 'maintenance'].includes(ds)) {
+    if (ds in dimIconNames) {
       expect(frame.getAttribute('data-dimmed')).toBe('true')
       expect(frame.getAttribute('data-status-level')).toBe('warning')
-      expect(container.querySelector(`[data-status-icon="${ds === 'stale' ? 'clock' : ds === 'offline' ? 'wifi-off' : 'wrench'}"]`)).not.toBeNull()
+      expect(container.querySelector(`[data-status-icon="${dimIconNames[ds]}"]`)).not.toBeNull()
       expect((container.querySelector('[data-widget-body]') as HTMLElement).style.opacity).toBe('var(--state-dim-opacity)')
       expect(container.querySelector('time')).not.toBeNull()
     } else {

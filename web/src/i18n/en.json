@@ -1148,6 +1148,7 @@
     "broken": "Broken reference",
     "stale": "Stale",
     "offline": "Offline",
+    "dormant": "Dormant",
     "maintenance": "Maintenance",
     "templatePending": "This template will be available in a later version",
     "never": "Never",

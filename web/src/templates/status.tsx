@@ -1,14 +1,15 @@
 import type { ReactNode } from 'react'
-import { CircleHelp, CircleX, Clock, OctagonAlert, TriangleAlert, Unlink, CirclePlus, Wrench, WifiOff, type LucideIcon } from 'lucide-react'
+import { CircleHelp, CircleX, Clock, Moon, OctagonAlert, TriangleAlert, Unlink, CirclePlus, Wrench, WifiOff, type LucideIcon } from 'lucide-react'
 import { statusLevels, type StatusLevel } from '@/themes/types'
 import { useThemeRuntime } from './theme-context'
 
 // 屏幕端主题化状态组件（Ruling 15、设计 10.3）：
 //   ok/warning/critical/unknown/error —— 主题的 marker（形）+ weight（强调）+ 色；
-//   stale/offline/maintenance —— 灰显叠加（--state-dim-opacity）+ 时间戳 + 图标，保留底层 report_status 的 marker；
+//   stale/offline/dormant/maintenance —— 灰显叠加（--state-dim-opacity）+ 时间戳 + 图标，保留底层 report_status 的 marker；
 //   unconfigured/broken —— 占位卡（--state-placeholder-border）。
 
-export type DimReason = 'stale' | 'offline' | 'maintenance'
+// dormant（设备离线且允许离线）本期只接灰显，三主题的完整映射在 M2f。
+export type DimReason = 'stale' | 'offline' | 'dormant' | 'maintenance'
 export type PlaceholderReason = 'unconfigured' | 'broken'
 
 export type DisplayStatus =
@@ -20,7 +21,7 @@ export function resolveStatus(displayState: string, reportStatus: string | undef
   if ((statusLevels as readonly string[]).includes(displayState)) {
     return { kind: 'level', level: displayState as StatusLevel }
   }
-  if (displayState === 'stale' || displayState === 'offline' || displayState === 'maintenance') {
+  if (displayState === 'stale' || displayState === 'offline' || displayState === 'dormant' || displayState === 'maintenance') {
     const level = reportStatus === 'ok' || reportStatus === 'warning' || reportStatus === 'critical' ? reportStatus : 'unknown'
     return { kind: 'dim', level, reason: displayState }
   }
@@ -73,6 +74,7 @@ const levelIcons: Record<Exclude<StatusLevel, 'ok'>, [string, LucideIcon]> = {
 const dimIcons: Record<DimReason, [string, LucideIcon]> = {
   stale: ['clock', Clock],
   offline: ['wifi-off', WifiOff],
+  dormant: ['moon', Moon],
   maintenance: ['wrench', Wrench],
 }
 export const placeholderIcons: Record<PlaceholderReason, [string, LucideIcon]> = {

@@ -1148,6 +1148,7 @@
     "broken": "引用失效",
     "stale": "过期",
     "offline": "离线",
+    "dormant": "休眠",
     "maintenance": "维护中",
     "templatePending": "模板将在后续版本提供",
     "never": "从未",
