@@ -103,7 +103,7 @@ type run struct {
 
 // Run 按固定顺序执行安装；任何一步失败立即停止，并输出原因与已完成的步骤。
 func Run(ctx context.Context, d Deps, opts Options) error {
-	r := &run{Deps: d, opts: opts, rep: &report{out: d.Out}}
+	r := &run{Deps: d, opts: opts, rep: newReport(d.Out)}
 	steps := []struct {
 		name string
 		fn   func(context.Context) error
