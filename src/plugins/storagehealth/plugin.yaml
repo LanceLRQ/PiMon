@@ -1,0 +1,94 @@
+id: storage-health
+version: 1.0.0
+api_version: 1
+name: {zh: 存储健康, en: Storage health}
+kind: source
+runtime: builtin
+runs_on: [agent]
+interval: 600s
+timeout: 120s
+config_schema:
+  - key: smart
+    type: boolean
+    title: {zh: 检查 SMART, en: Check SMART}
+    help: {zh: "经「sudo -n smartctl」读取磁盘 SMART，需要系统模式安装并写入 sudoers。休眠中的盘不会被唤醒。", en: "Reads disk SMART via sudo -n smartctl; requires system-mode install with sudoers. Disks in standby are not woken up."}
+    default: true
+  - key: raid
+    type: boolean
+    title: {zh: 检查 mdadm 阵列, en: Check mdadm arrays}
+    default: true
+  - key: btrfs
+    type: boolean
+    title: {zh: 检查 Btrfs, en: Check Btrfs}
+    default: true
+  - key: smart_devices
+    type: list
+    title: {zh: SMART 设备, en: SMART devices}
+    help: {zh: "留空自动发现。可填「/dev/sda」「/dev/nvme0」或「/dev/disk/by-id/…」，会解析为规范设备名后再检查。", en: "Leave empty to auto-discover. Accepts /dev/sda, /dev/nvme0 or /dev/disk/by-id/…, resolved to the canonical device name."}
+    pattern: "^/dev/[A-Za-z0-9._:/@+\\-]+$"
+    visible_when: {smart: true}
+  - key: sat_devices
+    type: list
+    title: {zh: 改用「-d sat」的设备, en: Devices using -d sat}
+    help: {zh: "USB 硬盘盒里的盘常需要「-d sat」才能读到 SMART，如「/dev/sdb」。", en: "Disks in USB enclosures often need -d sat to read SMART, e.g. /dev/sdb."}
+    pattern: "^/dev/[A-Za-z0-9._:/@+\\-]+$"
+    visible_when: {smart: true}
+  - key: temp_warn
+    type: number
+    title: {zh: 硬盘温度警告阈值（℃）, en: Disk temperature warning (°C)}
+    help: {zh: 用于 SATA/SAS 硬盘与 SSD, en: For SATA/SAS drives}
+    default: 50
+    min: 0
+    max: 150
+    visible_when: {smart: true}
+  - key: temp_critical
+    type: number
+    title: {zh: 硬盘温度严重阈值（℃）, en: Disk temperature critical (°C)}
+    default: 60
+    min: 0
+    max: 150
+    visible_when: {smart: true}
+  - key: nvme_temp_warn
+    type: number
+    title: {zh: NVMe 温度警告阈值（℃）, en: NVMe temperature warning (°C)}
+    default: 70
+    min: 0
+    max: 150
+    visible_when: {smart: true}
+  - key: nvme_temp_critical
+    type: number
+    title: {zh: NVMe 温度严重阈值（℃）, en: NVMe temperature critical (°C)}
+    default: 80
+    min: 0
+    max: 150
+    visible_when: {smart: true}
+  - key: scrub_max_age_days
+    type: number
+    title: {zh: scrub 过期天数, en: Scrub max age (days)}
+    help: {zh: 超过这么多天没有执行 scrub 时提示警告, en: Warn when the last scrub is older than this}
+    default: 35
+    min: 1
+    max: 3650
+    visible_when: {btrfs: true}
+outputs:
+  - {key: "smart[*]",         type: state,  title: {zh: 磁盘健康, en: Disk health}}
+  - {key: "smart_temp[*]",    type: gauge,  title: {zh: 磁盘温度, en: Disk temperature}}
+  - {key: "smart_realloc[*]", type: number, title: {zh: 重映射扇区, en: Reallocated sectors}}
+  - {key: "smart_pending[*]", type: number, title: {zh: 待定扇区, en: Pending sectors}}
+  - {key: "smart_hours[*]",   type: number, title: {zh: 通电时长, en: Power-on hours}}
+widgets:
+  - id: disks
+    name: {zh: 磁盘健康灯组, en: Disk health lights}
+    sizes:
+      2x2: {template: status-grid, bind: {items: {item: "smart[*]"}}}
+      4x2: {template: status-grid, bind: {items: {item: "smart[*]"}}}
+  - id: disk-list
+    name: {zh: 磁盘健康列表, en: Disk health list}
+    sizes:
+      2x2: {template: list, bind: {items: {item: "smart[*]"}}}
+      4x2: {template: list, bind: {items: {item: "smart[*]"}}}
+  - id: disk-temps
+    name: {zh: 磁盘温度, en: Disk temperatures}
+    sizes:
+      2x2: {template: list, bind: {items: {item: "smart_temp[*]"}}}
+      4x2: {template: list, bind: {items: {item: "smart_temp[*]"}}}

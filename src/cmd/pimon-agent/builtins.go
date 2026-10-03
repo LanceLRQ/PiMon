@@ -8,6 +8,7 @@ import (
 	_ "github.com/LanceLRQ/PiMon/src/plugins/httpcheck"
 	_ "github.com/LanceLRQ/PiMon/src/plugins/httpjson"
 	_ "github.com/LanceLRQ/PiMon/src/plugins/ping"
+	_ "github.com/LanceLRQ/PiMon/src/plugins/storagehealth"
 	_ "github.com/LanceLRQ/PiMon/src/plugins/systemd"
 	_ "github.com/LanceLRQ/PiMon/src/plugins/tcpcheck"
 )
