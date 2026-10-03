@@ -956,7 +956,7 @@
         "passphrase": "Backup passphrase",
         "passphraseNew": "At least 12 characters",
         "passphraseWarn": "If the passphrase is lost, encrypted backups cannot be recovered.",
-        "passphraseChanged": "Backup passphrase changed: later uploads use the new passphrase; backups already uploaded still need the old one to restore.",
+        "passphraseChanged": "Passphrase changed: later uploads use the new passphrase, and backups already uploaded still need the old one to restore. If the passphrase is lost, encrypted backups cannot be recovered.",
         "keep": "Remote copies to keep",
         "keepUnit": "copies",
         "keepHelp": "Only the most recent copies are kept on the remote. NAS space is about copies × size of one backup.",
@@ -964,7 +964,8 @@
         "testing": "Testing…",
         "testOk": "Connected ({{type}}, {{ms}} ms)",
         "testFailed": "Connection failed: {{reason}}",
-        "loadFailed": "Could not read the NAS backup settings; defaults are shown. Review before saving."
+        "loadFailed": "Could not read the saved NAS backup settings. The NAS fields are disabled and will not be saved.",
+        "reload": "Reload"
       }
     },
     "reason": {

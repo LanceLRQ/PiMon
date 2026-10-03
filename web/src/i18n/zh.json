@@ -956,7 +956,7 @@
         "passphrase": "备份口令",
         "passphraseNew": "至少 12 个字符",
         "passphraseWarn": "口令丢失将无法恢复已加密的备份。",
-        "passphraseChanged": "备份口令已更改：之后上传的备份用新口令加密，已上传的旧备份仍需旧口令才能恢复。",
+        "passphraseChanged": "口令已更改：此后上传的备份用新口令加密，已上传的旧备份仍需旧口令才能恢复；口令丢失将无法恢复已加密的备份。",
         "keep": "远端保留份数",
         "keepUnit": "份",
         "keepHelp": "远端只保留最近这些份。NAS 空间约为「份数 × 单份大小」。",
@@ -964,7 +964,8 @@
         "testing": "测试中…",
         "testOk": "连接成功（{{type}}，用时 {{ms}} 毫秒）",
         "testFailed": "连接失败：{{reason}}",
-        "loadFailed": "无法读取 NAS 备份配置，以下为默认值；保存前请确认。"
+        "loadFailed": "无法读取已保存的 NAS 备份配置，NAS 部分已禁用且不会被保存。",
+        "reload": "重新读取"
       }
     },
     "reason": {

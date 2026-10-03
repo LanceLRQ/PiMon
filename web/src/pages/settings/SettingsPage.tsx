@@ -63,6 +63,8 @@ export function SettingsPage() {
   const [remoteBase, setRemoteBase] = useState<BackupRemoteInput>(defaultRemoteForm)
   const [remoteDraft, setRemoteDraft] = useState<BackupRemoteInput>(defaultRemoteForm)
   const [remoteLoadFailed, setRemoteLoadFailed] = useState(false)
+  // 保存成功且口令已更改后的持久提示，下次编辑 NAS 表单、放弃或离开页面后消失
+  const [passphraseNotice, setPassphraseNotice] = useState(false)
   const [remoteTest, setRemoteTest] = useState<NasTestState>({ testing: false, result: null })
 
   const load = useCallback(async () => {
@@ -104,7 +106,8 @@ export function SettingsPage() {
   }, [load, loadBackups, loadRemote])
 
   const dirty = useMemo(() => (base && draft ? dirtyKeys(draft, base) : []), [base, draft])
-  const remoteDirty = useMemo(() => remoteDirtyKeys(remoteDraft, remoteBase), [remoteDraft, remoteBase])
+  // 读取失败时 NAS 不参与脏计数与保存：后端 PUT 是整体替换，拿默认值覆盖已保存配置会丢数据
+  const remoteDirty = useMemo(() => (remoteLoadFailed ? [] : remoteDirtyKeys(remoteDraft, remoteBase)), [remoteLoadFailed, remoteDraft, remoteBase])
   const dirtyCount = dirty.length + remoteDirty.length
   const isDirty = dirtyCount > 0
   const changed = (k: SettingsKey) => dirty.includes(k)
@@ -180,7 +183,7 @@ export function SettingsPage() {
       setRemoteLoadFailed(false)
       setRemoteTest({ testing: false, result: null })
       toast.show(t('settings.saved'))
-      if (saved.passphrase_changed) toast.show(t('settings.backup.remote.passphraseChanged'), 'warn')
+      setPassphraseNotice(saved.passphrase_changed)
     } catch (e) {
       if (isApiError(e) && e.code === 'validation.failed') {
         setRemoteFieldErrors((e.details.fields ?? {}) as Record<string, string>)
@@ -228,6 +231,7 @@ export function SettingsPage() {
 
   function updateRemote(patch: Partial<BackupRemoteInput>, clearKeys: string[] = []) {
     setRemoteDraft((d) => ({ ...d, ...patch }))
+    setPassphraseNotice(false)
     if (clearKeys.length > 0) {
       setFieldErrors((prev) => {
         const n = { ...prev }
@@ -241,6 +245,7 @@ export function SettingsPage() {
     if (!base) return
     setDraft(structuredClone(base))
     setRemoteDraft(remoteBase)
+    setPassphraseNotice(false)
     setFieldErrors({})
     setFailure(null)
     toast.show(t('settings.discarded'))
@@ -492,6 +497,8 @@ export function SettingsPage() {
               form={remoteDraft}
               saved={remoteSaved}
               loadFailed={remoteLoadFailed}
+              passphraseNotice={passphraseNotice}
+              onRetry={() => void loadRemote()}
               changedKeys={remoteDirty}
               errorText={(k) => errorText(remoteErrorPrefix + k)}
               test={remoteTest}

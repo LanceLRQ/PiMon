@@ -18,6 +18,9 @@ interface Props {
   // 已保存的配置，用来判断密钥是否已设置；读取失败时为 null
   saved: BackupRemote | null
   loadFailed: boolean
+  // 刚保存且口令已更改：在口令字段旁显示持久提示
+  passphraseNotice: boolean
+  onRetry(): void
   changedKeys: (keyof BackupRemoteInput)[]
   errorText(key: string): string | null
   test: NasTestState
@@ -27,7 +30,10 @@ interface Props {
 
 // 设置页「NAS 备份」的表单行：启用、类型、随类型切换的字段、备份口令、保留份数、测试连接。
 // 草稿与保存由 SettingsPage 统一管理，这里只负责渲染与回调。
-export function NasBackupRows({ form, saved, loadFailed, changedKeys, errorText, test, onChange, onTest }: Props) {
+const smbKeys = ['smb_host', 'smb_port', 'smb_share', 'smb_dir', 'smb_username', 'smb_password', 'smb_domain']
+const webdavKeys = ['webdav_url', 'webdav_dir', 'webdav_username', 'webdav_password']
+
+export function NasBackupRows({ form, saved, loadFailed, passphraseNotice, onRetry, changedKeys, errorText, test, onChange, onTest }: Props) {
   const { t } = useTranslation()
   const mark = (...keys: (keyof BackupRemoteInput)[]) => ({
     changed: keys.some((k) => changedKeys.includes(k)),
@@ -55,10 +61,15 @@ export function NasBackupRows({ form, saved, loadFailed, changedKeys, errorText,
       {loadFailed && (
         <div className="border-t border-border px-4 py-3">
           <Note tone="warn" role="status">
-            {t('settings.backup.remote.loadFailed')}
+            {t('settings.backup.remote.loadFailed')}{' '}
+            <button type="button" className="underline underline-offset-2" onClick={onRetry}>
+              {t('settings.backup.remote.reload')}
+            </button>
           </Note>
         </div>
       )}
+      {/* 读取失败时整组字段与测试按钮禁用（fieldset 向下传递 disabled） */}
+      <fieldset disabled={loadFailed} className="m-0 contents border-0 p-0">
       <FormRow label={t('settings.backup.nas')} fieldKey="backup.remote.enabled" {...mark('enabled')}>
         <div className="flex items-center gap-3">
           <Switch checked={form.enabled} onChange={(enabled) => onChange({ enabled })} ariaLabel={t('settings.backup.remote.enabled')} />
@@ -70,7 +81,7 @@ export function NasBackupRows({ form, saved, loadFailed, changedKeys, errorText,
         <Segmented
           ariaLabel={t('settings.backup.remote.type')}
           value={isSmb ? 'smb' : 'webdav'}
-          onChange={(type) => onChange({ type }, ['type'])}
+          onChange={(type) => onChange({ type }, ['type', ...(type === 'webdav' ? smbKeys : webdavKeys)])}
           options={[
             { value: 'smb', label: 'SMB', title: 'SMB' },
             { value: 'webdav', label: 'WebDAV', title: 'WebDAV' },
@@ -182,6 +193,11 @@ export function NasBackupRows({ form, saved, loadFailed, changedKeys, errorText,
         />
         {err('passphrase')}
         <FieldHelp className="text-status-warn">{t('settings.backup.remote.passphraseWarn')}</FieldHelp>
+        {passphraseNotice && (
+          <Note tone="warn" role="status" className="mt-2">
+            {t('settings.backup.remote.passphraseChanged')}
+          </Note>
+        )}
       </FormRow>
       <FormRow label={t('settings.backup.remote.keep')} fieldKey="keep" htmlFor="nas-keep" {...mark('keep')}>
         <div className="flex items-center gap-2">
@@ -212,6 +228,7 @@ export function NasBackupRows({ form, saved, loadFailed, changedKeys, errorText,
           )}
         </div>
       </FormRow>
+      </fieldset>
     </>
   )
 }
