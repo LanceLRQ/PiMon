@@ -1,5 +1,5 @@
 // Package hubself 是「中枢自身」内置插件：输出写库错误、数据目录剩余空间、推送失败、
-// 在线 agent、屏幕在线与运行时长，并可向外部心跳地址（dead man's switch）发 GET。
+// 在线 agent、屏幕在线、运行时长与异地备份状态，并可向外部心跳地址（dead man's switch）发 GET。
 //
 // 统计来源在 app 装配完成后通过 Bind 晚绑定；未绑定时相关数据项一律不输出，
 // 不会用 0 冒充真实值。
@@ -147,6 +147,11 @@ func (p *Plugin) fillItems(rep *report.Report, st Stats, now time.Time, last *re
 		report.Item{Key: keyUptime, Type: report.TypeNumber, Unit: "s", Value: ptr(max(0, now.Sub(st.StartedAt()).Seconds()))},
 	)
 	rep.Items = append(rep.Items, p.metricItems(st, now)...)
+	// 异地备份失败或过期要让屏幕看到，因此与磁盘项一样拉高整份报告的状态（未知不拉高）。
+	if it, ok := remoteBackupItem(st, now); ok {
+		rep.Items = append(rep.Items, it)
+		rep.Status = worse(rep.Status, it.State)
+	}
 	// 写库错误是累计计数：只在比上次报告增长时才告警，一次瞬时失败不会让状态永久停在 warning；
 	// 没有上次报告时无从比较，不升级。
 	if grew(last, writeErrs) {

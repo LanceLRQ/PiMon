@@ -62,7 +62,11 @@
     "hub-self": {
       "online": "Online",
       "offline": "Offline",
-      "unknown": "Unknown"
+      "unknown": "Unknown",
+      "backup_ok": "OK",
+      "backup_failed": "Failed",
+      "backup_stale": "No success in 48 h",
+      "backup_never": "Never succeeded"
     },
     "weather": {
       "city_required": "Please choose a city"
@@ -124,7 +128,16 @@
     },
     "not_found": "Resource not found",
     "backup": {
-      "exists": "A backup with the same reason already exists for this second. Try again shortly."
+      "exists": "A backup with the same reason already exists for this second. Try again shortly.",
+      "remote_disabled": "Remote backup is not enabled; enable and save it in Settings first",
+      "remote_failed": "Remote backup failed",
+      "no_local": "There is no local backup to upload yet; create one first",
+      "remote_reason": {
+        "connect": "Cannot reach the remote; check the address, port and network",
+        "auth": "Wrong username or password",
+        "not_writable": "The directory does not exist and cannot be created, or is not writable",
+        "io": "Read/write error on the remote, or no progress for too long"
+      }
     },
     "plugin": {
       "not_found": "Plugin not found",

@@ -17,6 +17,7 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/backup/remote"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/devices"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/history"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
@@ -180,6 +181,15 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 	if err := deps.ScreenTokens.EnsureExists(ctx); err != nil {
 		t.Fatal(err)
 	}
+	deps.RemoteBackups = remote.NewService(remote.ServiceConfig{
+		Repo: remote.NewRepo(db, box, clk), Local: deps.Backups, Clock: clk, WorkFactor: 10,
+	})
+	remoteCtx, remoteStop := context.WithCancel(context.Background())
+	remoteDone := deps.RemoteBackups.Start(remoteCtx)
+	t.Cleanup(func() {
+		remoteStop()
+		<-remoteDone
+	})
 	srv := httptest.NewServer(New(deps))
 	t.Cleanup(srv.Close)
 	e := &env{t: t, clk: clk, deps: deps, db: db, refs: refs, plugins: reg, pluginDir: pluginDir, hasher: hasher, srv: srv, tokenFn: tokenPath, ring: ring,

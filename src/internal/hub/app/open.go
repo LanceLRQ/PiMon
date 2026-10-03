@@ -18,6 +18,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/api"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/backup/remote"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/devices"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/history"
@@ -59,6 +60,9 @@ type App struct {
 	sessions    *auth.Sessions
 	screen      *auth.ScreenTokens
 	backups     *backup.Service
+	// remote 是远端（NAS）备份服务；backupAfterDaily 是每日备份成功后的回调，在装配远端服务后赋值。
+	remote           *remote.Service
+	backupAfterDaily func(ctx context.Context, info model.BackupInfo)
 	plugins     *plugins.Registry
 	instances   *instances.Service
 	screens     *screens.Service
@@ -122,6 +126,11 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		return backup.New(backup.Config{
 			DB: a.db, Clock: o.clk, SecretPath: a.cfg.SecretKeyPath(),
 			Dir: a.cfg.BackupDir(), Settings: set,
+			AfterDaily: func(ctx context.Context, info model.BackupInfo) {
+				if a.backupAfterDaily != nil {
+					a.backupAfterDaily(ctx, info)
+				}
+			},
 		})
 	}
 
@@ -165,6 +174,11 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	a.sessions = auth.NewSessions(a.db, o.clk)
 	a.screen = auth.NewScreenTokens(a.db, o.clk, a.cfg.ScreenTokenPath())
 	a.backups = backups(st.Get)
+	a.remote = remote.NewService(remote.ServiceConfig{
+		Repo: remote.NewRepo(a.db, a.box, o.clk), Local: a.backups, Clock: o.clk,
+	})
+	// 每日本地备份成功后，目标已启用时立即上传刚生成的那份（失败只记录不重试）。
+	a.backupAfterDaily = a.remote.AfterDaily
 	a.notifier = sdnotify.New(o.getenv, os.Getpid)
 	a.plugins = plugins.New(plugins.Config{
 		Dir: a.cfg.PluginDir(), DB: a.db, Clock: o.clk, Builtins: runtime.Builtins(),
@@ -260,6 +274,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		},
 		screenStatus: a.screenState.Status,
 		onlineAgents: a.presence.Online,
+		remoteBackup: a.remote.Status,
 	})
 	if err := a.instances.Load(ctx); err != nil {
 		return fmt.Errorf("恢复实例状态: %w", err)
@@ -322,6 +337,7 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		Sessions:       a.sessions,
 		ScreenTokens:   a.screen,
 		Backups:        a.backups,
+		RemoteBackups:  a.remote,
 		Proxies:        proxyStore,
 		Devices:        a.devices,
 		DeviceLogs:     a.dispatcher,

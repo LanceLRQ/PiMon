@@ -62,7 +62,11 @@
     "hub-self": {
       "online": "在线",
       "offline": "离线",
-      "unknown": "未知"
+      "unknown": "未知",
+      "backup_ok": "正常",
+      "backup_failed": "失败",
+      "backup_stale": "超过 48 小时未成功",
+      "backup_never": "尚未成功"
     },
     "weather": {
       "city_required": "请选择城市"
@@ -124,7 +128,16 @@
     },
     "not_found": "资源不存在",
     "backup": {
-      "exists": "同一秒内已有相同原因的备份，请稍后再试"
+      "exists": "同一秒内已有相同原因的备份，请稍后再试",
+      "remote_disabled": "远端备份未启用，请先在设置中启用并保存",
+      "remote_failed": "远端备份失败",
+      "no_local": "还没有可上传的本地备份，请先创建一份备份",
+      "remote_reason": {
+        "connect": "连不上远端，请检查地址、端口与网络",
+        "auth": "用户名或密码错误",
+        "not_writable": "目录不存在且无法创建，或没有写入权限",
+        "io": "读写远端时出错或长时间没有进展"
+      }
     },
     "plugin": {
       "not_found": "插件不存在",

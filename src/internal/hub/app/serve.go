@@ -54,6 +54,13 @@ func (a *App) Serve(ctx context.Context) error {
 		stop()
 		wg.Wait()
 	}()
+	// 远端备份服务以 bg 为生命周期：立即上传不跟随请求 ctx，关停时取消进行中的上传，wg 等它写完记录再关数据库。
+	remoteDone := a.remote.Start(bg)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-remoteDone
+	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()

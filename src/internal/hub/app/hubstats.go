@@ -1,11 +1,14 @@
 package app
 
 import (
+	"context"
 	"time"
 
+	"github.com/LanceLRQ/PiMon/src/internal/hub/backup/remote"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/history"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
+	"github.com/LanceLRQ/PiMon/src/plugins/hubself"
 )
 
 // hubStats 把中枢内部计数适配给 hub-self 插件（hubself.Stats）。
@@ -20,6 +23,27 @@ type hubStats struct {
 	screenStatus func() model.ScreenStatus
 	// onlineAgents 返回在线 agent 数；为空表示来源未接入，按 0 计。
 	onlineAgents func() int
+	// remoteBackup 返回远端备份状态；为空表示来源未接入，按未启用处理（不输出该数据项）。
+	remoteBackup func(ctx context.Context) (remote.Status, error)
+}
+
+// remoteBackupTimeout 是 hub-self 读取远端备份状态（两次小查询）的时限。
+const remoteBackupTimeout = 5 * time.Second
+
+// RemoteBackup 取自远端备份服务的状态，供 hub-self 判定「异地备份」数据项。
+func (s hubStats) RemoteBackup() (hubself.RemoteBackupStatus, error) {
+	if s.remoteBackup == nil {
+		return hubself.RemoteBackupStatus{}, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), remoteBackupTimeout)
+	defer cancel()
+	st, err := s.remoteBackup(ctx)
+	if err != nil {
+		return hubself.RemoteBackupStatus{}, err
+	}
+	return hubself.RemoteBackupStatus{
+		Enabled: st.Enabled, LastAttempt: st.LastAttempt, LastSuccess: st.LastSuccess, LastFailed: st.LastFailed,
+	}, nil
 }
 
 // WriteErrors 是当前状态落盘与历史写盘失败次数之和。

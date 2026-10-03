@@ -8,6 +8,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/agentdist"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/backup/remote"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/devices"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/history"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/httpx"
@@ -38,7 +39,9 @@ type Deps struct {
 	Sessions     *auth.Sessions
 	ScreenTokens *auth.ScreenTokens
 	Backups      *backup.Service
-	Proxies      *proxies.Store
+	// RemoteBackups 是远端（NAS）备份服务，挂在 /api/backups/remote*；为 nil 时不注册这些路由。
+	RemoteBackups *remote.Service
+	Proxies       *proxies.Store
 	// Devices 是设备仓库，GET /api/plugins?machine= 据此判断设备是否存在；为 nil 时任何设备都视为不存在。
 	Devices     *devices.Store
 	Plugins     *plugins.Registry
@@ -96,6 +99,7 @@ func New(d Deps) http.Handler {
 	s.registerScreens(mux)
 	s.registerScreenCtl(mux)
 	s.registerBackup(mux)
+	s.registerBackupRemote(mux)
 	s.registerProxies(mux)
 	s.registerPlugins(mux)
 	s.registerInstances(mux)

@@ -19,6 +19,10 @@ package httpx
 //	origin.mismatch          Origin 校验失败                       403
 //	not_found                资源不存在                            404
 //	backup.exists            同一秒内已有同原因的备份              409
+//	backup.remote_disabled   远端备份未启用，却请求了立即上传      409
+//	backup.remote_failed     远端备份失败（测试连接或上传），details.reason：connect / auth /
+//	                         not_writable / io；details.message 为已脱敏的说明（不含密码与口令）  502
+//	backup.no_local          没有可上传的本地备份                  409
 //	plugin.not_found         插件不存在                            404
 //	plugin.invalid_manifest  manifest 不合法，details.problems 带行号  400（保留码：本期无路由返回，
 //	                         插件目录的加载问题经 GET /api/plugins 的 errors[] 呈现）
@@ -67,6 +71,9 @@ const (
 	CodeOriginMismatch         = "origin.mismatch"
 	CodeNotFound               = "not_found"
 	CodeBackupExists           = "backup.exists"
+	CodeBackupRemoteDisabled   = "backup.remote_disabled"
+	CodeBackupRemoteFailed     = "backup.remote_failed"
+	CodeBackupNoLocal          = "backup.no_local"
 	CodePluginNotFound         = "plugin.not_found"
 	CodePluginInvalidManifest  = "plugin.invalid_manifest"
 	CodeProxyNotFound          = "proxy.not_found"

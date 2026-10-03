@@ -1,12 +1,16 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/LanceLRQ/PiMon/src/internal/hub/backup/remote"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/devices"
 	"github.com/LanceLRQ/PiMon/src/pkg/clock"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
+	"github.com/LanceLRQ/PiMon/src/plugins/hubself"
 )
 
 func TestKioskRSSFromStatus(t *testing.T) {
@@ -77,5 +81,27 @@ func TestOpen装配在线状态并随Close停止(t *testing.T) {
 	a.presence.Disconnected("x", time.Now())
 	if st, _ := a.presence.State("x"); st != model.PresenceDisconnected {
 		t.Errorf("Close 后断开状态 = %q, 期望 disconnected", st)
+	}
+}
+
+func TestHubStatsRemoteBackup(t *testing.T) {
+	var _ hubself.RemoteBackupStats = hubStats{}
+	if st, err := (hubStats{}).RemoteBackup(); err != nil || st.Enabled {
+		t.Fatalf("未接入时应为未启用：%+v %v", st, err)
+	}
+	at := time.Date(2026, 10, 3, 4, 0, 0, 0, time.UTC)
+	s := hubStats{remoteBackup: func(ctx context.Context) (remote.Status, error) {
+		if _, ok := ctx.Deadline(); !ok {
+			t.Error("读取状态应带超时")
+		}
+		return remote.Status{Enabled: true, LastAttempt: &at, LastSuccess: &at}, nil
+	}}
+	st, err := s.RemoteBackup()
+	if err != nil || !st.Enabled || st.LastSuccess == nil || !st.LastSuccess.Equal(at) || st.LastFailed {
+		t.Fatalf("st = %+v %v", st, err)
+	}
+	s.remoteBackup = func(context.Context) (remote.Status, error) { return remote.Status{}, errors.New("db") }
+	if _, err := s.RemoteBackup(); err == nil {
+		t.Fatal("读取失败应返回错误")
 	}
 }

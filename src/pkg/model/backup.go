@@ -88,6 +88,17 @@ type BackupUpload struct {
 	// Size 是实际写到远端的密文字节数；失败时为已写入的字节数。
 	Size    int64 `json:"size"`
 	Success bool  `json:"success"`
-	// Reason 在失败时给出原因（不含密码与口令），成功时为空。
+	// Reason 在失败时给出原因「<connect|auth|not_writable|io>：<消息>」（不含密码与口令）；
+	// 成功时通常为空，上传成功但清理远端过期备份失败时注明清理失败。
 	Reason string `json:"reason"`
+}
+
+// BackupRemoteTest 是测试连接成功时的响应；失败走错误码 backup.remote_failed。
+type BackupRemoteTest struct {
+	// Success 恒为 true（失败不返回本结构）。
+	Success bool `json:"success"`
+	// TargetType 是本次测试的目标类型 smb | webdav。
+	TargetType string `json:"target_type"`
+	// ElapsedMS 是连接、建目录、写入并删除测试文件的总耗时（毫秒）。
+	ElapsedMS int64 `json:"elapsed_ms"`
 }

@@ -23,6 +23,7 @@ outputs:
   - {key: hub.cpu,            type: number, title: {zh: 中枢 CPU 占用, en: Hub CPU usage}}
   - {key: kiosk.chromium_rss, type: number, title: {zh: 屏幕浏览器内存, en: Kiosk Chromium memory}}
   - {key: host.disk_written,  type: number, title: {zh: 数据盘累计写入, en: Data disk bytes written}}
+  - {key: hub.remote_backup,  type: state,  title: {zh: 异地备份, en: Remote backup}}
 widgets:
   - id: health
     name: {zh: 中枢状态, en: Hub health}
