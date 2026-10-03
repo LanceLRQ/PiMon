@@ -2,6 +2,7 @@ package backup
 
 import (
 	"archive/tar"
+	"bufio"
 	"compress/gzip"
 	"errors"
 	"fmt"
@@ -19,13 +20,81 @@ var maxEntrySize int64 = 4 << 30
 
 const sqliteMagic = "SQLite format 3\x00"
 
-// Restore 把备份包还原到 dbPath 与 secretPath。必须在中枢停止后调用。
+// ErrPassphraseOrCorrupt 表示加密备份无法解开：口令错误，或文件已损坏、被截断。
+var ErrPassphraseOrCorrupt = errors.New("口令错误或文件损坏")
+
+// PassphraseFunc 在确认备份已加密后才被调用，返回备份口令。
+type PassphraseFunc func() (string, error)
+
+// Restore 把备份文件还原到 dbPath 与 secretPath，只接受未加密的备份；遇到 age 加密文件时报错。
+// 需要处理加密备份时用 RestoreFile。
+func Restore(archivePath, dbPath, secretPath string) error {
+	return RestoreFile(archivePath, dbPath, secretPath, nil)
+}
+
+// RestoreFile 打开 archivePath 并还原；按文件头识别 age 加密备份，此时调用 askPass 取口令并流式解密，
+// 不在数据目录落解密后的临时文件。askPass 为 nil 时遇到加密备份报错；明文备份不会调用它。
+// 口令错误、密文损坏或被截断统一返回 ErrPassphraseOrCorrupt，且不会改动现有文件。
+func RestoreFile(archivePath, dbPath, secretPath string, askPass PassphraseFunc) error {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("打开备份包: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	br := bufio.NewReader(f)
+	head, _ := br.Peek(len(ageMagic))
+	if !IsAgeHeader(head) {
+		return RestoreFrom(br, dbPath, secretPath)
+	}
+	if askPass == nil {
+		return errors.New("备份文件已加密，需要提供备份口令")
+	}
+	pass, err := askPass()
+	if err != nil {
+		return err
+	}
+	if pass == "" {
+		return errors.New("备份口令不能为空")
+	}
+	dec, err := DecryptReader(br, pass)
+	if err != nil {
+		if errors.Is(err, ErrWrongPassphrase) {
+			return ErrPassphraseOrCorrupt
+		}
+		return fmt.Errorf("%w: %v", ErrPassphraseOrCorrupt, err)
+	}
+	tr := &errTrackReader{r: dec}
+	if err := RestoreFrom(tr, dbPath, secretPath); err != nil {
+		if tr.err != nil {
+			return fmt.Errorf("%w: %v", ErrPassphraseOrCorrupt, tr.err)
+		}
+		return err
+	}
+	return nil
+}
+
+// errTrackReader 记录底层读取遇到的第一个非 EOF 错误，用来区分「解密失败」与「备份内容不合法」。
+type errTrackReader struct {
+	r   io.Reader
+	err error
+}
+
+func (t *errTrackReader) Read(p []byte) (int, error) {
+	n, err := t.r.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) && t.err == nil {
+		t.err = err
+	}
+	return n, err
+}
+
+// RestoreFrom 从 gzip 压缩的 tar 流 r 还原到 dbPath 与 secretPath。必须在中枢停止后调用。
 // 包内只允许出现 pimon.db 与 secret.key 两个普通文件，缺一不可。
 // 先把两个条目都解压并校验（密钥恰为 secret.KeySize 字节、数据库以 SQLite 文件头开头、
-// 单条目不超过 maxEntrySize）到同目录的 .restore 临时文件；该阶段失败不会改动现有文件。
+// 单条目不超过 maxEntrySize）到同目录的 .restore 临时文件，并把整个流读到结尾（含 gzip 校验和与
+// 上游加密流的最后一块认证）；该阶段失败不会改动现有文件。
 // 随后把现有的数据库、-wal、-shm、密钥改名为 .pre-restore 作回退，再把新文件 rename 就位；
 // 替换阶段失败时把 .pre-restore 改回原名，成功后删除它们。
-func Restore(archivePath, dbPath, secretPath string) (err error) {
+func RestoreFrom(r io.Reader, dbPath, secretPath string) (err error) {
 	targets := map[string]string{entryDB: dbPath, entrySecret: secretPath}
 	temps := map[string]string{entryDB: dbPath + ".restore", entrySecret: secretPath + ".restore"}
 	defer func() {
@@ -41,12 +110,7 @@ func Restore(archivePath, dbPath, secretPath string) (err error) {
 			return fmt.Errorf("创建目录: %w", err)
 		}
 	}
-	f, err := os.Open(archivePath)
-	if err != nil {
-		return fmt.Errorf("打开备份包: %w", err)
-	}
-	defer func() { _ = f.Close() }()
-	gz, err := gzip.NewReader(f)
+	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return fmt.Errorf("读取备份包: %w", err)
 	}
@@ -78,6 +142,9 @@ func Restore(archivePath, dbPath, secretPath string) (err error) {
 		if err = validateEntry(hdr.Name, tmp); err != nil {
 			return err
 		}
+	}
+	if _, err = io.Copy(io.Discard, gz); err != nil {
+		return fmt.Errorf("读取备份包结尾: %w", err)
 	}
 	for name := range targets {
 		if !seen[name] {

@@ -120,16 +120,63 @@ func readNewPassword(in io.Reader, out io.Writer, isTerminal bool) (string, erro
 
 // Restore 用备份包覆盖数据库与密钥。不打开数据库，服务必须已停止。
 // 先对数据目录取独占锁，服务仍在运行时拒绝执行。
-func Restore(cfg config.Config, archive string, out io.Writer) error {
+// askPass 在备份文件为 age 加密时才被调用；传 nil 表示只接受未加密备份。
+func Restore(cfg config.Config, archive string, out io.Writer, askPass backup.PassphraseFunc) error {
 	lk, err := LockDataDir(cfg)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = lk.Release() }()
 	_, _ = fmt.Fprintln(out, "注意：请先停止服务，恢复后重新启动")
-	if err := backup.Restore(archive, cfg.DBPath(), cfg.SecretKeyPath()); err != nil {
+	if err := backup.RestoreFile(archive, cfg.DBPath(), cfg.SecretKeyPath(), askPass); err != nil {
 		return err
 	}
 	_, _ = fmt.Fprintln(out, "恢复完成，请重新启动服务")
 	return nil
+}
+
+// PassphraseFromFile 返回从文件读取备份口令的来源；去掉末尾换行，文件不存在或口令为空时报错。
+func PassphraseFromFile(path string) backup.PassphraseFunc {
+	return func() (string, error) {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("读取口令文件: %w", err)
+		}
+		pw := strings.TrimRight(string(b), "\r\n")
+		if pw == "" {
+			return "", errors.New("口令文件内容为空")
+		}
+		return pw, nil
+	}
+}
+
+// PassphrasePrompt 返回交互读取备份口令的来源：终端不回显、只输入一次，非终端读一行。
+// isTerminal 为真时 in 必须是 *os.File；提示写入 out，口令不会写到 out。
+func PassphrasePrompt(in io.Reader, out io.Writer, isTerminal bool) backup.PassphraseFunc {
+	return func() (string, error) {
+		var pw string
+		if isTerminal {
+			f, ok := in.(*os.File)
+			if !ok {
+				return "", errors.New("终端输入必须是文件描述符")
+			}
+			_, _ = fmt.Fprint(out, "备份口令: ")
+			b, err := term.ReadPassword(int(f.Fd()))
+			_, _ = fmt.Fprintln(out)
+			if err != nil {
+				return "", fmt.Errorf("读取备份口令: %w", err)
+			}
+			pw = string(b)
+		} else {
+			line, err := bufio.NewReader(in).ReadString('\n')
+			if err != nil && (!errors.Is(err, io.EOF) || line == "") {
+				return "", fmt.Errorf("读取备份口令: %w", err)
+			}
+			pw = strings.TrimRight(line, "\r\n")
+		}
+		if pw == "" {
+			return "", errors.New("备份口令不能为空")
+		}
+		return pw, nil
+	}
 }

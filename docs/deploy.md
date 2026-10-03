@@ -245,6 +245,22 @@ sudo systemctl start pimon-hub
 
 恢复过程会先校验备份内容，再把当前的数据库和密钥改名为 `*.pre-restore` 保留，换入备份里的文件，成功后才删除这些旧文件。如果恢复中途失败，会自动回退到原来的文件。
 
+#### 恢复加密备份
+
+上传到 NAS 的备份是用备份口令加密的（文件名以 `.age` 结尾，如 `pimon-backup-20261002-200000-daily.tar.gz.age`）。先把它拷到 `pimon` 能读取的位置，再用同一条命令恢复，口令有两种给法：
+
+```bash
+# 口令文件：内容就是口令，末尾换行会被去掉，文件权限建议 600
+sudo -u pimon pimon-hub restore --passphrase-file /var/lib/pimon/backup.pass /var/lib/pimon/backups/pimon-backup-20261002-200000-daily.tar.gz.age
+
+# 交互输入：省略 --passphrase-file，命令会提示「备份口令:」，输入不回显
+sudo -u pimon pimon-hub restore /var/lib/pimon/backups/pimon-backup-20261002-200000-daily.tar.gz.age
+```
+
+hub 按文件头识别加密备份，不看扩展名；未加密的备份即使给了 `--passphrase-file` 也会忽略。解密是边读边解压进行的，不会在数据目录留下解密后的文件。口令错误、文件损坏或被截断时，会报「口令错误或文件损坏」，当前的数据库和密钥原样不动。
+
+备份口令丢失后无法恢复这份备份，加密不留后门，请把口令另外妥善保管。
+
 凡是直接操作数据目录的命令（`setup-code`、`reset-password`、`restore`），一律用 `sudo -u pimon` 运行。
 
 ## 忘记密码
@@ -363,6 +379,11 @@ sudo usermod -aG input <桌面用户>
 ```
 
 另外，管理端系统页会显示 kiosk 是否检测到触摸屏；没有触摸屏的显示器不会有这个功能。
+
+### 异地备份上传失败，或「立即上传」超时
+
+- WebDAV 上传使用分块传输（`Transfer-Encoding: chunked`）。少数 WebDAV 服务或反向代理会拒绝这种请求，表现为上传失败（上传记录里是 I/O 错误）。遇到这种情况请换用 SMB，或检查服务端、反代是否允许分块上传。
+- 经反向代理访问网页时，「立即上传」的请求可能在上传结束前就被代理超时断开、返回错误；上传本身仍在后台继续，不会中止。请以系统页的上传记录为准，不要因为页面报超时就重复点击。
 
 ### 欠压
 
