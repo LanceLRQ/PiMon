@@ -144,6 +144,8 @@ func TestDecode_非法字段返回InvalidMessageError(t *testing.T) {
 		{"run_now 缺 request_id", `{"type":"run_now","instance_id":"i"}`, "run_now", "request_id"},
 		{"logs_get 级别非法", `{"type":"logs_get","request_id":"r","min_level":"zzz"}`, "logs_get", "min_level"},
 		{"ping 缺时间", `{"type":"ping"}`, "ping", "sent_at"},
+		{"hello_ok 缺服务器时间", `{"type":"hello_ok","hub_version":"v"}`, "hello_ok", "server_time"},
+		{"hello_ok 服务器时间为零值", `{"type":"hello_ok","hub_version":"v","server_time":"0001-01-01T00:00:00Z"}`, "hello_ok", "server_time"},
 		{"字段类型错误", `{"type":"assign","version":"x"}`, "assign", ""},
 		{"不是 JSON", `not json`, "", ""},
 		{"缺 type", `{"a":1}`, "", "type"},

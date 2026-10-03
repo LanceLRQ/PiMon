@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/coder/websocket"
 
@@ -698,5 +699,39 @@ func TestDial_TCP阶段ctx取消直接返回ctxErr(t *testing.T) {
 	}
 	if calls.Load() != 0 {
 		t.Fatalf("ctx 取消后仍调用了 Fallback %d 次", calls.Load())
+	}
+}
+
+// reasonAuth 一律以给定原因拒绝，用于验证拨号方对对端原因的截断。
+type reasonAuth struct{ reason string }
+
+func (a reasonAuth) Authenticate(context.Context, agent.Auth) (string, error) {
+	return "", &AuthError{Reason: a.reason}
+}
+
+func (a reasonAuth) Pair(context.Context, agent.Pair) (agent.PairOK, error) {
+	return agent.PairOK{}, &AuthError{Reason: a.reason}
+}
+
+func TestDial_对端超长原因截到64字节且UTF8合法(t *testing.T) {
+	long := strings.Repeat("拒", 40) // 120 字节，第 64 字节落在多字节字符中间
+	d := &dialTarget{auth: &deviceAuth{}}
+	d.listenerFixture = newListenerFixture(t, func(cfg *ListenerConfig) {
+		pin, err := certs.SPKIOf(cfg.Cert)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d.pin = pin
+		cfg.Auth = reasonAuth{reason: long}
+	})
+	var af *AuthFailError
+	if err := dialErr(t, d.config(&recorder{})); !errors.As(err, &af) {
+		t.Fatalf("期望 *AuthFailError，得 %v", err)
+	}
+	if len(af.Reason) > 64 || !utf8.ValidString(af.Reason) || !strings.HasPrefix(long, af.Reason) {
+		t.Fatalf("Reason 未按 64 字节合法截断：%d 字节 %q", len(af.Reason), af.Reason)
+	}
+	if af.Reason != strings.Repeat("拒", 21) {
+		t.Fatalf("Reason = %q，期望保留 21 个完整字符", af.Reason)
 	}
 }

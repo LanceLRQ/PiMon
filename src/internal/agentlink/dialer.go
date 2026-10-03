@@ -38,7 +38,10 @@ var (
 	ErrHandshakeProtocol = errors.New("握手应答不合法")
 )
 
-// AuthFailError 表示监听方回了 auth_fail，Reason 取 agent.Reason*。
+// maxPeerReason 是 AuthFailError.Reason 的最大字节数，超出部分按 UTF-8 合法截断。
+const maxPeerReason = 64
+
+// AuthFailError 表示监听方回了 auth_fail，Reason 取 agent.Reason*（对端可控，截到 maxPeerReason 字节）。
 type AuthFailError struct {
 	Reason string
 }
@@ -382,7 +385,8 @@ func dialHandshake(ctx context.Context, cfg DialerConfig, fc frameConn, remote s
 			}
 		}
 	case *agent.AuthFail:
-		return Peer{}, &AuthFailError{Reason: m.Reason}
+		// 原因来自对端，会进入错误文本与重连日志，截断防止刷长日志。
+		return Peer{}, &AuthFailError{Reason: truncateUTF8(m.Reason, maxPeerReason)}
 	default:
 		return Peer{}, fmt.Errorf("%w：意外的应答类型 %s", ErrHandshakeProtocol, m.MsgType())
 	}

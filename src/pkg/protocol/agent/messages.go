@@ -155,6 +155,9 @@ func (m HelloOK) Validate() error {
 	if m.HubVersion == "" {
 		return invalid(TypeHelloOK, "hub_version", "不能为空")
 	}
+	if m.ServerTime.IsZero() {
+		return invalid(TypeHelloOK, "server_time", "不能为空")
+	}
 	return nil
 }
 

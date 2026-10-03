@@ -501,11 +501,18 @@ func unknownType(b []byte) string {
 		Type string `json:"type"`
 	}
 	_ = json.Unmarshal(b, &head) // Decode 已确认是合法 JSON 且有 type
-	t := head.Type
-	if len(t) > maxLoggedType {
-		t = strings.ToValidUTF8(t[:maxLoggedType], "") + "…"
+	if len(head.Type) > maxLoggedType {
+		return truncateUTF8(head.Type, maxLoggedType) + "…"
 	}
-	return t
+	return head.Type
+}
+
+// truncateUTF8 把 s 截到不超过 n 字节，丢弃被截断的不完整字符，结果保持 UTF-8 合法。
+func truncateUTF8(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return strings.ToValidUTF8(s[:n], "")
 }
 
 func (s *Session) writeLoop() {
