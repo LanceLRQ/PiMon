@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import { http } from '@/api/client'
@@ -14,6 +14,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/ui/toast'
 
 const uploadsLimit = 10
+
+// 无业务错误码的网关类状态：反代超时或后端暂不可达时，上传可能仍在后台进行
+const gatewayStatuses = new Set([408, 502, 503, 504])
 
 type Tone = 'ok' | 'crit' | 'neutral'
 
@@ -44,12 +47,21 @@ export function RemoteBackupSection() {
   const [uploads, setUploads] = useState<BackupUpload[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // 卸载后不再刷新、不 setState、不弹提示
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const loadUploads = useCallback(async () => {
     try {
-      setUploads(await http.get<BackupUpload[]>('/api/backups/remote/uploads', { query: { limit: uploadsLimit } }))
+      const list = await http.get<BackupUpload[]>('/api/backups/remote/uploads', { query: { limit: uploadsLimit } })
+      if (mounted.current) setUploads(list)
     } catch (e) {
-      toast.show(translateErrorValue(i18n, e), 'warn')
+      if (mounted.current) toast.show(translateErrorValue(i18n, e), 'warn')
     }
   }, [i18n, toast])
 
@@ -82,17 +94,16 @@ export function RemoteBackupSection() {
     setBusy(true)
     try {
       const u = await http.post<BackupUpload>('/api/backups/remote/upload')
-      toast.show(t('system.backups.remote.uploaded', { name: u.name }))
+      if (mounted.current) toast.show(t('system.backups.remote.uploaded', { name: u.name }))
     } catch (e) {
-      // 网络中断、超时或反代网关错误（无业务错误码）时上传可能仍在后台进行，以上传记录为准
-      if (isApiError(e) && (e.status === 0 || e.code.startsWith('http.'))) {
-        toast.show(t('system.backups.remote.maybeRunning'), 'warn')
-      } else {
-        toast.show(uploadErrorText(e), 'warn')
-      }
+      // 网络中断、超时或无业务错误码的网关错误时上传可能仍在后台进行，以上传记录为准
+      const maybeRunning = isApiError(e) && (e.status === 0 || (gatewayStatuses.has(e.status) && e.code === `http.${e.status}`))
+      if (mounted.current) toast.show(maybeRunning ? t('system.backups.remote.maybeRunning') : uploadErrorText(e), 'warn')
     } finally {
-      await loadUploads()
-      setBusy(false)
+      if (mounted.current) {
+        await loadUploads()
+        if (mounted.current) setBusy(false)
+      }
     }
   }
 
@@ -103,7 +114,8 @@ export function RemoteBackupSection() {
     return key && i18n.exists(key) ? t('common.withDetail', { summary: base, detail: t(key) }) : base
   }
 
-  const last = uploads[0]
+  // 与 hub-self 一致：最近结果跳过取消记录；全是取消记录则视为尚无结果
+  const last = uploads.find((u) => toneOf(u) !== 'neutral')
   const resultLabel = (u: BackupUpload) => t(u.success ? 'system.backups.remote.ok' : toneOf(u) === 'neutral' ? 'system.backups.remote.canceled' : 'system.backups.remote.failed')
   const timeOf = (u: BackupUpload) => formatDateTime(parseTime(u.finished_at) ?? parseTime(u.started_at) ?? 0, i18n.language)
 

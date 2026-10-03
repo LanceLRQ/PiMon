@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiError, json, mockApi, renderWithApp, type Req } from '@/pages/instances/test-utils'
@@ -51,7 +51,7 @@ function upload(over: Partial<BackupUpload> = {}): BackupUpload {
 interface Opts {
   remote?: BackupRemote | Response
   uploads?: BackupUpload[]
-  extra?: (req: Req) => Response | undefined
+  extra?: (req: Req) => Response | undefined | Promise<Response | undefined>
 }
 
 async function setup({ remote: r = remote(), uploads = [], extra }: Opts = {}) {
@@ -69,6 +69,43 @@ async function setup({ remote: r = remote(), uploads = [], extra }: Opts = {}) {
 }
 
 describe('异地备份小节', () => {
+  it('最近结果跳过取消记录；全是取消记录时显示尚无结果', async () => {
+    await setup({ uploads: [upload({ id: 2, success: false, reason: 'canceled:', reason_code: 'canceled' }), upload({ id: 1 })] })
+    expect(within(await screen.findByTestId('remote-last')).getByText(/^成功 · /)).toBeInTheDocument()
+    expect(within(screen.getByTestId('remote-uploads')).getAllByTestId('remote-upload-row')).toHaveLength(2)
+    cleanup()
+    await setup({ uploads: [upload({ id: 2, success: false, reason: 'canceled:', reason_code: 'canceled' })] })
+    expect(await screen.findByText('尚无上传记录')).toBeInTheDocument()
+  })
+
+  it('无业务码的 500 按普通错误提示，不提示可能仍在后台', async () => {
+    await setup({ extra: (r) => (r.method === 'POST' && r.url === '/api/backups/remote/upload' ? new Response('boom', { status: 500 }) : undefined) })
+    await screen.findByText('smb://nas.lan:445/backup/pimon')
+    await userEvent.click(screen.getByRole('button', { name: '立即上传' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '立即上传' })).toBeEnabled())
+    expect(screen.queryByText(/可能仍在后台进行/)).not.toBeInTheDocument()
+  })
+
+  it('无业务码的 502 提示可能仍在后台', async () => {
+    await setup({ extra: (r) => (r.method === 'POST' && r.url === '/api/backups/remote/upload' ? new Response('bad gateway', { status: 502 }) : undefined) })
+    await screen.findByText('smb://nas.lan:445/backup/pimon')
+    await userEvent.click(screen.getByRole('button', { name: '立即上传' }))
+    expect(await screen.findByText(/可能仍在后台进行/)).toBeInTheDocument()
+  })
+
+  it('上传未完成时卸载：之后完成也不再刷新记录', async () => {
+    let release!: (r: Response) => void
+    const pending = new Promise<Response>((res) => (release = res))
+    const ctx = await setup({ extra: (r) => (r.method === 'POST' && r.url === '/api/backups/remote/upload' ? pending : undefined) })
+    await screen.findByText('smb://nas.lan:445/backup/pimon')
+    await userEvent.click(screen.getByRole('button', { name: '立即上传' }))
+    const before = ctx.api.calls.filter((c) => c.url.startsWith('/api/backups/remote/uploads')).length
+    cleanup()
+    release(json(200, upload({ id: 9 })))
+    await new Promise((r) => setTimeout(r, 30))
+    expect(ctx.api.calls.filter((c) => c.url.startsWith('/api/backups/remote/uploads')).length).toBe(before)
+  })
+
   it('已启用：显示目标与最近一次结果', async () => {
     await setup({ uploads: [upload()] })
     expect(await screen.findByText('smb://nas.lan:445/backup/pimon')).toBeInTheDocument()
