@@ -89,7 +89,8 @@
     "screens": "屏幕管理",
     "layoutEditor": "布局编辑器",
     "schedule": "时段计划与主题",
-    "remote": "远程操作"
+    "remote": "远程操作",
+    "devices": "设备"
   },
   "status": {
     "ok": "正常",
@@ -102,7 +103,9 @@
     "dormant": "休眠",
     "maintenance": "维护中",
     "unconfigured": "未配置",
-    "broken": "引用失效"
+    "broken": "引用失效",
+    "disconnected": "连接中断",
+    "pending": "等待连接"
   },
   "devices": {
     "hub": "中枢",
@@ -118,7 +121,97 @@
       "hub": "需要升级中枢",
       "differs": "版本不同"
     },
-    "needsRepair": "凭据已失效，需要重新配对"
+    "needsRepair": "凭据已失效，需要重新配对",
+    "list": {
+      "sub": "{{count}} 台设备 · 拨入 {{in}} · 拨出 {{out}} · 另有中枢本机",
+      "add": "添加设备",
+      "addTitle": "添加设备",
+      "addPending": "添加设备对话框将在后续任务中提供。",
+      "listTitle": "设备列表",
+      "stripLabel": "设备状态汇总",
+      "strip": {
+        "online": "在线",
+        "disconnected": "连接中断",
+        "offline": "离线",
+        "dormant": "休眠",
+        "pending": "等待连接",
+        "upgrade": "需要升级"
+      },
+      "search": "按名称、主机名、地址搜索",
+      "searchLabel": "搜索设备",
+      "filter": {
+        "label": "按状态筛选",
+        "all": "全部",
+        "online": "在线",
+        "bad": "异常",
+        "dormant": "休眠",
+        "pending": "等待连接"
+      },
+      "cols": {
+        "status": "状态",
+        "name": "名称与角色",
+        "direction": "连接方向",
+        "address": "地址",
+        "platform": "系统 / 架构",
+        "version": "版本",
+        "instances": "实例",
+        "flags": "离线 / 维护",
+        "actions": "操作"
+      },
+      "role": {
+        "hub": "中枢",
+        "server": "服务器",
+        "nas": "NAS",
+        "dev": "开发机",
+        "vps": "VPS"
+      },
+      "dir": {
+        "local": "本机",
+        "dial_in": "拨入",
+        "dial_out": "拨出",
+        "via": "经 {{proxy}}",
+        "direct": "直连"
+      },
+      "flag": {
+        "allowOffline": "允许离线",
+        "noOffline": "不允许离线",
+        "maintenance": "维护中"
+      },
+      "lastSeen": "最后在线 {{ago}}",
+      "neverSeen": "从未连接",
+      "hubUptime": "已运行 {{uptime}}",
+      "placeholder": {
+        "pending": "等待连接",
+        "repairing": "重新配对中（替换 {{name}}）",
+        "dangling": "悬挂占位",
+        "needsUpgrade": "需要升级后才能接入"
+      },
+      "deletePlaceholder": "删除占位",
+      "deleteTitle": "删除占位设备",
+      "deleteBody": "将删除占位「{{name}}」，它还没有成功接入，不影响任何实例与屏幕。",
+      "deleteConfirm": "删除",
+      "deleted": "已删除占位「{{name}}」",
+      "versionDiffers": "与中枢版本不同",
+      "openRow": "查看设备 {{name}} 的详情",
+      "loading": "设备列表加载中",
+      "empty": {
+        "title": "还没有添加设备",
+        "body": "设备是装了 pimon-agent 的机器。添加后，主机指标、Docker、存储健康等插件就能在它们本机上运行，数据汇到这块屏幕。"
+      },
+      "noMatch": "没有匹配的设备，清除筛选或修改搜索词",
+      "clearFilter": "清除筛选",
+      "count": "显示 {{shown}} / {{total}} 台设备",
+      "filtered": " · 已筛选",
+      "pinnedNote": "中枢本机固定第一行，不参与筛选，不可吊销",
+      "legend": {
+        "online": "在线",
+        "disconnected": "连接中断，等待重连",
+        "offline": "离线",
+        "dormant": "休眠，允许离线的设备离线",
+        "pending": "等待连接，配对码未用",
+        "upgrade": "需要升级，agent 或中枢版本过旧"
+      }
+    }
   },
   "errors": {
     "request": {

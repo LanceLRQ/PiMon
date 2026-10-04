@@ -11,10 +11,10 @@ async function withI18n(node: React.ReactNode, lng: 'zh' | 'en' = 'zh') {
 }
 
 describe('状态形状', () => {
-  it('11 种形状两两不同（SVG 内容互不相同）', () => {
-    expect(shapeStates).toHaveLength(11)
+  it('13 种形状两两不同（SVG 内容互不相同）', () => {
+    expect(shapeStates).toHaveLength(13)
     const markup = shapeStates.map((s) => renderToStaticMarkup(<svg>{shapeGeometry[s]}</svg>))
-    expect(new Set(markup).size).toBe(11)
+    expect(new Set(markup).size).toBe(13)
   })
 
   it('渲染出的 DOM 里每种状态的形状内容也互不相同', async () => {
@@ -27,8 +27,8 @@ describe('状态形状', () => {
     )
     const { container } = render(ui)
     const svgs = Array.from(container.querySelectorAll('svg'))
-    expect(svgs).toHaveLength(11)
-    expect(new Set(svgs.map((s) => s.innerHTML)).size).toBe(11)
+    expect(svgs).toHaveLength(13)
+    expect(new Set(svgs.map((s) => s.innerHTML)).size).toBe(13)
   })
 
   it('带可访问名称，随语言变化', async () => {
@@ -54,6 +54,15 @@ describe('状态形状', () => {
     expect(weird.getAttribute('data-shape')).toBe('unknown')
     expect(maint.getAttribute('data-shape')).toBe('maintenance')
     expect(resolveShape('maintenance')).toBe('maintenance')
+  })
+
+  it('连接中断与等待连接是各自独立的专用形状，并按各自名称标注', async () => {
+    const { container } = render(await withI18n(<><StatusShape state="disconnected" /><StatusShape state="pending" /></>))
+    const [dis, pen] = Array.from(container.querySelectorAll('svg'))
+    expect(dis.getAttribute('data-shape')).toBe('disconnected')
+    expect(pen.getAttribute('data-shape')).toBe('pending')
+    expect(dis.getAttribute('aria-label')).toBe('连接中断')
+    expect(pen.getAttribute('aria-label')).toBe('等待连接')
   })
 
   it('休眠是独立的月牙形状并按「休眠」标注，同样属于弱化态', async () => {

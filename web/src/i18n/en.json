@@ -89,7 +89,8 @@
     "screens": "Screen manager",
     "layoutEditor": "Layout editor",
     "schedule": "Schedule & theme",
-    "remote": "Remote control"
+    "remote": "Remote control",
+    "devices": "Devices"
   },
   "status": {
     "ok": "OK",
@@ -102,7 +103,9 @@
     "dormant": "Dormant",
     "maintenance": "Maintenance",
     "unconfigured": "Not configured",
-    "broken": "Broken reference"
+    "broken": "Broken reference",
+    "disconnected": "Connection lost",
+    "pending": "Pending"
   },
   "devices": {
     "hub": "Hub",
@@ -118,7 +121,97 @@
       "hub": "Hub upgrade required",
       "differs": "Version differs"
     },
-    "needsRepair": "Credential is no longer valid. Re-pair the device."
+    "needsRepair": "Credential is no longer valid. Re-pair the device.",
+    "list": {
+      "sub": "{{count}} devices · dial-in {{in}} · dial-out {{out}} · plus the hub itself",
+      "add": "Add device",
+      "addTitle": "Add device",
+      "addPending": "The add-device dialog arrives in a later task.",
+      "listTitle": "Device list",
+      "stripLabel": "Device status summary",
+      "strip": {
+        "online": "Online",
+        "disconnected": "Connection lost",
+        "offline": "Offline",
+        "dormant": "Dormant",
+        "pending": "Waiting to connect",
+        "upgrade": "Upgrade required"
+      },
+      "search": "Search by name, hostname or address",
+      "searchLabel": "Search devices",
+      "filter": {
+        "label": "Filter by status",
+        "all": "All",
+        "online": "Online",
+        "bad": "Problems",
+        "dormant": "Dormant",
+        "pending": "Waiting"
+      },
+      "cols": {
+        "status": "status",
+        "name": "name and role",
+        "direction": "direction",
+        "address": "address",
+        "platform": "os / arch",
+        "version": "version",
+        "instances": "instances",
+        "flags": "offline / maintenance",
+        "actions": "actions"
+      },
+      "role": {
+        "hub": "Hub",
+        "server": "Server",
+        "nas": "NAS",
+        "dev": "Dev machine",
+        "vps": "VPS"
+      },
+      "dir": {
+        "local": "Local",
+        "dial_in": "Dial-in",
+        "dial_out": "Dial-out",
+        "via": "via {{proxy}}",
+        "direct": "direct"
+      },
+      "flag": {
+        "allowOffline": "Offline allowed",
+        "noOffline": "Offline not allowed",
+        "maintenance": "Maintenance"
+      },
+      "lastSeen": "Last seen {{ago}}",
+      "neverSeen": "Never connected",
+      "hubUptime": "Up {{uptime}}",
+      "placeholder": {
+        "pending": "Waiting to connect",
+        "repairing": "Re-pairing (replaces {{name}})",
+        "dangling": "Dangling placeholder",
+        "needsUpgrade": "Upgrade required before it can connect"
+      },
+      "deletePlaceholder": "Delete placeholder",
+      "deleteTitle": "Delete placeholder device",
+      "deleteBody": "This deletes the placeholder \"{{name}}\". It never connected successfully, so no instance or screen is affected.",
+      "deleteConfirm": "Delete",
+      "deleted": "Deleted placeholder \"{{name}}\"",
+      "versionDiffers": "Differs from the hub version",
+      "openRow": "Open details of device {{name}}",
+      "loading": "Loading devices",
+      "empty": {
+        "title": "No devices yet",
+        "body": "A device is a machine running pimon-agent. Once added, plugins such as host metrics, Docker and storage health run on that machine and report to this screen."
+      },
+      "noMatch": "No matching devices. Clear the filter or change the search.",
+      "clearFilter": "Clear filter",
+      "count": "Showing {{shown}} of {{total}} devices",
+      "filtered": " · filtered",
+      "pinnedNote": "The hub is always the first row. It ignores filters and cannot be revoked.",
+      "legend": {
+        "online": "Online",
+        "disconnected": "Connection lost, waiting to reconnect",
+        "offline": "Offline",
+        "dormant": "Dormant: an offline device that may be offline",
+        "pending": "Waiting to connect: pairing code not used yet",
+        "upgrade": "Upgrade required: agent or hub is too old"
+      }
+    }
   },
   "errors": {
     "request": {

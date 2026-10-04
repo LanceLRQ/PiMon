@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 
-// 11 种状态形状（设计 10.3，互不相同）。键与后端 display_state 取值一致。
+// 13 种状态形状（设计 10.3，互不相同）。键与后端 display_state 取值一致。
 export const shapeStates = [
   'ok',
   'warning',
@@ -15,6 +15,9 @@ export const shapeStates = [
   'maintenance',
   'unconfigured',
   'broken',
+  // 设备在线状态专用：连接中断（环形箭头）、等待连接（虚线圈加圆心）
+  'disconnected',
+  'pending',
 ] as const
 
 export type ShapeState = (typeof shapeStates)[number]
@@ -53,6 +56,18 @@ export const shapeGeometry: Record<ShapeState, ReactNode> = {
   ),
   unconfigured: <rect x="4" y="4" width="16" height="16" rx="1" strokeDasharray="3.2 2.6" />,
   broken: <path d="M9 17H7A5 5 0 0 1 7 7M15 7h2a5 5 0 0 1 4 8M8 12h4M2 2l20 20" />,
+  disconnected: (
+    <>
+      <path d="M21 12a9 9 0 1 1-3.2-6.9" />
+      <path d="M21 3.5v5h-5" />
+    </>
+  ),
+  pending: (
+    <>
+      <circle cx="12" cy="12" r="9.5" strokeDasharray="2.4 3.2" />
+      <circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none" />
+    </>
+  ),
 }
 
 const colorClass: Record<ShapeState, string> = {
@@ -67,7 +82,12 @@ const colorClass: Record<ShapeState, string> = {
   maintenance: 'text-status-unknown',
   unconfigured: 'text-status-unknown',
   broken: 'text-status-unknown',
+  disconnected: 'text-status-unknown',
+  pending: 'text-status-unknown',
 }
+
+// 只用于设备在线状态的形状，实例状态图例不含它们
+export const deviceOnlyShapes: readonly ShapeState[] = ['disconnected', 'pending']
 
 // 把后端 display_state 归到某个形状，未知取值回落「未知」
 export function resolveShape(state: string): ShapeState {

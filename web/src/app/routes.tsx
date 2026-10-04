@@ -20,6 +20,7 @@ function page<M>(load: () => Promise<M>, pick: (module: M) => ComponentType) {
   }
 }
 
+const DevicesPage = page(() => import('@/pages/devices/DevicesPage'), (m) => m.DevicesPage)
 const InstanceEditPage = page(() => import('@/pages/instances/InstanceEditPage'), (m) => m.InstanceEditPage)
 const InstanceNewPage = page(() => import('@/pages/instances/InstanceNewPage'), (m) => m.InstanceNewPage)
 const InstancesPage = page(() => import('@/pages/instances/InstancesPage'), (m) => m.InstancesPage)
@@ -57,6 +58,7 @@ export function AppRoutes() {
           <Route path="instances" element={<InstancesPage />} />
           <Route path="instances/new" element={<InstanceNewPage />} />
           <Route path="instances/:id/edit" element={<InstanceEditPage />} />
+          <Route path="devices" element={<DevicesPage />} />
           <Route path="proxies" element={<ProxiesPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="system" element={<SystemPage />} />

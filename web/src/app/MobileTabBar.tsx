@@ -20,13 +20,14 @@ import { useSession } from './session'
 
 const tabClass = 'flex flex-col items-center justify-center gap-[3px] text-[11px]'
 
-// 「更多」菜单里的页面：屏幕分组的其余入口、代理、系统
+// 「更多」菜单里的页面：屏幕分组的其余入口、代理、设备、系统
 const moreLinks = [
   { labelKey: 'nav.sub.screenManage', to: '/screens' },
   { labelKey: 'nav.sub.layoutEditor', to: '/screens/editor' },
   { labelKey: 'nav.sub.schedule', to: '/screens/schedule' },
   { labelKey: 'nav.sub.remote', to: '/screens/remote' },
   { labelKey: 'nav.proxies', to: '/proxies' },
+  { labelKey: 'nav.devices', to: '/devices' },
   { labelKey: 'nav.system', to: '/system' },
 ]
 

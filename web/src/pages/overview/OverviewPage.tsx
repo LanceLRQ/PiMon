@@ -9,7 +9,7 @@ import { selectConnected, selectDevices, selectInstances, useLiveStore, type Liv
 import { formatUptime } from '@/lib/format'
 import { useUptimeSeconds } from '@/lib/use-uptime'
 import type { BackupInfo, Device, Instance, SystemInfo } from '@/types/generated'
-import { agentCounts, deviceAttention, incompatibleText, needsUpgrade } from '@/pages/devices/model'
+import { agentCounts, deviceAttention, hubVersionOf, incompatibleText, needsUpgrade } from '@/pages/devices/model'
 import { useInstanceManager } from '@/pages/instances/actions'
 import { InstanceDetailDrawer } from '@/pages/instances/InstanceDetailDrawer'
 import { InstanceTable } from '@/pages/instances/InstanceTable'
@@ -18,13 +18,12 @@ import { usePlugins } from '@/pages/instances/use-plugins'
 import { Button } from '@/ui/button'
 import { NumberTag } from '@/ui/numbered-label'
 import { PageHeader } from '@/ui/page-header'
-import { shapeStates, StatusShape } from '@/ui/status-shape'
+import { deviceOnlyShapes, shapeStates, StatusShape } from '@/ui/status-shape'
 import { ScreenCard } from './ScreenCard'
 
 const selectSynced = (s: LiveState) => s.synced
 const selectBuild = (s: LiveState) => s.build
 const selectSettings = (s: LiveState) => s.settings
-const hubVersionOf = (build: string | null) => (build && build !== '__PIMON_BUILD__' ? build : null)
 
 // 分布条每格的底色（色通道），形状通道由图例与 title 给出
 const segColor: Record<string, string> = {
@@ -153,7 +152,7 @@ function HealthSummary({ instances, synced }: { instances: Instance[]; synced: b
       </div>
       <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 border-t border-border px-4 py-2 text-[12px] text-muted-foreground">
         <span className="font-mono text-[10.5px]">{t('overview.legend')}</span>
-        {shapeStates.map((s) => (
+        {shapeStates.filter((s) => !deviceOnlyShapes.includes(s)).map((s) => (
           <span key={s} className="inline-flex items-center gap-1">
             <StatusShape state={s} size={12} />
             {t(`status.${s}`)}

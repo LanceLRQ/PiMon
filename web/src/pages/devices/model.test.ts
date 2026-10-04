@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createI18n } from '@/i18n'
 import { device } from './test-utils'
-import { deviceName, incompatibleText, needsUpgrade, presenceView } from './model'
+import { deviceCounts, deviceName, incompatibleText, matchesFilter, matchesQuery, needsUpgrade, placeholderKind, presenceView } from './model'
 
 describe('deviceName', () => {
   const list = [device('d1', { name: 'NAS' })]
@@ -20,10 +20,10 @@ describe('deviceName', () => {
 describe('presenceView', () => {
   it('五种在线状态映射到形状、文案键与级别', () => {
     expect(presenceView(device('a', { presence: 'online' }))).toMatchObject({ shape: 'ok', labelKey: 'devices.presence.online', tone: 'ok' })
-    expect(presenceView(device('a', { presence: 'disconnected' }))).toMatchObject({ shape: 'stale', tone: 'weak' })
+    expect(presenceView(device('a', { presence: 'disconnected' }))).toMatchObject({ shape: 'disconnected', tone: 'weak' })
     expect(presenceView(device('a', { presence: 'offline' }))).toMatchObject({ shape: 'offline', tone: 'warn' })
     expect(presenceView(device('a', { presence: 'dormant' }))).toMatchObject({ shape: 'dormant', tone: 'muted' })
-    expect(presenceView(device('a', { presence: 'pending' }))).toMatchObject({ shape: 'unconfigured', tone: 'neutral' })
+    expect(presenceView(device('a', { presence: 'pending' }))).toMatchObject({ shape: 'pending', tone: 'neutral' })
   })
   it('未知取值按「未知」处理', () => {
     expect(presenceView(device('a', { presence: 'weird' }))).toMatchObject({ shape: 'unknown', tone: 'neutral' })
@@ -66,5 +66,47 @@ describe('incompatibleText', () => {
   it('英文同样可用', async () => {
     const i18n = await createI18n('en')
     expect(incompatibleText(i18n, 'version_too_new')).toContain('Upgrade the hub')
+  })
+})
+
+describe('placeholderKind', () => {
+  const list = [device('old', { name: '旧机' })]
+  it('已确认的设备不是占位', () => {
+    expect(placeholderKind(device('a'), list)).toBeNull()
+  })
+  it('等待连接、重新配对中、悬挂占位、需要升级后才能接入', () => {
+    expect(placeholderKind(device('a', { confirmed: false, presence: 'pending' }), list)).toBe('pending')
+    expect(placeholderKind(device('a', { confirmed: false, replaces: 'old' }), list)).toBe('repairing')
+    expect(placeholderKind(device('a', { confirmed: false, replaces: 'gone' }), list)).toBe('dangling')
+    expect(placeholderKind(device('a', { confirmed: false, incompatible: { reason: 'version_too_old' } as never }), list)).toBe('needsUpgrade')
+  })
+})
+
+describe('筛选、搜索与汇总', () => {
+  const inc = { reason: 'version_too_old' } as never
+  const list = [
+    device('on'),
+    device('dis', { presence: 'disconnected' }),
+    device('off', { presence: 'offline', hostname: 'Ubuntu-Srv' }),
+    device('inc', { presence: 'online', incompatible: inc }),
+    device('dor', { presence: 'dormant' }),
+    device('pen', { presence: 'pending', confirmed: false }),
+  ]
+  it('按状态筛选：异常含连接中断、离线与不兼容', () => {
+    const pick = (f: Parameters<typeof matchesFilter>[1]) => list.filter((d) => matchesFilter(d, f)).map((d) => d.id)
+    expect(pick('all')).toHaveLength(6)
+    expect(pick('online')).toEqual(['on', 'inc'])
+    expect(pick('bad')).toEqual(['dis', 'off', 'inc'])
+    expect(pick('dormant')).toEqual(['dor'])
+    expect(pick('pending')).toEqual(['pen'])
+  })
+  it('搜索名称、主机名、地址，不区分大小写', () => {
+    expect(matchesQuery(list[2], 'ubuntu')).toBe(true)
+    expect(matchesQuery(device('x', { address: '192.168.1.20' }), '1.20')).toBe(true)
+    expect(matchesQuery(list[0], 'zzz')).toBe(false)
+    expect(matchesQuery(list[0], '  ')).toBe(true)
+  })
+  it('汇总条计数', () => {
+    expect(deviceCounts(list, 'v1.0.0')).toMatchObject({ online: 2, disconnected: 1, offline: 1, dormant: 1, pending: 1, upgrade: 1, bad: 3 })
   })
 })

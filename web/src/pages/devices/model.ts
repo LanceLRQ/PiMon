@@ -1,4 +1,5 @@
 import type { i18n as I18n } from 'i18next'
+import { translateError } from '@/i18n/errors'
 import type { ShapeState } from '@/ui/status-shape'
 import type { Device } from '@/types/generated'
 
@@ -31,10 +32,10 @@ export interface PresenceView {
 
 const presenceTable: Record<string, Pick<PresenceView, 'shape' | 'tone'>> = {
   online: { shape: 'ok', tone: 'ok' },
-  disconnected: { shape: 'stale', tone: 'weak' },
+  disconnected: { shape: 'disconnected', tone: 'weak' },
   offline: { shape: 'offline', tone: 'warn' },
   dormant: { shape: 'dormant', tone: 'muted' },
-  pending: { shape: 'unconfigured', tone: 'neutral' },
+  pending: { shape: 'pending', tone: 'neutral' },
 }
 
 export function presenceView(d: Device): PresenceView {
@@ -66,10 +67,14 @@ export function needsUpgrade(d: Device, hubVersion: string | null | undefined): 
   return null
 }
 
-// 不兼容原因的文案：优先按原因取，查不到退回通用文案。
+// 不兼容原因的文案：与 API 错误翻译共用同一实现（按原因取，查不到退回通用文案）。
 export function incompatibleText(i18n: I18n, reason: string | null | undefined): string {
-  const key = `errors.device.incompatible_reason.${reason ?? ''}`
-  return reason && i18n.exists(key) ? i18n.t(key) : i18n.t('errors.device.incompatible')
+  return translateError(i18n, 'device.incompatible', reason ? { reason } : undefined)
+}
+
+// 中枢版本：构建时未注入的占位值视为未知。
+export function hubVersionOf(build: string | null | undefined): string | null {
+  return build && build !== '__PIMON_BUILD__' ? build : null
 }
 
 // 总览口径：只算已确认设备（占位不算），不含中枢。
@@ -90,4 +95,65 @@ export function deviceAttention(d: Device, hubVersion: string | null | undefined
   if (!d.confirmed) return null
   if (needsUpgrade(d, hubVersion)?.level === 'required') return 'upgrade'
   return d.presence === 'offline' ? 'offline' : null
+}
+
+export type PlaceholderKind = 'pending' | 'repairing' | 'dangling' | 'needsUpgrade'
+
+// 未确认占位的种类（已确认的设备返回 null）：
+// replaces 指向现存设备为「重新配对中」，指向已不存在的设备为「悬挂占位」（需要手工删除）；
+// 否则带不兼容原因的为「需要升级后才能接入」，其余为「等待连接」。
+export function placeholderKind(d: Device, devices: readonly Device[]): PlaceholderKind | null {
+  if (d.confirmed) return null
+  if (d.replaces) return devices.some((x) => x.id === d.replaces) ? 'repairing' : 'dangling'
+  return d.incompatible ? 'needsUpgrade' : 'pending'
+}
+
+export type DeviceFilter = 'all' | 'online' | 'bad' | 'dormant' | 'pending'
+
+// 异常：连接中断、离线，或必须升级才能接入。
+export function isDeviceBad(d: Device): boolean {
+  return d.presence === 'disconnected' || d.presence === 'offline' || !!d.incompatible
+}
+
+export function matchesFilter(d: Device, filter: DeviceFilter): boolean {
+  switch (filter) {
+    case 'online':
+      return d.presence === 'online'
+    case 'bad':
+      return isDeviceBad(d)
+    case 'dormant':
+      return d.presence === 'dormant'
+    case 'pending':
+      return d.presence === 'pending'
+    default:
+      return true
+  }
+}
+
+// 搜索名称、主机名、地址（不区分大小写）。
+export function matchesQuery(d: Device, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return [d.name, d.hostname, d.address].some((v) => v.toLowerCase().includes(q))
+}
+
+export interface DeviceCounts {
+  online: number
+  disconnected: number
+  offline: number
+  dormant: number
+  pending: number
+  upgrade: number
+  bad: number
+}
+
+// 汇总条口径：含占位，不含中枢；「需要升级」含两级（必须升级与版本不同）。
+export function deviceCounts(devices: readonly Device[], hubVersion: string | null | undefined): DeviceCounts {
+  const c: DeviceCounts = { online: 0, disconnected: 0, offline: 0, dormant: 0, pending: 0, upgrade: 0, bad: 0 }
+  for (const d of devices) {
+    if (d.presence in c) c[d.presence as 'online']++
+    if (needsUpgrade(d, hubVersion)) c.upgrade++
+    if (isDeviceBad(d)) c.bad++
+  }
+  return c
 }
