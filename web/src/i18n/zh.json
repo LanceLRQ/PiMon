@@ -1261,6 +1261,12 @@
     "offline": "离线",
     "dormant": "休眠",
     "maintenance": "维护中",
+    "host": {
+      "hub": "中枢",
+      "disconnected": "连接中断",
+      "pending": "等待连接",
+      "incompatible": "需要升级"
+    },
     "templatePending": "模板将在后续版本提供",
     "never": "从未",
     "textEmpty": "未设置文本",

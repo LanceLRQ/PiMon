@@ -66,7 +66,14 @@ describe('WidgetFrame：每种展示状态都有形状或图标', () => {
       expect(frame.getAttribute('data-dimmed')).toBe('true')
       expect(frame.getAttribute('data-status-level')).toBe('warning')
       expect(container.querySelector(`[data-status-icon="${dimIconNames[ds]}"]`)).not.toBeNull()
-      expect((container.querySelector('[data-widget-body]') as HTMLElement).style.opacity).toBe('var(--state-dim-opacity)')
+      const body = container.querySelector('[data-widget-body]') as HTMLElement
+      if (ds === 'dormant') {
+        expect(body.style.opacity).toBe('var(--state-dormant-opacity)')
+        expect(body.style.filter).toBe('var(--state-dormant-filter)')
+      } else {
+        expect(body.style.opacity).toBe('var(--state-dim-opacity)')
+        expect(body.style.filter).toBe('')
+      }
       expect(container.querySelector('time')).not.toBeNull()
     } else {
       expect(frame.getAttribute('data-dimmed')).toBe('false')

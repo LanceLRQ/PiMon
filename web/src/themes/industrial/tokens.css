@@ -73,6 +73,8 @@
 
   /* L2 弱化态 */
   --state-dim-opacity: 0.5;
+  --state-dormant-opacity: 0.4;
+  --state-dormant-filter: grayscale(1);
   --state-placeholder-border: 1px dashed var(--p-line-dash);
 
   /* L2 排版 */

@@ -1261,6 +1261,12 @@
     "offline": "Offline",
     "dormant": "Dormant",
     "maintenance": "Maintenance",
+    "host": {
+      "hub": "Hub",
+      "disconnected": "Link lost",
+      "pending": "Waiting",
+      "incompatible": "Upgrade needed"
+    },
     "templatePending": "This template will be available in a later version",
     "never": "Never",
     "textEmpty": "No text set",
