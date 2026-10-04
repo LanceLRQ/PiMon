@@ -92,8 +92,8 @@ describe('设备详情抽屉：属性编辑与保存', () => {
       if (req.method === 'PUT') return json(200, { ...vps, updated_at: '2026-10-05T00:00:00Z' })
     })
     const dlg = await drawer()
-    expect(within(dlg).getByLabelText('地址')).toHaveValue('203.0.113.8:31418')
-    const proxy = within(dlg).getByLabelText('代理')
+    expect(within(dlg).getByLabelText('地址')).toHaveValue('wss://203.0.113.8:31418')
+    const proxy = within(within(dlg).getByRole('region', { name: '属性' })).getByLabelText('代理')
     await waitFor(() => expect(within(proxy).getAllByRole('option').map((o) => o.textContent)).toEqual(['直连', 'HK-01', '家里 http', '只给 hub']))
     expect(proxy).toHaveValue('p1')
     await user.selectOptions(proxy, '')
@@ -103,7 +103,7 @@ describe('设备详情抽屉：属性编辑与保存', () => {
     await user.click(within(dlg).getByRole('button', { name: '保存' }))
     await waitFor(() => expect(api.calls.some((c) => c.method === 'PUT')).toBe(true))
     expect(api.calls.find((c) => c.method === 'PUT')?.body).toEqual({
-      name: 'VPS 东京', role: 'vps', allow_offline: false, maintenance: false, address: 'wss://198.51.100.9:41418', proxy_id: '',
+      name: 'VPS 东京', role: 'vps', allow_offline: false, maintenance: false, address: '198.51.100.9:41418', proxy_id: '',
     })
   })
 
@@ -269,11 +269,11 @@ describe('设备详情抽屉：连接、版本与升级', () => {
     expect(within(dlg).getByRole('link', { name: '在实例列表查看' })).toHaveAttribute('href', '/instances')
   })
 
-  it('吊销与重新配对入口未接入时禁用', async () => {
+  it('吊销设备与重新配对入口可用', async () => {
     await mount([nas], '/devices?open=d1')
     const dlg = await drawer()
-    expect(within(dlg).getByRole('button', { name: /吊销设备/ })).toBeDisabled()
-    expect(within(dlg).getByRole('button', { name: /重新配对/ })).toBeDisabled()
+    expect(within(dlg).getByRole('button', { name: /吊销设备/ })).toBeEnabled()
+    expect(within(dlg).getByRole('button', { name: /重新配对/ })).toBeEnabled()
   })
 })
 

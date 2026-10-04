@@ -1,8 +1,9 @@
 import { CircleArrowUp, HardDrive, Plus, Search } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router'
 import { http } from '@/api/client'
+import { setUnsavedGuardBypass } from '@/app/unsaved-guard'
 import { translateErrorValue } from '@/i18n/errors'
 import { formatUptime } from '@/lib/format'
 import { useNow } from '@/lib/time'
@@ -11,7 +12,7 @@ import { useUptimeSeconds } from '@/lib/use-uptime'
 import { cn } from '@/lib/utils'
 import { useSystemInfo } from '@/pages/system/use-system'
 import { selectDevices, selectInstances, useLiveStore, type LiveState } from '@/store/live-store'
-import type { Proxy } from '@/types/generated'
+import type { Device, Proxy } from '@/types/generated'
 import { Button } from '@/ui/button'
 import { Dialog, DialogClose, DialogContent } from '@/ui/dialog'
 import { NumberTag } from '@/ui/numbered-label'
@@ -21,6 +22,7 @@ import { useToast } from '@/ui/toast'
 import { AddDeviceDialog } from './add/AddDeviceDialog'
 import { DeviceCards, DeviceTableView } from './DeviceTable'
 import { DeviceDrawer } from './detail/DeviceDrawer'
+import { RevokeDialog, type RevokeTarget } from './revoke/RevokeDialog'
 import { deviceCounts, hubVersionOf, matchesFilter, matchesQuery, type DeviceFilter } from './model'
 import { deviceRow, hubRow, type DeviceRow } from './rows'
 
@@ -43,11 +45,17 @@ export function DevicesPage() {
   const uptime = useUptimeSeconds(info?.uptime_seconds)
   const [params, setParams] = useSearchParams()
   const openId = params.get('open')
+  const focusRepair = params.get('repair') === '1'
   const [filter, setFilter] = useState<DeviceFilter>('all')
   const [query, setQuery] = useState('')
   const [addOpen, setAddOpen] = useState(false)
   const [deleting, setDeleting] = useState<DeviceRow | null>(null)
   const [proxies, setProxies] = useState<Proxy[]>([])
+  const [revoking, setRevoking] = useState<RevokeTarget | null>(null)
+  // 正在吊销或重新配对的设备 id：它从列表消失是预期内的，不提示「不存在」
+  const expectedGone = useRef(new Map<string, 'revoke' | 'repair'>())
+  // 拨出重新配对成功后新设备的 id：REST 响应可能先于 WS 推送到达，出现之前不判「不存在」
+  const [awaitingOpen, setAwaitingOpen] = useState<string | null>(null)
 
   const hubVersion = info?.version ?? hubVersionOf(build)
   const needProxies = devices?.some((d) => d.direction === 'dial_out' && d.proxy_id) ?? false
@@ -97,22 +105,62 @@ export function DevicesPage() {
   const dialOut = devices?.filter((d) => d.direction === 'dial_out').length ?? 0
 
   const openById = useCallback(
-    (id: string) => setParams((p) => { const n = new URLSearchParams(p); n.set('open', id); return n }, { replace: true }),
+    (id: string, repair = false) =>
+      setParams((p) => {
+        const n = new URLSearchParams(p)
+        n.set('open', id)
+        if (repair) n.set('repair', '1')
+        else n.delete('repair')
+        return n
+      }, { replace: true }),
     [setParams],
   )
   const onOpen = useCallback((row: DeviceRow) => openById(row.id), [openById])
   const closeDrawer = useCallback(
-    () => setParams((p) => { const n = new URLSearchParams(p); n.delete('open'); return n }, { replace: true }),
+    () => setParams((p) => { const n = new URLSearchParams(p); n.delete('open'); n.delete('repair'); return n }, { replace: true }),
     [setParams],
   )
+  // 吊销、接替之后的关闭不是用户放弃编辑：绕开抽屉的未保存离开保护
+  const closeDrawerQuietly = useCallback(() => {
+    setUnsavedGuardBypass(true)
+    try {
+      closeDrawer()
+    } finally {
+      setUnsavedGuardBypass(false)
+    }
+  }, [closeDrawer])
 
   // ?open= 指向不存在或已吊销的设备：提示并清除参数（设备列表还没加载时先不判断）
-  const missingOpen = devices !== null && openId !== null && openId !== 'hub' && !devices.some((d) => d.id === openId)
+  // 新设备出现后不再需要等待（渲染期调整状态，守卫条件保证只触发一次）
+  if (awaitingOpen && devices?.some((d) => d.id === awaitingOpen)) setAwaitingOpen(null)
+  const missingOpen = devices !== null && openId !== null && openId !== 'hub' && openId !== awaitingOpen && !devices.some((d) => d.id === openId)
   useEffect(() => {
-    if (!missingOpen) return
-    toast.show(t('devices.detail.notFound'), 'warn')
-    closeDrawer()
-  }, [missingOpen, toast, t, closeDrawer])
+    if (!missingOpen || openId === null) return
+    const why = expectedGone.current.get(openId)
+    expectedGone.current.delete(openId)
+    if (why === 'repair' && !awaitingOpen) toast.show(t('devices.repair.replaced'))
+    else if (!why) toast.show(t('devices.detail.notFound'), 'warn')
+    closeDrawerQuietly()
+  }, [missingOpen, openId, awaitingOpen, toast, t, closeDrawerQuietly])
+
+  const requestRevoke = (d: { id: string; name: string }) => {
+    expectedGone.current.set(d.id, 'revoke')
+    setRevoking({ id: d.id, name: d.name })
+  }
+  const cancelRevoke = () => {
+    if (revoking) expectedGone.current.delete(revoking.id)
+    setRevoking(null)
+  }
+  const onRevoked = (target: RevokeTarget) => {
+    toast.show(t('devices.revoke.done', { name: target.name }))
+    setRevoking(null)
+    if (openId === target.id) closeDrawerQuietly()
+  }
+  const onRepaired = (next: Device) => {
+    toast.show(t('devices.repair.done', { name: next.name }))
+    setAwaitingOpen(next.id)
+    openById(next.id)
+  }
 
   async function confirmDelete() {
     const row = deleting
@@ -168,7 +216,13 @@ export function DevicesPage() {
   const legend: [string, string][] = [
     ['ok', 'online'], ['disconnected', 'disconnected'], ['offline', 'offline'], ['dormant', 'dormant'], ['pending', 'pending'],
   ]
-  const handlers = { openId, onOpen, onDeletePlaceholder: setDeleting }
+  const handlers = {
+    openId,
+    onOpen,
+    onDeletePlaceholder: setDeleting,
+    onRepair: (row: DeviceRow) => openById(row.id, true),
+    onRevoke: requestRevoke,
+  }
 
   return (
     <>
@@ -251,7 +305,18 @@ export function DevicesPage() {
         </section>
       </div>
 
-      <DeviceDrawer id={openId} hubVersion={hubVersion} onClose={closeDrawer} />
+      <DeviceDrawer
+        id={openId}
+        hubVersion={hubVersion}
+        onClose={closeDrawer}
+        onRevoke={requestRevoke}
+        onRepairStart={(id) => expectedGone.current.set(id, 'repair')}
+        onRepaired={onRepaired}
+        onViewDetail={openById}
+        focusRepair={focusRepair}
+      />
+
+      <RevokeDialog target={revoking} onCancel={cancelRevoke} onRevoked={onRevoked} />
 
       <AddDeviceDialog open={addOpen} onOpenChange={setAddOpen} onViewDetail={openById} />
 

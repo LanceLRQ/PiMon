@@ -39,7 +39,7 @@ export function HubDetail({ onClose }: { onClose(): void }) {
   return (
     <Sheet open onOpenChange={(o) => !o && onClose()}>
       <SheetContent
-        className="w-[560px]"
+        className="w-[560px] mobile:w-full"
         srTitle={t('devices.detail.hubTitle')}
         header={
           <div className="flex items-center gap-2.5">

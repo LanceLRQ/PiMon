@@ -71,6 +71,30 @@ test('设备页列出中枢与设备，筛选搜索可用，手机宽度显示�
     await page.keyboard.press('Escape')
     await expect(page.getByRole('dialog')).toHaveCount(0)
 
+    // 行菜单重新配对：抽屉滚到重新配对分区，生成新配对码与命令
+    await page.locator('tr', { hasText: '飞牛 NAS' }).getByRole('button', { name: '更多操作' }).click()
+    await page.getByRole('menuitem', { name: '重新配对' }).click()
+    await expect(page).toHaveURL(/open=.*&repair=1/)
+    const repairDrawer = page.getByRole('dialog', { name: /设备详情：飞牛 NAS/ })
+    const repairSection = repairDrawer.getByRole('region', { name: '重新配对' })
+    await repairSection.getByRole('button', { name: '生成新配对码' }).click()
+    await expect(repairSection.locator('pre', { hasText: '/agent/install.sh' })).toContainText('--code ')
+    await expect(repairSection.getByText('等待 agent 连接…')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+
+    // 吊销：行菜单 -> 影响列表 -> 必须输入设备名 -> 吊销后行消失
+    await page.locator('tr', { hasText: '书房小主机' }).getByRole('button', { name: '更多操作' }).click()
+    await page.getByRole('menuitem', { name: '吊销设备' }).click()
+    const revoke = page.getByRole('alertdialog')
+    await expect(revoke.getByText('没有实例')).toBeVisible()
+    await expect(revoke.getByRole('button', { name: '吊销设备' })).toBeDisabled()
+    await revoke.getByLabel('输入设备名确认').fill('书房小主机')
+    await revoke.getByRole('button', { name: '吊销设备' }).click()
+    await expect(page.getByText('已吊销设备「书房小主机」')).toBeVisible()
+    await expect(page.locator('tr', { hasText: '书房小主机' })).toHaveCount(0)
+    await expect(rows).toHaveCount(4)
+
     // ?open= 指向不存在的设备：提示并清除参数
     await page.goto('/devices?open=ghost')
     await expect(page.getByText('设备不存在或已吊销')).toBeVisible()

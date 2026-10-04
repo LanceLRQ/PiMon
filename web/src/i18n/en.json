@@ -209,6 +209,12 @@
         "dormant": "Dormant: an offline device that may be offline",
         "pending": "Waiting to connect: pairing code not used yet",
         "upgrade": "Upgrade required: agent or hub is too old"
+      },
+      "menu": {
+        "label": "More actions",
+        "detail": "View details",
+        "repair": "Re-pair",
+        "revoke": "Revoke device"
       }
     },
     "add": {
@@ -276,7 +282,10 @@
         "view": "View device details",
         "expiresIn": "{{time}}",
         "copyCode": "Copy pairing code",
-        "copyFingerprint": "Copy fingerprint"
+        "copyFingerprint": "Copy fingerprint",
+        "expiredHintRepair": "Choose Regenerate to get a new pairing code.",
+        "codeHelpRepair": "Valid for 15 minutes and single use; after it expires choose Regenerate.",
+        "foundNotOnline": "The device for this pairing was found as \"{{name}}\" but is not online yet ({{status}})"
       },
       "out": {
         "step1": "Install on the VPS and open the pairing window",
@@ -317,7 +326,7 @@
         "detail": "{{reason}} ({{code}})",
         "view": "View the saved device",
         "unreachable": {
-          "tip1": "Open TCP 31418 in the cloud security group and the system firewall, allowing the hub's (or proxy's) egress IP.",
+          "tip1": "Open TCP {{port}} in the cloud security group and the system firewall, allowing the hub's (or proxy's) egress IP.",
           "tip2": "Use the VPS public address, with the same port as --listen (host:port).",
           "tip3": "On the VPS run sudo pimon-agent status to confirm the agent is running in listening mode.",
           "tip4": "If you picked a proxy, test on the Proxies page that it can reach this address."
@@ -410,7 +419,6 @@
       "revoke": "Revoke device",
       "repair": "Re-pair",
       "revert": "Revert all",
-      "soon": "Coming soon",
       "instanceCount": "{{count}}",
       "viewInstances": "View in instances",
       "noInstances": "No instances.",
@@ -459,7 +467,8 @@
       "hubProtocol": "Protocol / minimum compatible",
       "hubPlatforms": "Embedded agent platforms",
       "hubNoEmbed": "None (development build)",
-      "notFound": "Device not found or revoked"
+      "notFound": "Device not found or revoked",
+      "addressPlaceholder": "203.0.113.5:31418 or wss://…"
     },
     "logs": {
       "level": "Log level",
@@ -478,6 +487,43 @@
         "failed": "Failed to fetch logs",
         "offline": "The device is offline; logs cannot be viewed"
       }
+    },
+    "revoke": {
+      "title": "Revoke device \"{{name}}\"?",
+      "body": "Revoking invalidates the device credential at once, drops its session and stops the agent from reconnecting (to bring it back you must pair again). Instances on the device are kept: their location shows \"Reference lost\" and collection is paused until you pick a new location for them.",
+      "loading": "Loading what will be affected…",
+      "failed": "Could not load the impact: {{detail}}",
+      "retry": "Retry",
+      "instances": "Instances",
+      "screens": "Screens using these instances",
+      "rules": "Alert rules",
+      "count": "{{count}}",
+      "countRules": "{{count}}",
+      "noInstances": "No instances",
+      "noScreens": "No screens use them",
+      "noRules": "No alert rules use them",
+      "screenNote": "their widgets show \"Reference lost\"",
+      "inputLabel": "Type the device name to confirm",
+      "inputPrompt": "Type the device name \"{{name}}\" to confirm",
+      "submit": "Revoke device",
+      "submitting": "Revoking…",
+      "done": "Revoked device \"{{name}}\""
+    },
+    "repair": {
+      "title": "Re-pair",
+      "whyTitle": "When to use it:",
+      "why1": "The machine running the agent was reinstalled, or its credential file was lost",
+      "why2": "You suspect the credential leaked and want the old one invalidated at once",
+      "why3": "A different machine replaces this device: instances, device settings and maintenance mode move to the new device, and the old device is replaced once pairing succeeds",
+      "repinIn": "If only the hub certificate was rebuilt (the fingerprint changed) you do not need to re-pair: run {{cmd}} on the device to update the pin (dial-in devices only).",
+      "outNote": "If the VPS only changed IP or port and the certificate is the same, change the address under Properties; no re-pairing needed. If the agent was reinstalled on the VPS and the certificate changed, re-pair here with the new fingerprint and pairing code.",
+      "generate": "Generate new pairing code",
+      "generating": "Generating…",
+      "regenerate": "Regenerate",
+      "issuedFor": "New pairing code for \"{{name}}\"",
+      "submit": "Re-pair",
+      "done": "Re-pairing finished: device \"{{name}}\" replaced the old one",
+      "replaced": "Re-pairing finished: the old device was replaced by the new one"
     }
   },
   "errors": {

@@ -209,6 +209,12 @@
         "dormant": "休眠，允许离线的设备离线",
         "pending": "等待连接，配对码未用",
         "upgrade": "需要升级，agent 或中枢版本过旧"
+      },
+      "menu": {
+        "label": "更多操作",
+        "detail": "查看详情",
+        "repair": "重新配对",
+        "revoke": "吊销设备"
       }
     },
     "add": {
@@ -276,7 +282,10 @@
         "view": "查看设备详情",
         "expiresIn": "{{time}}",
         "copyCode": "复制配对码",
-        "copyFingerprint": "复制指纹"
+        "copyFingerprint": "复制指纹",
+        "expiredHintRepair": "点「重新生成」获取新的配对码。",
+        "codeHelpRepair": "15 分钟内有效，使用一次即作废；过期后点「重新生成」。",
+        "foundNotOnline": "已找到本次配对的设备「{{name}}」，但它还没有上线（{{status}}）"
       },
       "out": {
         "step1": "在 VPS 上安装并开启配对窗口",
@@ -317,7 +326,7 @@
         "detail": "{{reason}}（{{code}}）",
         "view": "查看已保留的设备",
         "unreachable": {
-          "tip1": "云厂商安全组与系统防火墙放行 TCP 31418，来源为中枢（或代理）的出口 IP。",
+          "tip1": "云厂商安全组与系统防火墙放行 TCP {{port}}，来源为中枢（或代理）的出口 IP。",
           "tip2": "地址写的是 VPS 公网地址，端口与 --listen 一致（host:port）。",
           "tip3": "在 VPS 上执行 sudo pimon-agent status，确认 agent 在运行且处于监听模式。",
           "tip4": "选了代理时，到「代理」页测试它能否访问该地址。"
@@ -410,7 +419,6 @@
       "revoke": "吊销设备",
       "repair": "重新配对",
       "revert": "撤销全部",
-      "soon": "即将提供",
       "instanceCount": "{{count}} 个",
       "viewInstances": "在实例列表查看",
       "noInstances": "没有实例。",
@@ -459,7 +467,8 @@
       "hubProtocol": "协议 / 最低兼容",
       "hubPlatforms": "内嵌 agent 平台",
       "hubNoEmbed": "无（开发构建）",
-      "notFound": "设备不存在或已吊销"
+      "notFound": "设备不存在或已吊销",
+      "addressPlaceholder": "203.0.113.5:31418 或 wss://…"
     },
     "logs": {
       "level": "日志级别",
@@ -478,6 +487,43 @@
         "failed": "拉取日志失败",
         "offline": "设备离线，无法查看日志"
       }
+    },
+    "revoke": {
+      "title": "吊销设备「{{name}}」？",
+      "body": "吊销后该设备的凭据立即失效，会话被断开，agent 不能再接入（要接回须重新配对）。设备上的实例会保留，运行位置显示「引用失效」并暂停采集，直到你为它们重新选择运行位置。",
+      "loading": "正在读取影响范围…",
+      "failed": "读取影响范围失败：{{detail}}",
+      "retry": "重试",
+      "instances": "实例",
+      "screens": "引用这些实例的 screen",
+      "rules": "告警规则",
+      "count": "{{count}} 个",
+      "countRules": "{{count}} 条",
+      "noInstances": "没有实例",
+      "noScreens": "没有 screen 引用",
+      "noRules": "没有告警规则引用",
+      "screenNote": "其中的小组件显示「引用失效」",
+      "inputLabel": "输入设备名确认",
+      "inputPrompt": "输入设备名「{{name}}」以确认",
+      "submit": "吊销设备",
+      "submitting": "正在吊销…",
+      "done": "已吊销设备「{{name}}」"
+    },
+    "repair": {
+      "title": "重新配对",
+      "whyTitle": "适用场景：",
+      "why1": "agent 所在机器重装了系统，或本机凭据文件丢了",
+      "why2": "怀疑凭据泄露，想让旧凭据立刻失效",
+      "why3": "换了一台机器接替原设备：实例、设备配置与维护模式迁到新设备，配对成功后旧设备才被接替",
+      "repinIn": "只是中枢证书重建（指纹变了）不需要重新配对：在设备上执行 {{cmd}} 更新钉扎即可（仅拨入设备）。",
+      "outNote": "只是 VPS 换了 IP 或端口、证书没变：直接在「属性」里改地址，不必重新配对。VPS 上 agent 重装、证书变了：用新的指纹与配对码在这里重新配对。",
+      "generate": "生成新配对码",
+      "generating": "正在生成…",
+      "regenerate": "重新生成",
+      "issuedFor": "为「{{name}}」生成的新配对码",
+      "submit": "重新配对",
+      "done": "重新配对完成，设备「{{name}}」已接替旧设备",
+      "replaced": "重新配对完成，旧设备已被新设备接替"
     }
   },
   "errors": {

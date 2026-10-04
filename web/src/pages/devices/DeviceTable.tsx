@@ -1,8 +1,9 @@
-import { CircleArrowUp, Trash2 } from 'lucide-react'
+import { CircleArrowUp, KeyRound, MoreHorizontal, SquareArrowOutUpRight, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { incompatibleText } from './model'
 import { cn } from '@/lib/utils'
 import { Button } from '@/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/ui/dropdown-menu'
 import { StatusShape } from '@/ui/status-shape'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ui/table'
 import type { DeviceRow } from './rows'
@@ -11,6 +12,8 @@ interface Handlers {
   openId: string | null
   onOpen(row: DeviceRow): void
   onDeletePlaceholder(row: DeviceRow): void
+  onRepair(row: DeviceRow): void
+  onRevoke(row: DeviceRow): void
 }
 
 const toneText: Record<string, string> = {
@@ -102,7 +105,35 @@ function DeleteButton({ row, onDelete }: { row: DeviceRow; onDelete(row: DeviceR
   )
 }
 
-export function DeviceTableView({ rows, openId, onOpen, onDeletePlaceholder }: Handlers & { rows: DeviceRow[] }) {
+// 行菜单：查看详情、重新配对、吊销；中枢本机与悬空占位没有菜单（悬空占位用「删除占位」）
+function RowMenu({ row, onOpen, onRepair, onRevoke }: Pick<Handlers, 'onOpen' | 'onRepair' | 'onRevoke'> & { row: DeviceRow }) {
+  const { t } = useTranslation()
+  if (row.hub || row.placeholder === 'dangling') return null
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-sm" className="size-7 rounded-[2px]" aria-label={t('devices.list.menu.label')}>
+          <MoreHorizontal size={15} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-44 rounded-[2px]">
+        <DropdownMenuLabel className="max-w-56 truncate font-mono text-[10.5px] font-normal text-muted-foreground">{row.name}</DropdownMenuLabel>
+        <DropdownMenuItem onSelect={() => onOpen(row)}>
+          <SquareArrowOutUpRight /> {t('devices.list.menu.detail')}
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={row.placeholder !== null} onSelect={() => onRepair(row)}>
+          <KeyRound /> {t('devices.list.menu.repair')}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onSelect={() => onRevoke(row)}>
+          <Trash2 /> {t('devices.list.menu.revoke')}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+export function DeviceTableView({ rows, openId, onOpen, onDeletePlaceholder, onRepair, onRevoke }: Handlers & { rows: DeviceRow[] }) {
   const { t } = useTranslation()
   const roleLabel = useRoleLabel()
   const cols = ['status', 'name', 'direction', 'address', 'platform', 'version', 'instances', 'flags']
@@ -151,7 +182,12 @@ export function DeviceTableView({ rows, openId, onOpen, onDeletePlaceholder }: H
             </TableCell>
             <TableCell mono className="h-auto py-2 text-[12.5px]">{row.instances ?? '—'}</TableCell>
             <TableCell className="h-auto py-2"><FlagsCell row={row} /></TableCell>
-            <TableCell className="h-auto py-2 text-right"><DeleteButton row={row} onDelete={onDeletePlaceholder} /></TableCell>
+            <TableCell className="h-auto py-2 text-right">
+              <span className="inline-flex items-center gap-1">
+                <DeleteButton row={row} onDelete={onDeletePlaceholder} />
+                <RowMenu row={row} onOpen={onOpen} onRepair={onRepair} onRevoke={onRevoke} />
+              </span>
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -159,7 +195,7 @@ export function DeviceTableView({ rows, openId, onOpen, onDeletePlaceholder }: H
   )
 }
 
-export function DeviceCards({ rows, openId, onOpen, onDeletePlaceholder }: Handlers & { rows: DeviceRow[] }) {
+export function DeviceCards({ rows, openId, onOpen, onDeletePlaceholder, onRepair, onRevoke }: Handlers & { rows: DeviceRow[] }) {
   const { t } = useTranslation()
   const roleLabel = useRoleLabel()
   return (
@@ -200,8 +236,11 @@ export function DeviceCards({ rows, openId, onOpen, onDeletePlaceholder }: Handl
               {row.sub && <span className="block font-mono text-[11px] text-muted-foreground">{row.sub}</span>}
             </span>
           </button>
-          {row.placeholder === 'dangling' && (
-            <div className="px-4 pb-2.5"><DeleteButton row={row} onDelete={onDeletePlaceholder} /></div>
+          {!row.hub && (
+            <div className="flex justify-end gap-1 px-4 pb-2.5">
+              <DeleteButton row={row} onDelete={onDeletePlaceholder} />
+              <RowMenu row={row} onOpen={onOpen} onRepair={onRepair} onRevoke={onRevoke} />
+            </div>
           )}
         </li>
       ))}

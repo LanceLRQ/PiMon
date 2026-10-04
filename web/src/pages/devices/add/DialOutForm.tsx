@@ -11,7 +11,10 @@ import { Note } from '@/ui/note'
 import { FieldError, FieldHelp, FormRow } from '@/ui/section'
 import { Select } from '@/ui/select'
 import { Switch } from '@/ui/switch'
-import { deviceRoles, failTipCounts, hubUsableProxies, nameTooLong } from './pairing'
+import { agentListenPort, deviceRoles, failTipCounts, hubUsableProxies, nameTooLong } from './pairing'
+
+// 重新配对（repair）不带名称与角色：缺省字段由中枢沿用旧设备，发空串或缺省角色会改掉旧设备的属性
+export type DialOutBody = Omit<DialOutRequest, 'name' | 'role'> & Partial<Pick<DialOutRequest, 'name' | 'role'>>
 
 interface DialOutFormProps {
   // add：添加设备，带名称、角色与自动建实例；repair：重新配对，沿用旧设备的这几项，只填连接信息
@@ -19,7 +22,7 @@ interface DialOutFormProps {
   // 重新配对时预填的地址、代理等
   initial?: Partial<DialOutRequest>
   // 提交；缺省为 POST /api/devices/dial-out，重新配对由调用方换成对应接口
-  submit?: (req: DialOutRequest) => Promise<Device>
+  submit?: (req: DialOutBody) => Promise<Device>
   onViewDetail: (id: string) => void
 }
 
@@ -86,14 +89,12 @@ export function DialOutForm({ mode, initial, submit, onViewDetail }: DialOutForm
     setFailure(null)
     setOtherError(null)
     if (Object.keys(errs).length > 0) return
-    const req: DialOutRequest = {
+    const req: DialOutBody = {
       address: address.trim(),
       fingerprint: fingerprint.trim(),
       code: code.trim(),
       proxy_id: proxyId,
-      name: name.trim(),
-      role,
-      ...(mode === 'add' ? { auto_host_metrics: auto } : {}),
+      ...(mode === 'add' ? { name: name.trim(), role, auto_host_metrics: auto } : {}),
     }
     setBusy(true)
     try {
@@ -230,7 +231,7 @@ export function DialOutForm({ mode, initial, submit, onViewDetail }: DialOutForm
             <div className="mt-0.5">{t(`errors.pairing.reason.${tipReason}`)}</div>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-[12.5px]">
               {Array.from({ length: failTipCounts[tipReason] }, (_, i) => (
-                <li key={i}>{t(`devices.add.fail.${tipReason}.tip${i + 1}`)}</li>
+                <li key={i}>{t(`devices.add.fail.${tipReason}.tip${i + 1}`, { port: agentListenPort })}</li>
               ))}
             </ul>
             {failure.deviceId && (
@@ -245,7 +246,7 @@ export function DialOutForm({ mode, initial, submit, onViewDetail }: DialOutForm
 
       <div className="sticky bottom-0 flex justify-end gap-2 border-t border-border bg-panel-2 px-4 py-3">
         <Button type="submit" size="sm" className="rounded-[2px]" disabled={busy}>
-          {busy ? t('devices.add.out.submitting') : t('devices.add.out.submit')}
+          {busy ? t('devices.add.out.submitting') : t(mode === 'repair' ? 'devices.repair.submit' : 'devices.add.out.submit')}
         </Button>
       </div>
     </form>

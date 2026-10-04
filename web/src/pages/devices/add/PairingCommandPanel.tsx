@@ -10,9 +10,12 @@ import { FieldHelp, FormRow } from '@/ui/section'
 import { Select } from '@/ui/select'
 import { StatusShape } from '@/ui/status-shape'
 import { CommandBlock } from './CommandBlock'
-import { formatCountdown, pairingCommands, wantsSudoersHint } from './pairing'
+import { incompatibleText, presenceView } from '../model'
+import { formatCountdown, pairingCodeTtlMs, pairingCommands, wantsSudoersHint } from './pairing'
 
 interface PairingCommandPanelProps {
+  // add：添加设备；repair：重新配对（文案不引用「返回修改」，改成「重新生成」）
+  mode: 'add' | 'repair'
   result: PairingResult
   role: string
   // 中枢接入信息；platforms 为空说明没有内嵌 agent
@@ -21,14 +24,16 @@ interface PairingCommandPanelProps {
   now: number
   // 本次配对对应的设备已上线时给出
   connected: Device | null
+  // 已找到本次配对的设备，但它没能上线（握手后不兼容、未确认等）时给出
+  found?: Device | null
   onViewDetail: (id: string) => void
 }
 
 // 拨入配对命令面板：hub 地址、一行/分步命令、配对码与倒计时、指纹、等待上线；重新配对复用
-export function PairingCommandPanel({ result, role, info, now, connected, onViewDetail }: PairingCommandPanelProps) {
-  const { t } = useTranslation()
+export function PairingCommandPanel({ mode, result, role, info, now, connected, found = null, onViewDetail }: PairingCommandPanelProps) {
+  const { t, i18n } = useTranslation()
   const [hubIdx, setHubIdx] = useState(0)
-  const [mode, setMode] = useState<'one' | 'steps'>('one')
+  const [view, setView] = useState<'one' | 'steps'>('one')
   const hub = result.urls[hubIdx] ?? result.urls[0] ?? ''
   const cmds = pairingCommands(result, hub, role)
   const expiresAt = parseTime(result.expires_at)
@@ -36,6 +41,8 @@ export function PairingCommandPanel({ result, role, info, now, connected, onView
   const expired = remaining !== null && remaining <= 0
   const noEmbed = info !== null && info.platforms.length === 0
   const dev = role === 'dev'
+  const repair = mode === 'repair'
+  const foundView = found ? presenceView(found) : null
 
   let wait
   if (connected) {
@@ -48,10 +55,24 @@ export function PairingCommandPanel({ result, role, info, now, connected, onView
         <Button size="sm" className="rounded-[2px]" onClick={() => onViewDetail(connected.id)}>{t('devices.add.in.view')}</Button>
       </div>
     )
+  } else if (!expired && found && (found.incompatible || found.presence !== 'pending')) {
+    wait = (
+      <Note tone={found.incompatible ? 'crit' : 'warn'} role="status" className="mx-4 my-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span className="inline-flex items-center gap-1.5 font-medium">
+            <StatusShape state={foundView!.shape} size={13} />
+            {t('devices.add.in.foundNotOnline', { name: found.name, status: t(foundView!.labelKey) })}
+          </span>
+          <Button size="sm" variant="outline" className="rounded-[2px]" onClick={() => onViewDetail(found.id)}>{t('devices.add.in.view')}</Button>
+        </div>
+        {found.incompatible && <div className="mt-1">{incompatibleText(i18n, found.incompatible.reason)}</div>}
+        {remaining !== null && <div className="mt-1 text-muted-foreground">{t('devices.add.in.remaining', { time: formatCountdown(Math.min(remaining, pairingCodeTtlMs)) })}</div>}
+      </Note>
+    )
   } else if (expired) {
     wait = (
       <Note tone="warn" role="status" className="mx-4 my-3">
-        <b>{t('devices.add.in.expired')}</b> {t('devices.add.in.expiredHint')}
+        <b>{t('devices.add.in.expired')}</b> {t(repair ? 'devices.add.in.expiredHintRepair' : 'devices.add.in.expiredHint')}
       </Note>
     )
   } else {
@@ -59,7 +80,7 @@ export function PairingCommandPanel({ result, role, info, now, connected, onView
       <div role="status" className="mx-4 my-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[2px] border border-border bg-panel-2 px-3 py-2 text-[13px]">
         <span className="inline-flex items-center gap-1.5"><StatusShape state="pending" size={13} />{t('devices.add.in.waiting')}</span>
         {remaining !== null && (
-          <span className="text-muted-foreground">{t('devices.add.in.remaining', { time: formatCountdown(remaining) })}</span>
+          <span className="text-muted-foreground">{t('devices.add.in.remaining', { time: formatCountdown(Math.min(remaining, pairingCodeTtlMs)) })}</span>
         )}
       </div>
     )
@@ -88,9 +109,9 @@ export function PairingCommandPanel({ result, role, info, now, connected, onView
                 key={m}
                 type="button"
                 role="radio"
-                aria-checked={mode === m}
-                onClick={() => setMode(m)}
-                className={`h-7 px-2.5 whitespace-nowrap ${i > 0 ? 'border-l border-border' : ''} ${mode === m ? 'bg-inv-bg text-inv-ink' : 'text-ink-2 hover:bg-panel-2'}`}
+                aria-checked={view === m}
+                onClick={() => setView(m)}
+                className={`h-7 px-2.5 whitespace-nowrap ${i > 0 ? 'border-l border-border' : ''} ${view === m ? 'bg-inv-bg text-inv-ink' : 'text-ink-2 hover:bg-panel-2'}`}
               >
                 {t(m === 'one' ? 'devices.add.in.modeOne' : 'devices.add.in.modeSteps')}
               </button>
@@ -99,7 +120,7 @@ export function PairingCommandPanel({ result, role, info, now, connected, onView
         }
       />
       <div className="px-4 py-3">
-        {mode === 'one' ? (
+        {view === 'one' ? (
           <>
             <CommandBlock title={t('devices.add.in.oneTitle')} text={cmds.oneLine} />
             <FieldHelp className="mt-0">{dev ? t('devices.add.in.oneNoteDev') : t('devices.add.in.oneNote')}</FieldHelp>
@@ -125,7 +146,7 @@ export function PairingCommandPanel({ result, role, info, now, connected, onView
           <code className="font-mono text-[13px] tracking-wide break-all">{result.code}</code>
           <CopyButton text={result.code} label={t('devices.add.in.copyCode')} />
         </div>
-        <FieldHelp>{t('devices.add.in.codeHelp')}</FieldHelp>
+        <FieldHelp>{t(repair ? 'devices.add.in.codeHelpRepair' : 'devices.add.in.codeHelp')}</FieldHelp>
       </FormRow>
       <FormRow label={t('devices.add.in.fingerprint')} fieldKey="--fp">
         <div className="flex items-center gap-2">

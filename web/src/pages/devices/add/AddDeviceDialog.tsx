@@ -1,5 +1,5 @@
 import { Cable, Cloud, Info, KeyRound } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { http } from '@/api/client'
 import { translateErrorValue } from '@/i18n/errors'
@@ -16,6 +16,7 @@ import { Select } from '@/ui/select'
 import { Switch } from '@/ui/switch'
 import { CommandBlock } from './CommandBlock'
 import { DialOutForm } from './DialOutForm'
+import { useAgentInfo } from './use-agent-info'
 import { PairingCommandPanel, SectionHead } from './PairingCommandPanel'
 import {
   agentListenPort, defaultAllowOffline, deviceRoles, findPairedDevice, listenInstallCommand, nameTooLong, pairingCodeTtlMs, releaseDownloadCommand,
@@ -84,23 +85,6 @@ function AddDeviceBody({ onViewDetail }: { onViewDetail: (id: string) => void })
       <div role="tabpanel" hidden={tab !== 'out'}><DialOutPane info={agent.info} error={agent.error} onViewDetail={onViewDetail} /></div>
     </div>
   )
-}
-
-// 读取中枢接入信息（内嵌平台、Release 下载模板）；取不到时命令面板仍可用，只是不提示内嵌情况
-function useAgentInfo(): { info: AgentInfo | null; error: string | null } {
-  const { i18n } = useTranslation()
-  const [state, setState] = useState<{ info: AgentInfo | null; error: string | null }>({ info: null, error: null })
-  useEffect(() => {
-    let live = true
-    http.get<AgentInfo>('/api/agent/info').then(
-      (info) => live && setState({ info, error: null }),
-      (e) => live && setState({ info: null, error: translateErrorValue(i18n, e) }),
-    )
-    return () => {
-      live = false
-    }
-  }, [i18n])
-  return state
 }
 
 interface Issued {
@@ -175,7 +159,7 @@ function DialInPane({ info, onViewDetail }: { info: AgentInfo | null; onViewDeta
           </span>
           <Button variant="outline" size="sm" className="rounded-[2px]" onClick={() => setIssued(null)}>{t('devices.add.back')}</Button>
         </div>
-        <PairingCommandPanel result={issued.result} role={issued.role} info={info} now={now} connected={connected} onViewDetail={onViewDetail} />
+        <PairingCommandPanel mode="add" found={paired} result={issued.result} role={issued.role} info={info} now={now} connected={connected} onViewDetail={onViewDetail} />
       </div>
     )
   }

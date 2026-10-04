@@ -9,18 +9,20 @@ interface DeviceDrawerProps {
   id: string | null
   hubVersion: string | null
   onClose(): void
-  // 吊销与重新配对的入口；没有接入时按钮禁用
-  onRevoke?(device: Device): void
-  onRepair?(device: Device): void
+  onRevoke(device: Device): void
+  onRepairStart(deviceId: string): void
+  onRepaired(device: Device): void
+  onViewDetail(id: string): void
+  focusRepair?: boolean
 }
 
 // 设备详情抽屉：URL 的 ?open=<id> 驱动。设备不存在时不渲染（页面负责提示并清除参数）。
-export function DeviceDrawer({ id, hubVersion, onClose, onRevoke, onRepair }: DeviceDrawerProps) {
+export function DeviceDrawer({ id, hubVersion, onClose, onRevoke, onRepairStart, onRepaired, onViewDetail, focusRepair }: DeviceDrawerProps) {
   const devices = useLiveStore(selectDevices)
   useTranslation()
   if (!id) return null
   if (id === 'hub') return <HubDetail onClose={onClose} />
   const device = devices?.find((d) => d.id === id)
   if (!device) return null
-  return <DeviceDetail key={id} device={device} hubVersion={hubVersion} onClose={onClose} onRevoke={onRevoke} onRepair={onRepair} />
+  return <DeviceDetail key={id} device={device} hubVersion={hubVersion} onClose={onClose} onRevoke={onRevoke} onRepairStart={onRepairStart} onRepaired={onRepaired} onViewDetail={onViewDetail} focusRepair={focusRepair} />
 }

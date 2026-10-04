@@ -1,5 +1,5 @@
 import { CircleArrowUp, Info, KeyRound, Trash2, TriangleAlert } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import { http } from '@/api/client'
@@ -26,6 +26,7 @@ import { incompatibleText, needsUpgrade, presenceView } from '../model'
 import { DeviceLogs } from './DeviceLogs'
 import { InstanceRows } from './InstanceRows'
 import { DrawerSection, Kv, type KvRow } from './parts'
+import { RepairSection } from './RepairSection'
 import { upgradeCommand } from './upgrade'
 
 interface Fields {
@@ -33,12 +34,10 @@ interface Fields {
   role: string
   allow_offline: boolean
   maintenance: boolean
-  // 拨出设备的地址（不含 wss:// 前缀）与代理，拨入设备恒为空串
+  // 拨出设备的地址（原样，规范化交服务端）与代理，拨入设备恒为空串
   address: string
   proxy_id: string
 }
-
-const wssPrefix = /^wss:\/\//
 
 function fieldsOf(d: Device): Fields {
   const out = d.direction === 'dial_out'
@@ -47,7 +46,7 @@ function fieldsOf(d: Device): Fields {
     role: d.role,
     allow_offline: d.allow_offline,
     maintenance: d.maintenance,
-    address: out ? d.address.replace(wssPrefix, '') : '',
+    address: out ? d.address : '',
     proxy_id: out ? d.proxy_id : '',
   }
 }
@@ -59,12 +58,18 @@ interface DeviceDetailProps {
   device: Device
   hubVersion: string | null
   onClose(): void
-  onRevoke?(device: Device): void
-  onRepair?(device: Device): void
+  onRevoke(device: Device): void
+  // 发起重新配对前通知页面（旧设备被接替消失时不当作「不存在」）
+  onRepairStart(deviceId: string): void
+  // 拨出重新配对成功，参数为接替它的新设备
+  onRepaired(device: Device): void
+  onViewDetail(id: string): void
+  // 从列表菜单进入时直接滚到重新配对分区
+  focusRepair?: boolean
 }
 
 // 设备详情：属性可编辑（保存才生效，有未保存改动时关闭会先确认）、连接信息、版本与升级命令、该设备上的实例与日志。
-export function DeviceDetail({ device: live, hubVersion, onClose, onRevoke, onRepair }: DeviceDetailProps) {
+export function DeviceDetail({ device: live, hubVersion, onClose, onRevoke, onRepairStart, onRepaired, onViewDetail, focusRepair }: DeviceDetailProps) {
   const { t, i18n } = useTranslation()
   const toast = useToast()
   const now = useNow()
@@ -80,6 +85,11 @@ export function DeviceDetail({ device: live, hubVersion, onClose, onRevoke, onRe
   const [confirmClose, setConfirmClose] = useState(false)
   const [proxies, setProxies] = useState<Proxy[]>([])
   const dialOut = dev.direction === 'dial_out'
+  const repairRef = useRef<HTMLDivElement>(null)
+  const scrollToRepair = () => repairRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+  useEffect(() => {
+    if (focusRepair) repairRef.current?.scrollIntoView?.({ block: 'start' })
+  }, [focusRepair])
 
   useEffect(() => {
     if (!dialOut) return
@@ -140,14 +150,15 @@ export function DeviceDetail({ device: live, hubVersion, onClose, onRevoke, onRe
     setFieldErrors({})
     setMismatch(null)
     setOtherError(null)
-    const addr = values.address.trim()
     try {
       const body = {
         name: values.name.trim(),
         role: values.role,
         allow_offline: values.allow_offline,
         maintenance: values.maintenance,
-        ...(dialOut ? { address: addr.includes('://') ? addr : `wss://${addr}`, proxy_id: values.proxy_id } : {}),
+        // 只提交改动过的连接字段：代理已被删除时，只改名称不应被「代理不存在」拒绝
+        ...(dialOut && isChanged('address') ? { address: values.address.trim() } : {}),
+        ...(dialOut && isChanged('proxy_id') ? { proxy_id: values.proxy_id } : {}),
       }
       const next = await http.put<Device>(`/api/devices/${dev.id}`, body)
       setSaved(next)
@@ -298,9 +309,7 @@ export function DeviceDetail({ device: live, hubVersion, onClose, onRevoke, onRe
               variant="outline"
               size="sm"
               className="mr-auto rounded-[2px] text-status-crit"
-              disabled={!onRevoke}
-              title={onRevoke ? undefined : t('devices.detail.soon')}
-              onClick={() => onRevoke?.(dev)}
+              onClick={() => onRevoke(dev)}
             >
               <Trash2 /> {t('devices.detail.revoke')}
             </Button>
@@ -357,10 +366,16 @@ export function DeviceDetail({ device: live, hubVersion, onClose, onRevoke, onRe
           {dialOut && (
             <>
               <FormRow label={t('devices.add.out.address')} fieldKey="address" htmlFor="dd-address" {...prop('address')}>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-mono text-[12px] text-muted-foreground">wss://</span>
-                  <Input id="dd-address" className="font-mono" value={values.address} invalid={!!errorText('address')} onChange={(e) => set('address', e.target.value)} />
-                </div>
+                <Input
+                  id="dd-address"
+                  className="font-mono"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={t('devices.detail.addressPlaceholder')}
+                  value={values.address}
+                  invalid={!!errorText('address')}
+                  onChange={(e) => set('address', e.target.value)}
+                />
                 {errorText('address') ? <FieldError>{errorText('address')}</FieldError> : <FieldHelp>{t('devices.detail.addressHelp')}</FieldHelp>}
               </FormRow>
               <FormRow label={t('devices.add.out.proxy')} fieldKey="proxy_id" htmlFor="dd-proxy" {...prop('proxy_id')}>
@@ -391,7 +406,7 @@ export function DeviceDetail({ device: live, hubVersion, onClose, onRevoke, onRe
             </div>
           )}
           <div className="px-4 pb-3">
-            <Button variant="outline" size="sm" className="rounded-[2px]" disabled={!onRepair} title={onRepair ? undefined : t('devices.detail.soon')} onClick={() => onRepair?.(dev)}>
+            <Button variant="outline" size="sm" className="rounded-[2px]" onClick={scrollToRepair}>
               <KeyRound /> {t('devices.detail.repair')}
             </Button>
           </div>
@@ -417,6 +432,10 @@ export function DeviceDetail({ device: live, hubVersion, onClose, onRevoke, onRe
         <DrawerSection no="05" title={t('devices.detail.logs')} meta={t('devices.detail.logsMeta')}>
           <DeviceLogs device={dev} />
         </DrawerSection>
+
+        <div ref={repairRef}>
+          <RepairSection device={dev} onStart={onRepairStart} onPaired={onRepaired} onViewDetail={onViewDetail} />
+        </div>
       </SheetContent>
 
       <Dialog open={confirmClose} onOpenChange={setConfirmClose}>

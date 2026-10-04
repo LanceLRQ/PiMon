@@ -218,7 +218,7 @@ describe('深链与手机卡片', () => {
     expect(screen.queryByRole('table')).toBeNull()
     const cards = screen.getAllByRole('listitem')
     expect(cards).toHaveLength(3)
-    await user.click(within(cards[2]).getByRole('button'))
+    await user.click(within(cards[2]).getByRole('button', { name: /查看设备/ }))
     expect(cards[2]).toHaveAttribute('aria-current', 'true')
   })
 })
