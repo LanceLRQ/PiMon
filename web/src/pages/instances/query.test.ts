@@ -172,3 +172,41 @@ describe('排序', () => {
     expect(names(prototypeInstances)).toEqual(before)
   })
 })
+
+describe('运行位置按设备名', () => {
+  const deviceNames = new Map([
+    ['fnos', '飞牛 NAS 机'],
+    ['d-b', 'Build-Box'],
+  ])
+  const list = [
+    makeInstance({ id: 'x1', name: 'x1', runs_on: 'fnos' }),
+    makeInstance({ id: 'x2', name: 'x2', runs_on: 'd-b' }),
+    makeInstance({ id: 'x3', name: 'x3', runs_on: 'hub' }),
+  ]
+  const find = (query: string, extra: Partial<TableFilter> = {}) =>
+    names(filterInstances(list, { ...none, ...extra, query }, deviceNames))
+
+  it('runs: 按设备名包含匹配，仍认设备 id', () => {
+    expect(find('runs:build')).toEqual(['x2'])
+    expect(find('runs:d-b')).toEqual(['x2'])
+    expect(find('runs:飞牛')).toEqual(['x1'])
+  })
+
+  it('hub、agent 两个关键字保持类别匹配', () => {
+    expect(find('runs:hub')).toEqual(['x3'])
+    expect(find('runs:agent')).toEqual(['x1', 'x2'])
+  })
+
+  it('自由文本也能命中设备名', () => {
+    expect(find('build-box')).toEqual(['x2'])
+  })
+
+  it('不传名称表时退回按 id 匹配', () => {
+    expect(names(filterInstances(list, { ...none, query: 'runs:fnos' }))).toEqual(['x1'])
+  })
+
+  it('按运行位置排序用显示名', () => {
+    const out = sortInstances(list, 'run', 'asc', 'en', (id) => (id === 'hub' ? 'Z-hub' : (deviceNames.get(id) ?? id)))
+    expect(names(out)).toEqual(['x2', 'x3', 'x1'])
+  })
+})

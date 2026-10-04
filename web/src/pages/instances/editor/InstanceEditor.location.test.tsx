@@ -7,7 +7,7 @@ import type { PluginInfo, PluginList } from '@/types/generated'
 import { device } from '@/pages/devices/test-utils'
 import { InstanceEditPage } from '../InstanceEditPage'
 import { InstanceNewPage } from '../InstanceNewPage'
-import { json, mockApi, renderWithApp, type ApiHandler, type Req } from '../test-utils'
+import { apiError, json, mockApi, renderWithApp, type ApiHandler, type Req } from '../test-utils'
 import { kitchenPlugin, makeDetail, proxyFixtures, simplePlugin } from './editor.fixtures'
 
 // 两处都能跑的插件（含 lookup 与 proxy 字段）
@@ -261,5 +261,57 @@ describe('编辑已有实例', () => {
     expect((await locationSelect()).value).toBe('hub')
     await user.selectOptions(await locationSelect(), 'd1')
     expect(await screen.findByLabelText(/^主机/)).toBeInTheDocument()
+  })
+})
+
+describe('暂停的远程实例与测试结果来源', () => {
+  const okRun = (runsOn: string) => ({
+    instance: { ...makeDetail({ runs_on: runsOn }), display_state: 'ok', last_error: '' },
+    report: { status: 'ok', summary: '好', duration_ms: 10, collected_at: 1, items: [] },
+  })
+
+  it('已暂停且在设备上：「保存并测试」禁用并说明原因，保存仍可用', async () => {
+    seedDevices()
+    await mountEdit(makeDetail({ plugin_id: 'kitchen', runs_on: 'd1', paused: true }))
+    await screen.findByLabelText(/^地址/)
+    expect(screen.getByRole('button', { name: /保存并测试/ })).toBeDisabled()
+    expect(screen.getByText('已暂停的设备实例不能测试，请先恢复')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '保存' })).toBeEnabled()
+  })
+
+  it('已暂停但在中枢上：照常可以测试', async () => {
+    seedDevices()
+    await mountEdit(makeDetail({ plugin_id: 'kitchen', runs_on: 'hub', paused: true }))
+    await screen.findByLabelText(/^地址/)
+    expect(screen.getByRole('button', { name: /保存并测试/ })).toBeEnabled()
+    expect(screen.queryByText('已暂停的设备实例不能测试，请先恢复')).toBeNull()
+  })
+
+  it('测试成功时结果里显示来源设备名', async () => {
+    seedDevices()
+    const user = userEvent.setup()
+    const detail = makeDetail({ plugin_id: 'kitchen', runs_on: 'd1' })
+    await mountEdit(detail, (req) => {
+      if (req.method === 'PUT') return json(200, detail)
+      if (req.method === 'POST' && req.url === `/api/instances/${detail.id}/run`) return json(200, okRun('d1'))
+    })
+    await screen.findByLabelText(/^地址/)
+    await user.click(screen.getByRole('button', { name: /保存并测试/ }))
+    expect(await screen.findByText('来源设备：NAS-1')).toBeInTheDocument()
+  })
+
+  it('测试失败时同样显示来源设备，不兼容按原因出文案', async () => {
+    seedDevices()
+    const user = userEvent.setup()
+    const detail = makeDetail({ plugin_id: 'kitchen', runs_on: 'd1' })
+    await mountEdit(detail, (req) => {
+      if (req.method === 'PUT') return json(200, detail)
+      if (req.method === 'POST' && req.url === `/api/instances/${detail.id}/run`)
+        return apiError(409, 'device.incompatible', { reason: 'version_too_old' })
+    })
+    await screen.findByLabelText(/^地址/)
+    await user.click(screen.getByRole('button', { name: /保存并测试/ }))
+    expect(await screen.findByText('来源设备：NAS-1')).toBeInTheDocument()
+    expect(screen.getAllByText('设备上的 agent 版本过旧，请升级 agent').length).toBeGreaterThan(0)
   })
 })

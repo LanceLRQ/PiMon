@@ -6,6 +6,7 @@ import { Note } from '@/ui/note'
 import { ReportItemView } from '@/ui/report-items'
 import { StatusLabel, StatusShape } from '@/ui/status-shape'
 import { outputTitle } from '../InstanceDetailDrawer'
+import { useLocationLabels } from '../locations'
 import type { TestOutcome } from './types'
 
 interface TestResultProps {
@@ -21,6 +22,7 @@ function displayReport(report: Report): Report {
 // 保存区下方的测试结果：状态与耗时、数据项、折叠的原始报告 JSON，失败时显示错误信息
 export function TestResult({ outcome, outputs }: TestResultProps) {
   const { t, i18n } = useTranslation()
+  const loc = useLocationLabels()
   if (!outcome) {
     return (
       <p className="mx-4 mt-3.5 rounded-[2px] border border-dashed border-line-strong p-3.5 text-[12.5px] leading-[1.6] text-muted-foreground">
@@ -36,6 +38,12 @@ export function TestResult({ outcome, outputs }: TestResultProps) {
     )
   }
   const time = formatDateTime(outcome.at, i18n.language)
+  const source = outcome.phase === 'failed' ? outcome.machine : outcome.instance.runs_on
+  const sourceRow = source ? (
+    <p className="px-4 pb-2 font-mono text-[11.5px] text-muted-foreground">
+      {t('editor.result.source', { name: loc.text(source, t('instances.hubLocal')) })}
+    </p>
+  ) : null
   if (outcome.phase === 'failed') {
     const busy = outcome.code === 'run.busy'
     return (
@@ -47,6 +55,7 @@ export function TestResult({ outcome, outputs }: TestResultProps) {
           </span>
           <span className="ml-auto text-right font-mono text-[11.5px] text-muted-foreground">{time}</span>
         </div>
+        {sourceRow}
         {busy ? (
           <p className="mx-4 text-[12.5px] leading-[1.55]">{t('editor.result.busy')}</p>
         ) : (
@@ -78,6 +87,7 @@ export function TestResult({ outcome, outputs }: TestResultProps) {
           {t('editor.result.at', { time })}
         </span>
       </div>
+      {sourceRow}
       {report?.summary && <p className="px-4 pb-3 text-[13px]">{report.summary}</p>}
       {report?.stale && (
         <div className="px-4 pb-3">

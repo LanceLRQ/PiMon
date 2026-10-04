@@ -16,7 +16,7 @@ import { Input } from '@/ui/input'
 import { Note } from '@/ui/note'
 import { NumberTag } from '@/ui/numbered-label'
 import { useToast } from '@/ui/toast'
-import { runTimeoutMs } from '../actions'
+import { remotePaused, runTimeoutMs } from '../actions'
 import { allowedLocations, deviceNotOnline, selectableDevices } from './location'
 import { PluginIcon } from './PluginIcon'
 import { RunsOnSelect } from './RunsOnSelect'
@@ -121,6 +121,8 @@ export function EditorForm({ mode, plugin, detail, machine, onMachine, outcome, 
   // 只能在设备上跑的插件却落在中枢上：没有可用设备，不能保存
   const agentOnly = machine === 'hub' && !plugin.runs_on.includes('hub')
   const notOnline = deviceNotOnline(devices, machine)
+  // 已暂停的设备实例 agent 不会收到，测试只会得到 502，前端直接禁用
+  const pausedRemote = mode === 'edit' && detail !== null && remotePaused({ paused: detail.paused, runs_on: machine })
   const moved = mode === 'edit' && detail !== null && machine !== detail.runs_on
   const runsLabel = machine === 'hub' ? t('editor.config.runsHub') : deviceName(machine, devices, '').name
 
@@ -188,7 +190,7 @@ export function EditorForm({ mode, plugin, detail, machine, onMachine, outcome, 
       onOutcome({ phase: 'ok', instance: res.instance, report: res.report, at: Date.now(), wallMs: Date.now() - started })
       toast.show(t('editor.save.savedTested', { name: saved.name }))
     } catch (err) {
-      onOutcome({ phase: 'failed', code: isApiError(err) ? err.code : 'internal', message: describe(err), saved: true, at: Date.now() })
+      onOutcome({ phase: 'failed', code: isApiError(err) ? err.code : 'internal', message: describe(err), saved: true, at: Date.now(), machine: saved.runs_on })
       toast.show(t('editor.save.saved', { name: saved.name }))
     }
   }
@@ -230,6 +232,11 @@ export function EditorForm({ mode, plugin, detail, machine, onMachine, outcome, 
             {notOnline && (
               <Note tone="warn" role="status">
                 {t('editor.config.runsOnOffline')}
+              </Note>
+            )}
+            {pausedRemote && (
+              <Note tone="warn" role="status">
+                {t('instances.runBlockedPaused')}
               </Note>
             )}
             {moved && (
@@ -311,7 +318,7 @@ export function EditorForm({ mode, plugin, detail, machine, onMachine, outcome, 
           busy={busy}
           disabled={agentOnly}
           runsLabel={runsLabel}
-          testDisabled={notOnline}
+          testDisabled={notOnline || pausedRemote}
           outcome={outcome}
           resultRef={resultRef}
           onSave={() => void submit(false)}

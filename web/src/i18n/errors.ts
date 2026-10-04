@@ -13,6 +13,11 @@ function safeParams(details?: Record<string, unknown>): Record<string, unknown> 
 // 把错误码翻译为当前语言文案：错误码表以 src/internal/hub/httpx/errors.go 为准；
 // 未收录的 code 显示「操作失败（code）」。details 作为插值参数传入。
 export function translateError(i18n: I18n, code: string, details?: Record<string, unknown>): string {
+  // 设备不兼容按原因区分：版本过旧升级 agent，过新升级中枢
+  if (code === 'device.incompatible' && typeof details?.reason === 'string') {
+    const byReason = `errors.device.incompatible_reason.${details.reason}`
+    if (i18n.exists(byReason)) return i18n.t(byReason)
+  }
   const key = `errors.${code}`
   if (code && i18n.exists(key)) return i18n.t(key, safeParams(details))
   return i18n.t('errorFallback', { code: code || 'unknown' })

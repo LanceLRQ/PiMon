@@ -4,4 +4,4 @@ import type { Instance, Report } from '@/types/generated'
 export type TestOutcome =
   | { phase: 'running' }
   | { phase: 'ok'; instance: Instance; report: Report | null; at: number; wallMs: number }
-  | { phase: 'failed'; code: string; message: string; saved: boolean; at: number }
+  | { phase: 'failed'; code: string; message: string; saved: boolean; at: number; machine?: string }

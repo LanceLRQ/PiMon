@@ -85,27 +85,35 @@ export interface TableFilter {
 export const emptyFilter: TableFilter = { attention: false, location: null, plugin: null, query: '' }
 
 // runs:hub 与 runs:agent 按类别匹配（非 hub 即 agent，与表格徽章一致）；其他值按运行位置（主机标识）包含匹配
-function matchesRuns(runsOn: string, wanted: string): boolean {
+// 设备 id 到设备名；设备列表未加载或设备已吊销时没有对应项
+export type DeviceNames = ReadonlyMap<string, string>
+
+function matchesRuns(runsOn: string, wanted: string, names?: DeviceNames): boolean {
   if (wanted === 'hub') return runsOn === 'hub'
   if (wanted === 'agent') return runsOn !== 'hub'
-  return runsOn.toLowerCase().includes(wanted)
+  return runsOn.toLowerCase().includes(wanted) || (names?.get(runsOn) ?? '').toLowerCase().includes(wanted)
 }
 
-export function matchesFilter(inst: Instance, filter: TableFilter, parsed: ParsedQuery = parseQuery(filter.query)): boolean {
+export function matchesFilter(
+  inst: Instance,
+  filter: TableFilter,
+  parsed: ParsedQuery = parseQuery(filter.query),
+  names?: DeviceNames,
+): boolean {
   if (filter.attention && !isAttention(inst)) return false
   if (filter.location && inst.runs_on !== filter.location) return false
   if (filter.plugin && inst.plugin_id !== filter.plugin) return false
   if (parsed.status !== undefined && normalizeStatus(parsed.status) !== inst.display_state) return false
-  if (parsed.runs !== undefined && !matchesRuns(inst.runs_on, parsed.runs)) return false
+  if (parsed.runs !== undefined && !matchesRuns(inst.runs_on, parsed.runs, names)) return false
   if (parsed.plugin !== undefined && !inst.plugin_id.toLowerCase().includes(parsed.plugin)) return false
   if (parsed.text.length === 0) return true
-  const hay = `${inst.name} ${inst.plugin_id} ${inst.summary} ${inst.runs_on}`.toLowerCase()
+  const hay = `${inst.name} ${inst.plugin_id} ${inst.summary} ${inst.runs_on} ${names?.get(inst.runs_on) ?? ''}`.toLowerCase()
   return parsed.text.every((t) => hay.includes(t))
 }
 
-export function filterInstances(list: Instance[], filter: TableFilter): Instance[] {
+export function filterInstances(list: Instance[], filter: TableFilter, names?: DeviceNames): Instance[] {
   const parsed = parseQuery(filter.query)
-  return list.filter((i) => matchesFilter(i, filter, parsed))
+  return list.filter((i) => matchesFilter(i, filter, parsed, names))
 }
 
 function successMs(inst: Instance): number {
@@ -115,7 +123,13 @@ function successMs(inst: Instance): number {
 
 // 排序：状态列降序为严重优先；更新时间升序为最近更新在前，从未成功的视为最旧。
 // 同值时一律按名称升序，保证顺序稳定。
-export function sortInstances(list: Instance[], key: SortKey, dir: SortDir, locale = 'zh'): Instance[] {
+export function sortInstances(
+  list: Instance[],
+  key: SortKey,
+  dir: SortDir,
+  locale = 'zh',
+  locationLabel: (runsOn: string) => string = (id) => id,
+): Instance[] {
   const sign = dir === 'asc' ? 1 : -1
   const byName = (a: Instance, b: Instance) => a.name.localeCompare(b.name, locale)
   return list.slice().sort((a, b) => {
@@ -128,7 +142,7 @@ export function sortInstances(list: Instance[], key: SortKey, dir: SortDir, loca
         v = byName(a, b)
         break
       case 'run':
-        v = a.runs_on.localeCompare(b.runs_on, locale)
+        v = locationLabel(a.runs_on).localeCompare(locationLabel(b.runs_on), locale)
         break
       case 'ago': {
         const ta = successMs(a)
