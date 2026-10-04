@@ -78,10 +78,34 @@ func Install(ctx context.Context, d Deps, o Options) error {
 	}
 	r.rep.Done("检测运行环境", r.envText())
 
-	type step struct {
-		name string
-		fn   func(context.Context) error
+	var steps []step
+	if o.NoService {
+		steps = []step{
+			{"准备目录", r.ensureDirs},
+			{"安装二进制", r.installBinary},
+			{"配对", r.configure},
+		}
+	} else {
+		steps = r.serviceSteps()
 	}
+	for _, s := range steps {
+		if err := s.fn(ctx); err != nil {
+			r.rep.Failure(s.name, err)
+			return fmt.Errorf("install 在「%s」失败: %w", s.name, err)
+		}
+	}
+	r.printSummary()
+	return nil
+}
+
+type step struct {
+	name string
+	fn   func(context.Context) error
+}
+
+// serviceSteps 返回完整安装（含系统服务）的固定步骤顺序。
+func (r *run) serviceSteps() []step {
+	t := r.t
 	var steps []step
 	if t.kind == kindSystem {
 		steps = append(steps, step{"创建服务用户", r.ensureUser})
@@ -107,14 +131,7 @@ func Install(ctx context.Context, d Deps, o Options) error {
 		step{"启动服务", r.start},
 		step{"等待守护进程就绪", r.waitReady},
 	)
-	for _, s := range steps {
-		if err := s.fn(ctx); err != nil {
-			r.rep.Failure(s.name, err)
-			return fmt.Errorf("install 在「%s」失败: %w", s.name, err)
-		}
-	}
-	r.printSummary()
-	return nil
+	return steps
 }
 
 func (r *run) envText() string {
@@ -167,6 +184,10 @@ func (r *run) requireRegular(path string) error {
 func (r *run) validateStatic() error {
 	o := &r.o
 	switch {
+	case o.NoService && r.GOOS == "linux" && !o.User:
+		return UsageError("--no-service 只能在用户模式使用，Linux 上请同时加 --user")
+	case o.NoService && (o.Sudoers || o.DockerGroup):
+		return UsageError("--no-service 不安装服务，不能与系统模式参数 --sudoers、--docker-group 同用")
 	case o.Hub != "" && o.Listen != "":
 		return UsageError("不能同时指定 --hub（拨入）与 --listen（拨出）")
 	case o.Listen != "":
@@ -568,6 +589,10 @@ func (r *run) waitReady(ctx context.Context) error {
 }
 
 func (r *run) printSummary() {
+	if r.o.NoService {
+		r.printNoServiceSummary()
+		return
+	}
 	w := r.Out
 	line := strings.Repeat("=", 56)
 	pf := func(format string, a ...any) { _, _ = fmt.Fprintf(w, format+"\n", a...) }
@@ -588,5 +613,27 @@ func (r *run) printSummary() {
 	case kindDarwin:
 		pf("  日志：~/.pimon/agent.log（超过 5 MiB 轮转为 agent.log.1）")
 	}
+	pf("%s", line)
+}
+
+// printNoServiceSummary 是 --no-service 的结束提示：没有装服务，指引前台运行。
+func (r *run) printNoServiceSummary() {
+	w := r.Out
+	line := strings.Repeat("=", 56)
+	pf := func(format string, a ...any) { _, _ = fmt.Fprintf(w, format+"\n", a...) }
+	pf("%s", line)
+	pf("  PiMon agent 安装完成（不安装服务）")
+	if r.mode == config.ModeDialIn {
+		pf("  模式：拨入（连接 %s）", r.o.Hub)
+	} else {
+		pf("  模式：拨出（监听 %s）", r.o.Listen)
+	}
+	pf("  没有创建或启动任何系统服务；请在终端前台运行（Ctrl+C 退出）：")
+	pf("    %s", r.t.cliHint("run"))
+	if r.mode == config.ModeDialOut {
+		pf("  守护进程运行后，另开终端执行 %s 打开 15 分钟配对窗口，", r.t.cliHint("pair"))
+		pf("  再按提示在 PiMon 网页添加拨出设备")
+	}
+	pf("  需要常驻时，去掉 --no-service 重新执行 install 即可安装为服务")
 	pf("%s", line)
 }

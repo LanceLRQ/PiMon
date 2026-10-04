@@ -848,3 +848,115 @@ func TestSymlink_回滚时配置被换成符号链接_拒绝回滚(t *testing.T)
 		t.Fatal("不应动这个符号链接")
 	}
 }
+
+// noServiceCmds 是 --no-service 时绝不应出现的系统命令。
+var noServiceCmds = []string{cmdSystemctl, cmdLaunchctl, cmdUseradd, cmdUsermod, cmdSysctl, "visudo", "loginctl"}
+
+func assertNoSystemCmds(t *testing.T, e *testEnv) {
+	t.Helper()
+	if len(e.runner.log) != 0 {
+		t.Fatalf("--no-service 不应执行任何系统命令: %v", e.runner.log)
+	}
+	for _, c := range noServiceCmds {
+		if hasCmd(e.runner.log, c) {
+			t.Fatalf("不应执行 %s", c)
+		}
+	}
+}
+
+func TestNoService_Linux用户模式拨入_只准备目录装二进制配对写配置(t *testing.T) {
+	e := newEnv(t, "linux", 1000)
+	o := dialIn()
+	o.User, o.NoService = true, true
+	e.mustInstall(t, o)
+
+	assertNoSystemCmds(t, e)
+	assertLines(t, "文件操作", e.fs.ops, []string{
+		"mkdir /home/alice/.pimon 0700 1000:1000",
+		"mkdir /home/alice/.pimon/bin 0700 1000:1000",
+		"write /home/alice/.pimon/bin/pimon-agent 0755 nil",
+		"write /home/alice/.pimon/agent.json 0600 nil",
+	})
+	if len(e.pairReqs) != 1 {
+		t.Fatalf("应配对一次: %d", len(e.pairReqs))
+	}
+	if e.statusN != 0 {
+		t.Fatal("不应等待守护进程就绪")
+	}
+	if _, ok := e.fs.files["/home/alice/.config/systemd/user/pimon-agent.service"]; ok {
+		t.Fatal("不应写服务定义")
+	}
+	out := e.out.String()
+	assertContains(t, out, "安装完成", "不安装服务", "/home/alice/.pimon/bin/pimon-agent run --user")
+	assertNotContains(t, out, "loginctl", "近似授予")
+}
+
+func TestNoService_macOS拨出_写配置且不碰launchctl(t *testing.T) {
+	e := newEnv(t, "darwin", 501)
+	o := dialOut()
+	o.NoService = true
+	e.mustInstall(t, o)
+
+	assertNoSystemCmds(t, e)
+	if _, ok := e.fs.files["/Users/alice/Library/LaunchAgents/com.pimon.agent.plist"]; ok {
+		t.Fatal("不应写 plist")
+	}
+	e.file(t, "/Users/alice/.pimon/agent.json")
+	assertContains(t, e.out.String(), "/Users/alice/.pimon/bin/pimon-agent run")
+	assertNotContains(t, e.out.String(), "稍候几秒等服务启动")
+}
+
+func TestNoService_重跑幂等(t *testing.T) {
+	e := newEnv(t, "linux", 1000)
+	o := dialIn()
+	o.User, o.NoService = true, true
+	e.mustInstall(t, o)
+	e.reset()
+	e.mustInstall(t, o)
+	assertNoSystemCmds(t, e)
+	if len(e.fs.ops) != 0 || len(e.pairReqs) != 0 {
+		t.Fatalf("重跑不应有改动: %v 配对 %d", e.fs.ops, len(e.pairReqs))
+	}
+}
+
+func TestNoService_配对失败_不留配置(t *testing.T) {
+	e := newEnv(t, "linux", 1000)
+	e.pairErr = errors.New("拒绝")
+	o := dialIn()
+	o.User, o.NoService = true, true
+	if err := e.install(t, o); err == nil {
+		t.Fatal("应失败")
+	}
+	assertNoSystemCmds(t, e)
+	if _, ok := e.fs.files["/home/alice/.pimon/agent.json"]; ok {
+		t.Fatal("不应留下配置")
+	}
+}
+
+func TestNoService_用法错误(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		goos string
+		euid int
+		o    Options
+		want string
+	}{
+		{"Linux缺--user", "linux", 0, Options{NoService: true, Listen: ":31418"}, "--user"},
+		{"Linux非root缺--user", "linux", 1000, Options{NoService: true, Listen: ":31418"}, "--user"},
+		{"与--sudoers同用", "linux", 1000, Options{NoService: true, User: true, Sudoers: true, Listen: ":31418"}, "--sudoers"},
+		{"与--docker-group同用", "linux", 1000, Options{NoService: true, User: true, DockerGroup: true, Listen: ":31418"}, "--docker-group"},
+		{"macOS与--sudoers同用", "darwin", 501, Options{NoService: true, Sudoers: true, Listen: ":31418"}, "--sudoers"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t, tc.goos, tc.euid)
+			err := e.install(t, tc.o)
+			var ue UsageError
+			if !errors.As(err, &ue) || !strings.Contains(ue.Error(), tc.want) {
+				t.Fatalf("应为含 %q 的用法错误: %v", tc.want, err)
+			}
+			if len(e.runner.log) != 0 || len(e.fs.ops) != 0 {
+				t.Fatal("用法错误不应有改动")
+			}
+		})
+	}
+}

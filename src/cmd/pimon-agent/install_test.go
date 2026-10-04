@@ -99,3 +99,10 @@ func TestRun_日志写入文件(t *testing.T) {
 		t.Fatal("指定 --log-file 时不应再写标准错误")
 	}
 }
+
+func TestInstall_noService参数映射(t *testing.T) {
+	c, io, _, _ := installCLI(t, nil)
+	if code := c.run([]string{"install", "--listen", ":31418", "--user", "--no-service"}); code != 0 || !io.NoService || !io.User {
+		t.Fatalf("code=%d opts=%+v", code, *io)
+	}
+}

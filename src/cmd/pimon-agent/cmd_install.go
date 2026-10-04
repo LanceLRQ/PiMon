@@ -31,6 +31,7 @@ func (c *cli) cmdInstall(args []string) int {
 	fs.StringVar(&o.Listen, "listen", "", "拨出：监听地址，如 :31418")
 	fs.BoolVar(&o.DockerGroup, "docker-group", false, "系统模式：把 pimon 加入 docker 组（近似授予 root 权限；非交互模式须显式指定）")
 	fs.BoolVar(&o.Sudoers, "sudoers", false, "系统模式：写入 storage-health 只读命令的 sudoers 白名单（smartctl、mdadm、btrfs；非交互模式须显式指定）")
+	fs.BoolVar(&o.NoService, "no-service", false, "只准备目录、安装二进制、配对并写配置，不安装也不启动服务（须与 --user 同用，macOS 本来就是用户模式；之后用 run 前台运行）")
 	if code, ok := c.parse(fs, args); !ok {
 		return code
 	}

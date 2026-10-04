@@ -113,6 +113,9 @@ type Options struct {
 	DockerGroup bool
 	// Sudoers 非交互时写入 storage-health 的 sudoers 白名单（交互时不给则询问）；只用于系统模式。
 	Sudoers bool
+	// NoService 只做准备目录、安装二进制、配对与写配置，跳过一切系统服务相关步骤（服务状态、服务定义、
+	// 启动、等待就绪，以及系统模式的建用户、docker 组、sysctl、sudoers）；只用于用户模式，之后用 run 前台运行。
+	NoService bool
 }
 
 // UninstallOptions 是 uninstall 的命令行选项。
