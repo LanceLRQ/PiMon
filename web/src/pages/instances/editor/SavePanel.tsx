@@ -16,6 +16,10 @@ interface SavePanelProps {
   errorCount: number
   busy: 'save' | 'test' | null
   disabled: boolean
+  // 运行位置的显示名
+  runsLabel: string
+  // 仅「保存并测试」不可用（如设备离线）
+  testDisabled?: boolean
   outcome: TestOutcome | null
   resultRef?: Ref<HTMLDivElement>
   onSave: () => void
@@ -23,7 +27,7 @@ interface SavePanelProps {
 }
 
 // 保存区：配置汇总、「保存」与「保存并测试」、测试结果
-export function SavePanel({ plugin, name, intervalLabel, errorCount, busy, disabled, outcome, resultRef, onSave, onSaveTest }: SavePanelProps) {
+export function SavePanel({ plugin, name, intervalLabel, errorCount, busy, disabled, runsLabel, testDisabled, outcome, resultRef, onSave, onSaveTest }: SavePanelProps) {
   const { t } = useTranslation()
   const pass = errorCount === 0
   return (
@@ -33,7 +37,7 @@ export function SavePanel({ plugin, name, intervalLabel, errorCount, busy, disab
           rows={[
             { label: t('editor.save.summaryPlugin'), value: plugin ? `${plugin.id} v${plugin.version} · ${plugin.origin}` : '—' },
             { label: t('editor.save.summaryName'), value: <span className="break-all">{name.trim() || '—'}</span> },
-            { label: t('editor.save.summaryRuns'), value: t('editor.config.runsHub') },
+            { label: t('editor.save.summaryRuns'), value: <span className="break-all">{runsLabel}</span> },
             { label: t('editor.save.summaryInterval'), value: plugin ? intervalLabel : '—' },
             {
               label: t('editor.save.summaryCheck'),
@@ -54,7 +58,7 @@ export function SavePanel({ plugin, name, intervalLabel, errorCount, busy, disab
         <Button type="button" variant="outline" className="h-9 rounded-[2px]" disabled={disabled || busy !== null} onClick={onSave}>
           <Save /> {busy === 'save' ? t('editor.save.saving') : t('editor.save.save')}
         </Button>
-        <Button type="button" className="h-9 rounded-[2px]" disabled={disabled || busy !== null} onClick={onSaveTest}>
+        <Button type="button" className="h-9 rounded-[2px]" disabled={disabled || testDisabled || busy !== null} onClick={onSaveTest}>
           <Play /> {busy === 'test' ? t('editor.save.testing') : t('editor.save.saveTest')}
         </Button>
       </div>

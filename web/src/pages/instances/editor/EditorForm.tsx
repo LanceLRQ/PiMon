@@ -8,15 +8,18 @@ import { formatDurationSeconds, parseDurationSeconds } from '@/forms/duration'
 import { clearErrors, type ErrorMap, type FormValues } from '@/forms/model'
 import { SchemaFields } from '@/forms/SchemaFields'
 import { translateErrorValue } from '@/i18n/errors'
+import { deviceName } from '@/pages/devices/model'
+import { selectDevices, useLiveStore } from '@/store/live-store'
 import { cn } from '@/lib/utils'
 import type { InstanceDetail, InstanceInput, InstanceRunResult, PluginInfo } from '@/types/generated'
 import { Input } from '@/ui/input'
 import { Note } from '@/ui/note'
 import { NumberTag } from '@/ui/numbered-label'
-import { Segmented } from '@/ui/segmented'
 import { useToast } from '@/ui/toast'
 import { runTimeoutMs } from '../actions'
+import { allowedLocations, deviceNotOnline, selectableDevices } from './location'
 import { PluginIcon } from './PluginIcon'
+import { RunsOnSelect } from './RunsOnSelect'
 import { Pane } from './Pane'
 import { SavePanel } from './SavePanel'
 import type { TestOutcome } from './types'
@@ -31,6 +34,9 @@ interface EditorFormProps {
   plugin: PluginInfo
   // 编辑时的现有实例
   detail: InstanceDetail | null
+  // 当前选择的运行位置：'hub' 或设备 ID
+  machine: string
+  onMachine: (machine: string) => void
   outcome: TestOutcome | null
   onOutcome: (o: TestOutcome | null) => void
   // 编辑保存成功后用服务端返回的详情重置表单
@@ -56,10 +62,11 @@ function topKey(path: string): string {
 }
 
 // 配置表单（中栏）与保存区（右栏）。状态在这里；换插件或保存后由上层通过 key 重建。
-export function EditorForm({ mode, plugin, detail, outcome, onOutcome, onDetail, autoTest, onAutoTestStarted }: EditorFormProps) {
+export function EditorForm({ mode, plugin, detail, machine, onMachine, outcome, onOutcome, onDetail, autoTest, onAutoTestStarted }: EditorFormProps) {
   const { t, i18n } = useTranslation()
   const toast = useToast()
   const navigate = useNavigate()
+  const devices = useLiveStore(selectDevices)
   const fields = plugin.config_schema
   const refill = detail?.problems?.['_config'] !== undefined
   const floor = Math.max(minIntervalFloor, plugin.min_interval_seconds)
@@ -111,7 +118,11 @@ export function EditorForm({ mode, plugin, detail, outcome, onOutcome, onDetail,
   const intervalLabel = interval.override
     ? t('editor.save.intervalCustom', { value: interval.text.trim() || '—' })
     : t('editor.save.intervalDefault', { value: defaultInterval })
-  const agentOnly = !plugin.runs_on.includes('hub')
+  // 只能在设备上跑的插件却落在中枢上：没有可用设备，不能保存
+  const agentOnly = machine === 'hub' && !plugin.runs_on.includes('hub')
+  const notOnline = deviceNotOnline(devices, machine)
+  const moved = mode === 'edit' && detail !== null && machine !== detail.runs_on
+  const runsLabel = machine === 'hub' ? t('editor.config.runsHub') : deviceName(machine, devices, '').name
 
   const describe = (err: unknown): string => {
     let text = translateErrorValue(i18n, err)
@@ -129,7 +140,7 @@ export function EditorForm({ mode, plugin, detail, outcome, onOutcome, onDetail,
       requestAnimationFrame(() => document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus())
       return
     }
-    const body: InstanceInput = { name: name.trim(), config: built.config, interval_seconds: intervalSeconds }
+    const body: InstanceInput = { name: name.trim(), config: built.config, interval_seconds: intervalSeconds, runs_on: machine }
     if (mode === 'new') body.plugin_id = plugin.id
     setBusy(test ? 'test' : 'save')
     let saved: InstanceDetail
@@ -216,6 +227,16 @@ export function EditorForm({ mode, plugin, detail, outcome, onOutcome, onDetail,
                 {t('editor.config.agentOnly')}
               </Note>
             )}
+            {notOnline && (
+              <Note tone="warn" role="status">
+                {t('editor.config.runsOnOffline')}
+              </Note>
+            )}
+            {moved && (
+              <Note tone="info" role="status">
+                {t('editor.config.runsOnMoved')}
+              </Note>
+            )}
             {unmapped.length > 0 && (
               <Note tone="crit" role="alert">
                 <div className="font-medium">{t('editor.config.unmapped')}</div>
@@ -266,7 +287,7 @@ export function EditorForm({ mode, plugin, detail, outcome, onOutcome, onDetail,
                 <h3 className="text-[13px] font-medium">{t('editor.config.common')}</h3>
                 <span className="ml-auto font-mono text-[11px] text-muted-foreground">{t('editor.config.commonMeta')}</span>
               </div>
-              <RunsOnRow />
+              <RunsOnRow mode={mode} machine={machine} onChange={onMachine} plugin={plugin} label={runsLabel} />
               <IntervalRow
                 state={interval}
                 onChange={(s) => {
@@ -289,6 +310,8 @@ export function EditorForm({ mode, plugin, detail, outcome, onOutcome, onDetail,
           errorCount={errorCount}
           busy={busy}
           disabled={agentOnly}
+          runsLabel={runsLabel}
+          testDisabled={notOnline}
           outcome={outcome}
           resultRef={resultRef}
           onSave={() => void submit(false)}
@@ -360,19 +383,25 @@ function NameRow({ name, onChange, error, example }: { name: string; onChange: (
   )
 }
 
-function RunsOnRow() {
+interface RunsOnRowProps {
+  mode: 'new' | 'edit'
+  machine: string
+  onChange: (machine: string) => void
+  plugin: PluginInfo
+  label: string
+}
+
+// 运行位置：编辑时是选择器（只能在中枢跑的插件不给设备选项）；新建时位置已在插件目录上方选好，这里只读显示
+function RunsOnRow({ mode, machine, onChange, plugin, label }: RunsOnRowProps) {
   const { t } = useTranslation()
+  const devices = useLiveStore(selectDevices)
+  const pickable = mode === 'edit' && allowedLocations(plugin).devices && (selectableDevices(devices).length > 0 || machine !== 'hub')
+  let help = t('editor.config.runsOnHelp')
+  if (!allowedLocations(plugin).devices) help = t('editor.config.runsOnHubOnly')
+  else if (mode === 'new') help = t('editor.config.runsOnNewHint')
   return (
-    <RowShell label={t('editor.config.runsOn')} keyName="runs_on" help={t('editor.config.runsOnHelp')}>
-      <Segmented
-        ariaLabel={t('editor.config.runsOn')}
-        value="hub"
-        onChange={() => {}}
-        options={[
-          { value: 'hub', label: t('editor.config.runsHub'), title: t('editor.config.runsHub') },
-        ]}
-      />
-      <span className="ml-2 text-[11.5px] text-muted-foreground">{t('editor.config.agentLater')}</span>
+    <RowShell label={t('editor.config.runsOn')} keyName="runs_on" help={help} htmlFor={pickable ? 'f-runs-on' : undefined}>
+      {pickable ? <RunsOnSelect id="f-runs-on" value={machine} onChange={onChange} plugin={plugin} /> : <span className="text-[13px]">{label}</span>}
     </RowShell>
   )
 }

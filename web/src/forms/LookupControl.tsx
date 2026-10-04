@@ -11,8 +11,35 @@ import type { ControlProps, LookupValue } from './model'
 // 输入停顿多久后才发起候选查询
 export const lookupDebounceMs = 300
 
-// lookup 字段：输入关键字，停顿后由插件给出候选，选中后保存候选的原始值
-export function LookupControl({ field, value, onChange, id, invalid, describedBy }: ControlProps<LookupValue | null>) {
+// lookup 字段：中枢上输入关键字，停顿后由插件给出候选，选中后保存候选的原始值；
+// 设备上的插件不支持候选查询，降级为普通文本输入。
+export function LookupControl(props: ControlProps<LookupValue | null>) {
+  const { role } = useFormContext()
+  return role === 'hub' ? <LookupSearch {...props} /> : <LookupText {...props} />
+}
+
+function LookupText({ value, onChange, id, invalid, describedBy }: ControlProps<LookupValue | null>) {
+  const { t } = useTranslation()
+  return (
+    <div className="max-w-[420px]">
+      <input
+        id={id}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
+        autoComplete="off"
+        value={value?.label ?? ''}
+        onChange={(e) => onChange(e.target.value.trim() === '' ? null : { value: e.target.value, label: e.target.value })}
+        className={cn(
+          'h-8 w-full min-w-0 rounded-[2px] border border-line-strong bg-card px-2.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          invalid && 'border-status-crit shadow-[inset_0_0_0_1px_var(--status-crit)]',
+        )}
+      />
+      <p className="mt-1 text-[11.5px] text-muted-foreground">{t('form.lookupRemote')}</p>
+    </div>
+  )
+}
+
+function LookupSearch({ field, value, onChange, id, invalid, describedBy }: ControlProps<LookupValue | null>) {
   const { t, i18n } = useTranslation()
   const { lookup } = useFormContext()
   const listId = useId()

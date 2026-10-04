@@ -3,15 +3,14 @@ import { useTranslation } from 'react-i18next'
 import { Select } from '@/ui/select'
 import { useFormContext } from './context'
 import type { ControlProps } from './model'
+import { proxyUsableAt } from './proxy-location'
 
-// 本期实例只在 hub 上运行，可选代理限定在 hub 可用或任意位置可用的
-const usableOnHub = new Set(['hub', 'any'])
 
 // proxy 字段：下拉「直连」加全局代理列表，空值表示直连
 export function ProxyControl({ value, onChange, id, invalid, describedBy }: ControlProps<string>) {
   const { t } = useTranslation()
-  const { proxies, proxiesFailed } = useFormContext()
-  const usable = (proxies ?? []).filter((p) => usableOnHub.has(p.location))
+  const { proxies, proxiesFailed, role } = useFormContext()
+  const usable = (proxies ?? []).filter((p) => proxyUsableAt(p.location, role))
   const known = value === '' || (proxies ?? []).some((p) => p.id === value)
   const hidden = value !== '' && usable.every((p) => p.id !== value)
   return (
