@@ -110,6 +110,8 @@ func (s *Service) dropState(id string) {
 	delete(s.states, id)
 	delete(s.runLocks, id)
 	delete(s.badWarned, id)
+	delete(s.assignIssues, id)
+	delete(s.proxyFailed, id)
 }
 
 // lastFor 返回传给插件的上次成功报告与私有 state。

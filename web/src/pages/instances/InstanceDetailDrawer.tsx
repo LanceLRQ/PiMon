@@ -1,6 +1,7 @@
 import { Copy, Pause, Play, RefreshCw, Settings2, Trash2 } from 'lucide-react'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router'
 import { http } from '@/api/client'
 import { translateErrorValue } from '@/i18n/errors'
 import { formatDateTime, formatAgo, parseTime } from '@/lib/time'
@@ -13,8 +14,9 @@ import { Sheet, SheetContent } from '@/ui/sheet'
 import { SpecList } from '@/ui/spec-list'
 import { StatusLabel, StatusShape } from '@/ui/status-shape'
 import { WordmarkBadge } from '@/ui/wordmark-badge'
-import type { InstanceActions } from './actions'
+import { remotePaused, type InstanceActions } from './actions'
 import { historyItems } from './history-items'
+import { useLocationLabels } from './locations'
 
 // 数据项标题：精确匹配插件声明的 key，动态集合（prefix[*]）按前缀匹配其成员
 export function outputTitle(outputs: PluginOutput[] | undefined, key: string): string | undefined {
@@ -60,6 +62,7 @@ type Detail = { kind: 'loading' } | { kind: 'ready'; data: InstanceDetail } | { 
 export function InstanceDetailDrawer({ id, instance, synced, now, outputs, pluginName, actions, onClose }: DrawerProps) {
   const { t, i18n } = useTranslation()
   const [detail, setDetail] = useState<Detail>({ kind: 'loading' })
+  const loc = useLocationLabels()
 
   const refreshKey = instance ? `${instance.last_success_at ?? ''}|${instance.failures}|${instance.display_state}|${instance.updated_at}` : ''
 
@@ -96,6 +99,7 @@ export function InstanceDetailDrawer({ id, instance, synced, now, outputs, plugi
   const numeric = historyItems(items)
   const lastSuccess = parseTime(inst?.last_success_at)
   const running = inst ? actions.running.has(inst.id) : false
+  const blocked = inst ? remotePaused(inst) : false
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
@@ -116,7 +120,7 @@ export function InstanceDetailDrawer({ id, instance, synced, now, outputs, plugi
           }
           footer={
             <>
-              <Button variant="outline" size="sm" className="rounded-[2px]" disabled={running} onClick={() => void actions.run(inst)}>
+              <Button variant="outline" size="sm" className="rounded-[2px]" disabled={running || blocked} title={blocked ? t('instances.runBlockedCollect') : undefined} onClick={() => void actions.run(inst)}>
                 <RefreshCw className={running ? 'animate-spin' : undefined} /> {t('instances.menu.run')}
               </Button>
               <Button variant="outline" size="sm" className="rounded-[2px]" onClick={() => void actions.setPaused(inst, !inst.paused)}>
@@ -137,11 +141,28 @@ export function InstanceDetailDrawer({ id, instance, synced, now, outputs, plugi
           <Section no="d1" title={t('detail.status')}>
             <div className="px-4">
               {inst.summary && <p className="mb-2 text-[13px]">{inst.summary}</p>}
+              {blocked && (
+                <div className="mb-2">
+                  <Note tone="info" role="status">
+                    {t('instances.runBlockedCollect')}
+                  </Note>
+                </div>
+              )}
               <SpecList
                 rows={[
                   { label: t('detail.state'), value: <StatusLabel state={inst.display_state} /> },
                   { label: t('detail.plugin'), value: pluginName ? `${pluginName} · ${inst.plugin_id}` : inst.plugin_id },
-                  { label: t('instances.cols.runs'), value: inst.runs_on === 'hub' ? t('instances.hubLocal') : inst.runs_on },
+                  {
+                    label: t('instances.cols.runs'),
+                    value:
+                      inst.runs_on === 'hub' || loc.missing(inst.runs_on) ? (
+                        loc.text(inst.runs_on, t('instances.hubLocal'))
+                      ) : (
+                        <Link to={`/devices?open=${encodeURIComponent(inst.runs_on)}`} className="underline underline-offset-2">
+                          {loc.text(inst.runs_on, t('instances.hubLocal'))}
+                        </Link>
+                      ),
+                  },
                   {
                     label: t('detail.interval'),
                     value: t('detail.intervalValue', { n: inst.effective_interval_seconds }) + (inst.interval_seconds > 0 ? t('detail.intervalOverride') : ''),

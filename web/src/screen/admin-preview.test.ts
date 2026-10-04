@@ -30,6 +30,8 @@ describe('管理员预览适配', () => {
   it('订阅 screen_data（管理员默认没有）', () => {
     expect(previewTopics).toContain('screen_data')
     expect(previewTopics).toContain('instances')
+    // 灯组随设备变化，预览要感知设备
+    expect(previewTopics).toContain('devices')
   })
 
   it('snapshot：设置、屏幕状态、实例数据来自管理员 snapshot，布局用解析后的', () => {
@@ -90,6 +92,8 @@ describe('管理员预览适配', () => {
       sink.applySnapshot(adminSnapshot())
       sink.applyPatch(patch({ entity: 'instance_state' }))
       vi.advanceTimersByTime(100)
+      sink.applyPatch(patch({ entity: 'device' }))
+      sink.applyPatch(patch({ entity: 'device_removed' }))
       sink.applyPatch(patch({ entity: 'instance_removed' }))
       sink.applyPatch(patch({ entity: 'instance_state' }))
       expect(load).not.toHaveBeenCalled()

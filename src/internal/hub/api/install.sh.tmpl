@@ -1,0 +1,101 @@
+#!/bin/sh
+# PiMon agent 一行安装脚本：下载本 hub 内嵌的 agent、校验 SHA-256、放置二进制后执行 pimon-agent install。
+# 用法：curl -fsSL @HUB_URL@/agent/install.sh | sh -s -- --hub wss://… --fp SHA256:… --code …
+# （脚本自己会在参数前加上 install 子命令）
+# 经 curl | sh 运行时 stdin 不是终端，agent 走非交互模式：系统模式下要把 pimon 加入 docker 组，
+# 须显式加 --docker-group；要写入 storage-health 只读命令（smartctl、mdadm、btrfs）的 sudoers 白名单，
+# 须显式加 --sudoers（参数原样透传给 pimon-agent install）。
+# 注意：校验和与二进制都来自同一个 HTTP 地址，只在局域网可信的前提下防得住传输损坏，防不住中间人。
+set -eu
+
+HUB="@HUB_URL@"
+
+fail() {
+	echo "pimon-agent 安装失败：$*" >&2
+	exit 1
+}
+
+os=$(uname -s | tr 'A-Z' 'a-z')
+case "$os" in
+linux | darwin) ;;
+*) fail "不支持的系统 $os（仅支持 linux、darwin）" ;;
+esac
+case "$(uname -m)" in
+x86_64 | amd64) arch=amd64 ;;
+aarch64 | arm64) arch=arm64 ;;
+*) fail "不支持的 CPU 架构 $(uname -m)（仅支持 amd64、arm64）" ;;
+esac
+platform="$os-$arch"
+name="pimon-agent-$platform"
+
+# 用户模式：macOS，或参数里带 --user；否则为系统模式（需要 root）
+user_mode=0
+if [ "$os" = darwin ]; then user_mode=1; fi
+for a in "$@"; do
+	if [ "$a" = "--user" ]; then user_mode=1; fi
+done
+
+fetch() { # fetch URL OUT
+	if command -v curl >/dev/null 2>&1; then
+		curl -fsSL -o "$2" "$1"
+	elif command -v wget >/dev/null 2>&1; then
+		wget -q -O "$2" "$1"
+	else
+		fail "需要 curl 或 wget"
+	fi
+}
+
+sha256_of() {
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$1" | awk '{print $1}'
+	elif command -v shasum >/dev/null 2>&1; then
+		shasum -a 256 "$1" | awk '{print $1}'
+	else
+		fail "需要 sha256sum 或 shasum 来校验下载"
+	fi
+}
+
+tmp=$(mktemp -d) || fail "无法创建临时目录"
+trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+
+fetch "$HUB/agent/checksums" "$tmp/SHA256SUMS" || fail "无法从 $HUB/agent/checksums 获取校验和（该 hub 可能没有内嵌 agent）"
+want=$(awk -v f="$name" '$2 == f { print $1 }' "$tmp/SHA256SUMS")
+[ -n "$want" ] || fail "hub 没有内嵌 $platform 的 agent"
+fetch "$HUB/agent/download/$platform" "$tmp/$name" || fail "无法从 $HUB/agent/download/$platform 下载 agent"
+got=$(sha256_of "$tmp/$name")
+[ "$got" = "$want" ] || fail "SHA-256 校验失败（期望 $want，实际 $got），已中止"
+chmod 755 "$tmp/$name"
+
+if [ "$user_mode" = 1 ]; then
+	[ -n "${HOME:-}" ] || fail "HOME 未设置"
+	dest_dir="$HOME/.pimon/bin"
+	BIN="$dest_dir/pimon-agent"
+	mkdir -p "$dest_dir" || fail "无法创建 $dest_dir"
+	cp "$tmp/$name" "$BIN.new" || fail "无法写入 $dest_dir"
+	mv -f "$BIN.new" "$BIN" || fail "无法替换 $BIN"
+	# exec 之后 trap 不再执行，先清理临时目录
+	rm -rf "$tmp"
+	trap - EXIT HUP INT TERM
+	exec "$BIN" install "$@"
+fi
+
+BIN=/usr/local/bin/pimon-agent
+if [ "$(id -u)" = 0 ]; then
+	SUDO=""
+elif command -v sudo >/dev/null 2>&1; then
+	SUDO="sudo"
+else
+	fail "系统模式需要 root 权限，且没有 sudo；请用 root 重新运行，或加 --user 安装为用户模式"
+fi
+$SUDO mkdir -p /usr/local/bin || fail "无法创建 /usr/local/bin"
+if ! $SUDO cp "$tmp/$name" "$BIN.new"; then
+	$SUDO rm -f "$BIN.new" 2>/dev/null || true
+	fail "无法写入 /usr/local/bin"
+fi
+if ! $SUDO mv -f "$BIN.new" "$BIN"; then
+	$SUDO rm -f "$BIN.new" 2>/dev/null || true
+	fail "无法替换 $BIN"
+fi
+rm -rf "$tmp"
+trap - EXIT HUP INT TERM
+exec $SUDO "$BIN" install "$@"

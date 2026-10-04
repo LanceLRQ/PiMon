@@ -2,6 +2,7 @@ package instances
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"math"
@@ -80,13 +81,19 @@ func (s *Service) prepareConfig(ctx context.Context, fields []schema.Field, inco
 	return plain, secrets, nil
 }
 
-// Create 创建实例。配置不合法返回 model.FieldErrors，插件不存在返回 ErrPluginNotFound。
+// Create 创建实例。配置不合法返回 model.FieldErrors，hub 上插件不存在返回 ErrPluginNotFound，
+// 运行位置不合法返回 *MachineInvalidError，代理不能在该运行位置使用返回 *ProxyLocationError。
+// 运行位置缺省为 hub；设备上的实例按该设备上报的 manifest 校验配置。
 func (s *Service) Create(ctx context.Context, in model.InstanceInput) (model.InstanceDetail, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
-	p, ok := s.reg.Get(in.PluginID)
-	if !ok {
-		return model.InstanceDetail{}, ErrPluginNotFound
+	machine := strings.TrimSpace(in.RunsOn)
+	if machine == "" {
+		machine = machineHub
+	}
+	p, err := s.checkMachine(machine, in.PluginID)
+	if err != nil {
+		return model.InstanceDetail{}, err
 	}
 	if p.Manifest.Kind != manifest.KindSource {
 		// 通知渠道插件不是数据源，不能建监控实例。
@@ -103,6 +110,9 @@ func (s *Service) Create(ctx context.Context, in model.InstanceInput) (model.Ins
 	if len(errs) > 0 {
 		return model.InstanceDetail{}, errs
 	}
+	if err := s.checkProxyLocation(ctx, machine, fields, proxyOf(fields, plain)); err != nil {
+		return model.InstanceDetail{}, err
+	}
 	enc, err := s.encodeSecrets(secrets)
 	if err != nil {
 		return model.InstanceDetail{}, err
@@ -114,8 +124,8 @@ func (s *Service) Create(ctx context.Context, in model.InstanceInput) (model.Ins
 	now := s.clk.Now()
 	r := row{
 		ID: id, PluginID: p.ID, Name: name, Config: plain, SecretsEnc: enc,
-		IntervalSeconds: in.IntervalSeconds, ProxyID: proxyOf(fields, plain),
-		ConfigHash: contentHash(p.ID, plain, enc), CreatedAt: now, UpdatedAt: now,
+		IntervalSeconds: in.IntervalSeconds, ProxyID: proxyOf(fields, plain), Machine: machine,
+		ConfigHash: contentHash(machine, p.ID, plain, enc), CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.insertRow(ctx, r); err != nil {
 		return model.InstanceDetail{}, err
@@ -126,8 +136,10 @@ func (s *Service) Create(ctx context.Context, in model.InstanceInput) (model.Ins
 	return s.toDetail(r), nil
 }
 
-// Update 更新名称、配置与刷新间隔（暂停状态不变）。密钥字段留空表示保留原值。
-// 内容（插件、配置、密钥）变化后旧的当前状态被清空；只改名称或间隔则保留。
+// Update 更新名称、配置、刷新间隔与运行位置（暂停状态不变）。密钥字段留空表示保留原值，
+// 运行位置缺省表示保留原值。内容（运行位置、插件、配置、密钥）变化后旧的当前状态被清空；
+// 只改名称或间隔则保留。运行位置或内容变化时按 Create 的规则校验运行位置与代理位置；
+// 改换运行位置时新旧两台机器都重新对齐（本机调度或通知设备重新下发）。
 func (s *Service) Update(ctx context.Context, id string, in model.InstanceInput) (model.InstanceDetail, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
@@ -138,11 +150,27 @@ func (s *Service) Update(ctx context.Context, id string, in model.InstanceInput)
 	if in.PluginID != "" && in.PluginID != r.PluginID {
 		return model.InstanceDetail{}, model.FieldErrors{"plugin_id": model.FieldInvalid}
 	}
+	oldMachine := r.Machine
+	machine := strings.TrimSpace(in.RunsOn)
+	if machine == "" {
+		machine = oldMachine
+	}
+	moved := machine != oldMachine
+	if moved {
+		if _, err := s.checkMachine(machine, r.PluginID); err != nil {
+			return model.InstanceDetail{}, err
+		}
+	}
+	r.Machine = machine
 	p, existing, iss := s.loadFull(r)
 	// 配置损坏或密钥无法解密时没有可保留的旧值：请求体就是完整的新配置。
 	refill := iss != nil && iss.refill
 	if iss != nil && !refill {
-		if _, ok := s.reg.Get(r.PluginID); !ok {
+		if _, ok := s.pluginFor(machine, r.PluginID); !ok {
+			// 插件在该运行位置上不可用：给出具体原因（hub 上为 ErrPluginNotFound）。
+			if _, err := s.checkMachine(machine, r.PluginID); err != nil {
+				return model.InstanceDetail{}, err
+			}
 			return model.InstanceDetail{}, ErrPluginNotFound
 		}
 		return model.InstanceDetail{}, errors.New(iss.msg)
@@ -177,8 +205,19 @@ func (s *Service) Update(ctx context.Context, id string, in model.InstanceInput)
 			return model.InstanceDetail{}, err
 		}
 	}
-	hash := contentHash(r.PluginID, plain, enc)
+	hash := contentHash(machine, r.PluginID, plain, enc)
+	// 运行位置参与摘要，moved 时 changed 必为真。
 	changed := refill || hash != r.ConfigHash
+	if changed {
+		if !moved {
+			if _, err := s.checkMachine(machine, r.PluginID); err != nil {
+				return model.InstanceDetail{}, err
+			}
+		}
+		if err := s.checkProxyLocation(ctx, machine, fields, proxyOf(fields, plain)); err != nil {
+			return model.InstanceDetail{}, err
+		}
+	}
 	r.Name, r.Config, r.SecretsEnc = name, plain, enc
 	r.IntervalSeconds, r.ProxyID, r.ConfigHash = in.IntervalSeconds, proxyOf(fields, plain), hash
 	r.UpdatedAt = s.clk.Now()
@@ -191,11 +230,15 @@ func (s *Service) Update(ctx context.Context, id string, in model.InstanceInput)
 		s.resetState(id, hash)
 	}
 	s.syncRow(ctx, r)
+	if moved {
+		// 旧机器是 hub 时 syncRow 已摘掉本机任务；是设备时通知它不再运行该实例。
+		s.machineChanged(oldMachine)
+	}
 	s.notify(id)
 	return s.toDetail(r), nil
 }
 
-// Copy 复制实例：配置原样复制，密钥置空，需要用户重新填写。
+// Copy 复制实例：运行位置与配置原样复制，密钥置空，需要用户重新填写。
 func (s *Service) Copy(ctx context.Context, id, name string) (model.InstanceDetail, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
@@ -203,7 +246,7 @@ func (s *Service) Copy(ctx context.Context, id, name string) (model.InstanceDeta
 	if err != nil {
 		return model.InstanceDetail{}, err
 	}
-	if p, ok := s.reg.Get(src.PluginID); ok && p.Manifest.Kind != manifest.KindSource {
+	if p, ok := s.pluginFor(src.Machine, src.PluginID); ok && p.Manifest.Kind != manifest.KindSource {
 		return model.InstanceDetail{}, model.FieldErrors{"plugin_id": model.FieldInvalid}
 	}
 	errs := model.FieldErrors{}
@@ -226,8 +269,8 @@ func (s *Service) Copy(ctx context.Context, id, name string) (model.InstanceDeta
 	now := s.clk.Now()
 	r := row{
 		ID: newIDStr, PluginID: src.PluginID, Name: name, Config: cfg,
-		IntervalSeconds: src.IntervalSeconds, ProxyID: src.ProxyID,
-		ConfigHash: contentHash(src.PluginID, cfg, ""), CreatedAt: now, UpdatedAt: now,
+		IntervalSeconds: src.IntervalSeconds, ProxyID: src.ProxyID, Machine: src.Machine,
+		ConfigHash: contentHash(src.Machine, src.PluginID, cfg, ""), CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.insertRow(ctx, r); err != nil {
 		return model.InstanceDetail{}, err
@@ -254,7 +297,7 @@ func (s *Service) screensUsing(ctx context.Context, id string) ([]model.ScreenRe
 	return s.screens.ScreensUsing(ctx, id)
 }
 
-// Delete 删除实例：移出调度、丢弃当前状态；状态行与历史随外键级联删除。
+// Delete 删除实例：移出调度（远程实例通知其设备）、丢弃当前状态；状态行与历史随外键级联删除。
 // 返回值里的 AffectedScreens 是删除时引用它的 screen（这些 screen 上的小组件随后显示引用失效）。
 func (s *Service) Delete(ctx context.Context, id string) (model.InstanceDeleteResult, error) {
 	affected, err := s.screensUsing(ctx, id)
@@ -263,16 +306,18 @@ func (s *Service) Delete(ctx context.Context, id string) (model.InstanceDeleteRe
 	}
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
-	res, err := s.db.ExecContext(ctx, `DELETE FROM plugin_instances WHERE id = ?`, id)
+	var machine string
+	err = s.db.QueryRowContext(ctx, `DELETE FROM plugin_instances WHERE id = ? RETURNING machine`, id).Scan(&machine)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.InstanceDeleteResult{}, ErrNotFound
+	}
 	if err != nil {
 		return model.InstanceDeleteResult{}, err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return model.InstanceDeleteResult{}, ErrNotFound
 	}
 	s.dropTask(id)
 	s.dropState(id)
 	s.setSyncIssue(id, nil)
+	s.machineChanged(machine)
 	s.notify(id)
 	return model.InstanceDeleteResult{AffectedScreens: affected}, nil
 }

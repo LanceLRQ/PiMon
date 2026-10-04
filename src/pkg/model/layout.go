@@ -12,6 +12,20 @@ const (
 	WidgetSourceAggregate = "aggregate"
 )
 
+// 聚合小组件的数据源（WidgetBinding.DataSource）。为空表示按 Refs 逐项绑定。
+const (
+	// AggregateSourceHosts 是主机灯组：自动包含中枢与全部已确认设备，不使用 Refs，模板固定 status-grid。
+	AggregateSourceHosts = "hosts"
+)
+
+// 主机灯组每格的状态（ResolvedHost.State）：在 Presence* 之外的两种。
+const (
+	// HostStateMaintenance 表示设备处于维护模式，优先于在线状态。
+	HostStateMaintenance = "maintenance"
+	// HostStateIncompatible 表示设备未在线且与中枢协议不兼容，需要升级。
+	HostStateIncompatible = "incompatible"
+)
+
 // IndexScreenID 是首页 screen 的固定 id，布局里必须存在且不可删除。
 const IndexScreenID = "index"
 
@@ -82,9 +96,12 @@ type ResolvedRef struct {
 //   - plugin 来源：InstanceID 指定实例，数据项由 manifest 声明的槽决定；为空表示占位，
 //     解析布局时绑定到该插件最早创建的实例。
 //   - generic 来源：Refs 至多一项；aggregate 来源：Refs 为参与汇总的数据项。
+//   - aggregate 来源且 DataSource 非空：数据由服务端按数据源自动汇总，Refs 必须为空
+//     （目前只有 hosts，即主机灯组）。
 type WidgetBinding struct {
 	InstanceID string      `json:"instance_id,omitempty"`
 	Refs       []WidgetRef `json:"refs,omitempty"`
+	DataSource string      `json:"data_source,omitempty"`
 }
 
 // LayoutWidget 是 screen 上的一个小组件放置记录。
@@ -186,9 +203,11 @@ type LayoutRollbackRequest struct {
 }
 
 // CatalogEntry 是通用或聚合目录里的一个模板及其允许的尺寸。
+// DataSource 仅聚合目录：非空表示按数据源自动汇总的条目（如主机灯组 hosts），与 Template 一起区分条目。
 type CatalogEntry struct {
-	Template string       `json:"template"`
-	Sizes    []WidgetSize `json:"sizes"`
+	Template   string       `json:"template"`
+	DataSource string       `json:"data_source,omitempty"`
+	Sizes      []WidgetSize `json:"sizes"`
 }
 
 // WidgetCatalog 是通用与聚合小组件目录（插件小组件的尺寸来自各插件的 manifest）。
@@ -218,9 +237,25 @@ type ResolvedWidget struct {
 	// generic 来源的键固定为 value；aggregate 来源的键固定为 items。
 	Slots map[string][]ResolvedRef `json:"slots"`
 	// DisplayState 是统一展示状态：无绑定为 unconfigured，引用失效为 broken，
-	// 否则为被绑定实例的展示状态（聚合取其中最严重的）。
+	// 否则为被绑定实例的展示状态（聚合取其中最严重的）；主机灯组固定为 ok，各格自己表达状态。
 	DisplayState string         `json:"display_state"`
 	Options      map[string]any `json:"options"`
+	// Hosts 仅主机灯组（data_source 为 hosts）：中枢固定第一，其后按设备创建顺序，只含已确认设备。
+	Hosts []ResolvedHost `json:"hosts,omitempty"`
+}
+
+// ResolvedHost 是主机灯组里的一格。
+type ResolvedHost struct {
+	// ID 为 hub 或设备 id。
+	ID string `json:"id"`
+	// Name 是设备名；中枢为空串，由前端按语言显示「中枢」。
+	Name string `json:"name"`
+	// State 是 online | disconnected | offline | dormant | pending | maintenance | incompatible；
+	// 中枢固定为 online。维护模式优先；设备未在线且协议不兼容时为 incompatible。
+	State string `json:"state"`
+	// InstanceID 是该机器上 CPU 读数的来源实例（最早创建的 host-metrics 实例），没有时为空；
+	// 读数引用同时放在 Slots["items"]（数据项 cpu）。
+	InstanceID string `json:"instance_id,omitempty"`
 }
 
 // ResolvedScreen 是解析后的 screen。

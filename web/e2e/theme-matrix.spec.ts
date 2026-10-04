@@ -4,10 +4,14 @@ import type { APIRequestContext, Page } from '@playwright/test'
 import { adminPassword, ensureAdminSetup } from './support/admin.ts'
 import { collectConsoleErrors, findScreenOverflow } from './support/checks.ts'
 import { expect, test } from './support/fixtures.ts'
+import { extremeDevices, insertDevices } from './support/devices.ts'
 import { startHub } from './support/hub.ts'
 
 // 主题矩阵（Ruling 29：不做像素基线，只逐项断言）：5 种屏幕 × 3 套主题 × {常规, 降低特效} × {默认首页, 极端数据页}。
 // 每种屏幕自起一个干净的 hub：默认首页取 hub 按显示器自动选出的种子网格，互不影响，也不碰共享 hub 的布局。
+// 设备：每个 hub 启动前往库里造 20 台设备（部分名称超长，含休眠、维护中、需要升级与一个未确认占位），
+// 让默认首页与极端页的主机灯组都面对「放不下」的数据；hub 重启后这些设备处于启动宽限期（pending，90 秒后才转 offline/dormant），
+// 单个用例约 20 秒，通常跨不过去，所以这里检查的主要是 pending 形态；offline/dormant 的呈现靠截图目检。
 // 每项断言：页面无滚动、每个小组件不溢出、屏幕页 console 零报错；截图只存为测试产物，不比对。
 // 主题经时段计划切换，同一个页面不刷新，顺带验证「切主题无刷新」。
 
@@ -70,10 +74,19 @@ const pushBudgetMs = 1500
 
 const artifactDir = path.resolve(import.meta.dirname, '../test-results/theme-matrix')
 
+// 主机灯组在极端页的位置：6×4 占 (4,0) 的 2×2（顶替表格），其余占 (cols-2, 2) 的 2×2；与它重叠的候选略去。
+// 候选的小组件 id 取其在候选表里的原始序号（x0、x1…），不随略去而位移；灯组的 id 固定为 xhosts。
+function hostsRect(grid: { cols: number; rows: number }) {
+  return grid.cols <= 6 ? { col: 4, row: 0, w: 2, h: 2 } : { col: grid.cols - 2, row: 2, w: 2, h: 2 }
+}
+
 function extremeScreen(instanceId: string, grid: { cols: number; rows: number }) {
-  const widgets = extremeCandidates
-    .filter((c) => c.col + c.w <= grid.cols && c.row + c.h <= grid.rows)
-    .map((c, i) => ({
+  const hr = hostsRect(grid)
+  const overlaps = (c: Candidate) => c.col < hr.col + hr.w && hr.col < c.col + c.w && c.row < hr.row + hr.h && hr.row < c.row + c.h
+  const widgets: unknown[] = extremeCandidates
+    .map((c, i) => ({ c, i }))
+    .filter(({ c }) => c.col + c.w <= grid.cols && c.row + c.h <= grid.rows && !overlaps(c))
+    .map(({ c, i }) => ({
       id: `x${i}`,
       source: c.template === 'status-grid' ? 'aggregate' : 'generic',
       template: c.template,
@@ -83,8 +96,21 @@ function extremeScreen(instanceId: string, grid: { cols: number; rows: number })
       row: c.row,
       options: { title: `${c.template} ${c.item}` },
     }))
+  widgets.push({
+    id: 'xhosts',
+    source: 'aggregate',
+    template: 'status-grid',
+    binding: { data_source: 'hosts', refs: [] },
+    size: { cols: hr.w, rows: hr.h },
+    col: hr.col,
+    row: hr.row,
+    options: { title: '主机' },
+  })
   return { id: 'extreme', name: '极端数据', dwell_seconds: 0, in_rotation: false, widgets }
 }
+
+// 屏幕上的主机灯组：status-grid 模板里带 data-host-state 格子的那个小组件
+const hostsWidget = '[data-widget-frame][data-template="status-grid"]:has([data-host-state])'
 
 async function api<T>(request: APIRequestContext, method: 'get' | 'post' | 'put', url: string, baseURL: string, data?: unknown): Promise<T> {
   const res = await request[method](url, { data, headers: { Origin: baseURL } })
@@ -109,7 +135,7 @@ async function waitRoot(page: Page, attrs: { theme?: Theme; reduce?: boolean }, 
 for (const scr of screens) {
   test(`主题矩阵 ${scr.name}：3 主题 × {常规, 降低特效} × {默认首页, 极端数据页} 无滚动、不溢出、零报错`, async ({ browser }, testInfo) => {
     test.setTimeout(240_000)
-    const hub = await startHub()
+    const hub = await startHub({ seed: (db) => insertDevices(db, extremeDevices()) })
     const baseURL = hub.url
     const context = await browser.newContext({
       baseURL,
@@ -143,6 +169,11 @@ for (const scr of screens) {
         .poll(async () => (await api<{ layout: { grid: { cols: number; rows: number } } }>(admin.request, 'get', '/api/screens', baseURL)).layout.grid, { timeout: 20_000, intervals: [500] })
         .toEqual(scr.grid)
       await expect(page.locator('[data-widget-id]').first()).toBeVisible()
+      // 默认首页确实含主机灯组：中枢一格 online，其后是设备格，20 台放不下时折成「+N」
+      await expect(page.locator(hostsWidget).first()).toBeVisible()
+      await expect(page.locator(`${hostsWidget} [data-host-state="online"]`).first()).toBeVisible()
+      await expect(page.locator(`${hostsWidget} .tpl-grid__cell`).nth(1)).toBeVisible()
+      await expect(page.locator(`${hostsWidget} .tpl-grid__more`).first()).toBeVisible()
       await page.evaluate(() => {
         ;(window as unknown as { __matrixMarker: number }).__matrixMarker = 1
       })
@@ -198,7 +229,15 @@ for (const scr of screens) {
       await expect(page.locator('section[data-widget-id="x2"]')).toContainText('123,456,789.12')
       await expect(page.locator('section[data-widget-id="x5"]')).toContainText('98,765,432,100')
       await expect(page.locator('section[data-widget-id="x6"]')).toContainText('使用率 95%')
-      await expect(page.locator('section[data-widget-id="x1"] .tpl-table__row').first()).toBeVisible()
+      // 6×4 的表格让位给主机灯组
+      if (scr.grid.cols > 6) await expect(page.locator('section[data-widget-id="x1"] .tpl-table__row').first()).toBeVisible()
+      // 极端页的主机灯组：中枢与设备格都在，超长名称被截断且不撑破（溢出检查由 inspect 负责），放不下的折成「+N」
+      const extremeHosts = page.locator('section[data-widget-id="xhosts"]')
+      await expect(extremeHosts.locator('[data-host-state="online"]').first()).toBeVisible()
+      await expect(extremeHosts.locator('.tpl-grid__cell')).not.toHaveCount(0)
+      await expect(extremeHosts.locator('.tpl-grid__more').first()).toBeVisible()
+      // 未确认占位（库里排第一）不进灯组
+      await expect(extremeHosts).not.toContainText('未确认占位')
       await expect(page.locator('section[data-widget-id] [class*="__unknown"]')).toHaveCount(0)
       const expectedWidgets = extremeScreen(instance.id, cur.layout.grid).widgets.length
       await expect.poll(() => page.locator('section[data-widget-id]').count()).toBe(expectedWidgets)

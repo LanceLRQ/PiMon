@@ -5,7 +5,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { vi } from 'vitest'
 import { createI18n, type Language } from '@/i18n'
 import { liveStore } from '@/store/live-store'
-import type { Instance, PluginList } from '@/types/generated'
+import type { Device, Instance, PluginList } from '@/types/generated'
 import { ToastProvider } from '@/ui/toast'
 
 export interface Req {
@@ -87,7 +87,7 @@ export async function renderWithApp(ui: ReactElement, opts: { lng?: Language; ro
   )
 }
 
-export function seedStore(instances: Instance[], extra: { build?: string; connected?: boolean } = {}) {
+export function seedStore(instances: Instance[], extra: { build?: string; connected?: boolean; devices?: Device[] } = {}) {
   liveStore.applySnapshot({
     type: 'snapshot',
     build: extra.build ?? 'test-build',
@@ -95,6 +95,7 @@ export function seedStore(instances: Instance[], extra: { build?: string; connec
     topics: [],
     server_time: new Date().toISOString(),
     instances,
+    ...(extra.devices ? { devices: extra.devices } : {}),
   } as unknown as Parameters<typeof liveStore.applySnapshot>[0])
   liveStore.setConnected(extra.connected ?? true)
 }

@@ -53,6 +53,9 @@ type Config struct {
 	Dir        string // 备份目录，不存在时创建
 	// Settings 返回当前设置；时区、每日时刻与保留份数在线可改，因此每次取最新值。
 	Settings func() model.Settings
+	// AfterDaily 在每日备份成功并清理旧备份之后同步调用（例如上传到远端），为空时不调用。
+	// 它在 RunDaily 的协程里运行，ctx 即 RunDaily 的 ctx；耗时会推迟下一轮的计时，但不会漏掉下一天。
+	AfterDaily func(ctx context.Context, info model.BackupInfo)
 }
 
 // Service 提供备份的创建、列表、清理、下载与每日调度。
@@ -255,6 +258,26 @@ func (s *Service) Open(name string) (*os.File, model.BackupInfo, error) {
 	return f, model.BackupInfo{Name: name, Reason: reason, CreatedAt: t, Size: st.Size()}, nil
 }
 
+// Path 返回名为 name 的备份文件路径。名称必须符合命名规则（杜绝路径穿越），
+// 不合法、不存在或不是普通文件都返回 ErrNotFound。
+func (s *Service) Path(name string) (string, error) {
+	if _, _, ok := parseName(name); !ok {
+		return "", ErrNotFound
+	}
+	p := filepath.Join(s.cfg.Dir, name)
+	st, err := os.Stat(p)
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	if !st.Mode().IsRegular() {
+		return "", ErrNotFound
+	}
+	return p, nil
+}
+
 // RunDaily 按设置里的每日时刻循环备份，直到 ctx 结束。
 // 每轮开始时才读取一次设置：修改备份时刻或时区后，要等当前这次等待结束、
 // 进入下一轮才会生效。备份或清理失败只记日志，不中断循环。
@@ -282,12 +305,16 @@ func (s *Service) RunDaily(ctx context.Context) {
 			slog.Info("今天已有每日备份，跳过本次")
 			continue
 		}
-		if _, err := s.Create(ctx, ReasonDaily); err != nil {
+		info, err := s.Create(ctx, ReasonDaily)
+		if err != nil {
 			slog.Error("每日备份失败", "err", err)
 			continue
 		}
 		if err := s.Prune(s.cfg.Settings().Backup.Keep); err != nil {
 			slog.Error("清理旧备份失败", "err", err)
+		}
+		if s.cfg.AfterDaily != nil {
+			s.cfg.AfterDaily(ctx, info)
 		}
 	}
 }

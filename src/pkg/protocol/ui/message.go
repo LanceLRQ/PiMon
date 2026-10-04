@@ -57,6 +57,8 @@ const (
 	TopicScreenState = "screen_state"
 	// TopicScreenData 当前布局引用的实例的展示状态与最新数据项：屏幕会话默认订阅，管理员可订阅做预览。
 	TopicScreenData = "screen_data"
+	// TopicDevices 全部设备（不含中枢本机，由前端合成固定首行）的状态（仅管理员会话可订阅，在管理员默认订阅里）。
+	TopicDevices = "devices"
 )
 
 // patch 的实体。
@@ -73,6 +75,10 @@ const (
 	EntityScreenState = "screen_state"
 	// EntityScreenData 载荷为发生变化的实例的 ScreenData，客户端按 instance_id 合并覆盖。
 	EntityScreenData = "screen_data"
+	// EntityDevice 载荷为该设备的完整 Device（与 GET /api/devices 列表项同形），前端按 id 覆盖。
+	EntityDevice = "device"
+	// EntityDeviceRemoved 只带 id（设备被吊销）。
+	EntityDeviceRemoved = "device_removed"
 )
 
 // 协议级错误码（Error 消息的 code；连接不会因此断开）。
@@ -116,6 +122,8 @@ type Snapshot struct {
 	ScreenState *model.ScreenState `json:"screen_state,omitempty"`
 	// ScreenData 是当前布局引用的实例数据，订阅了 screen_data 时有值（没有引用时为空数组）。
 	ScreenData *[]model.ScreenInstanceData `json:"screen_data,omitempty" tstype:"ScreenInstanceData[]"`
+	// Devices 是全部设备，仅管理员会话且订阅了 devices 时有值（没有设备时为空数组）。
+	Devices *[]model.Device `json:"devices,omitempty" tstype:"Device[]"`
 }
 
 // Patch 是按实体的增量更新。Entity 决定哪些字段有值。
@@ -123,9 +131,11 @@ type Patch struct {
 	Type       ServerMessageType `json:"type"`
 	ServerTime time.Time         `json:"server_time"`
 	Entity     string            `json:"entity"`
-	// ID 是被删除的实例 id（instance_removed）。
-	ID             string          `json:"id,omitempty"`
-	Instance       *model.Instance `json:"instance,omitempty"`
+	// ID 是被删除的实例 id（instance_removed）或被吊销的设备 id（device_removed）。
+	ID       string          `json:"id,omitempty"`
+	Instance *model.Instance `json:"instance,omitempty"`
+	// Device 仅 device 实体有值。
+	Device         *model.Device   `json:"device,omitempty"`
 	Settings       *model.Settings `json:"settings,omitempty"`
 	ScreenSettings *ScreenSettings `json:"screen_settings,omitempty"`
 	// Layout 仅 layout 实体、管理员会话有值；ResolvedLayout 仅 layout 实体、屏幕会话有值。

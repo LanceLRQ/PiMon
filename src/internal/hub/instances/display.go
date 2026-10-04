@@ -9,22 +9,33 @@ import (
 )
 
 // currentIssue 返回实例当前无法运行的原因：先看插件与配置（实时计算，插件消失立即可见），
-// 再看排程时发现的代理问题。
+// 再看排程时发现的代理问题，最后看设备对下发的回执问题（与 broken 同级）。
 func (s *Service) currentIssue(r row) *issue {
 	if _, iss := s.resolve(r); iss != nil {
 		return iss
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.syncIssues[r.ID]
+	if iss := s.syncIssues[r.ID]; iss != nil {
+		return iss
+	}
+	return s.assignIssueFor(r)
 }
 
 // toInstance 组装实例的 API 视图。展示状态由 report.ComputeDisplayState 计算；
 // 暂停的实例仍按最后报告计算，但不做过期判定（Ruling 27）。
 func (s *Service) toInstance(r row) model.Instance {
 	iss := s.currentIssue(r)
+	var dev DeviceFacts
+	if r.Machine != machineHub {
+		var ok bool
+		if dev, ok = s.device(r.Machine); !ok {
+			// 设备已吊销：优先于插件与配置问题。
+			iss = &issue{kind: issueBroken, msg: "设备已吊销或不存在"}
+		}
+	}
 	var interval time.Duration
-	if p, ok := s.reg.Get(r.PluginID); ok {
+	if p, ok := s.pluginFor(r.Machine, r.PluginID); ok {
 		interval = effectiveInterval(r, p.Manifest)
 	} else {
 		interval = effectiveInterval(r, nil)
@@ -45,6 +56,9 @@ func (s *Service) toInstance(r row) model.Instance {
 	in := report.DisplayInput{
 		Broken:        iss != nil && iss.kind == issueBroken,
 		Unconfigured:  iss != nil && iss.kind == issueUnconfigured,
+		Offline:       dev.Offline,
+		Dormant:       dev.Dormant,
+		Maintenance:   dev.Maintenance,
 		LastFailed:    fails > 0,
 		LastSuccessAt: lastOK,
 		Interval:      interval,
@@ -56,7 +70,7 @@ func (s *Service) toInstance(r row) model.Instance {
 		in.ReportStatus = rep.Status
 	}
 	inst := model.Instance{
-		ID: r.ID, PluginID: r.PluginID, Name: r.Name, RunsOn: machineHub,
+		ID: r.ID, PluginID: r.PluginID, Name: r.Name, RunsOn: r.Machine,
 		IntervalSeconds: r.IntervalSeconds, EffectiveIntervalSeconds: int(interval.Seconds()),
 		Paused:       r.Paused,
 		DisplayState: string(report.ComputeDisplayState(in, s.clk.Now())),

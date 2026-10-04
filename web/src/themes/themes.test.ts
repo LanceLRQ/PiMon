@@ -19,7 +19,7 @@ const l2Tokens = [
   '--surface-raised', '--foreground-faint',
   ...statusLevels.flatMap((s) => ['color', 'foreground', 'marker', 'weight'].map((k) => `--status-${s}-${k}`)),
   '--status-warning-bg', '--status-critical-bg',
-  '--state-dim-opacity', '--state-placeholder-border',
+  '--state-dim-opacity', '--state-dormant-opacity', '--state-dormant-filter', '--state-placeholder-border',
   '--font-display', '--font-numeric', '--font-label', '--font-body',
   '--size-value-xl', '--size-value-lg', '--size-value-md', '--size-value-sm', '--size-label',
   '--radius', '--radius-card', '--border-card-width', '--border-card-style',

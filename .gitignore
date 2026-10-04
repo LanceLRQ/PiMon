@@ -29,6 +29,10 @@ go.work.sum
 src/internal/hub/webui/dist/*
 !src/internal/hub/webui/dist/.gitkeep
 
+# agent 分发物（make agent-dist 生成，经 go:embed 打包进 hub），只保留占位文件
+src/internal/hub/agentdist/dist/*
+!src/internal/hub/agentdist/dist/.gitkeep
+
 # ============================================================
 # Node / TypeScript（web/）
 # ============================================================

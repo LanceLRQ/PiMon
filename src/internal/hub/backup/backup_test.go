@@ -512,3 +512,47 @@ func TestRunDailySameDayUsesSettingsTimezone(t *testing.T) {
 		t.Fatalf("按上海时区同日应跳过: %v", list)
 	}
 }
+
+func TestRunDailyCallsAfterDailyAfterPrune(t *testing.T) {
+	f := newFixture(t, start0)
+	f.settings.Backup.Keep = 1
+	type call struct {
+		info  model.BackupInfo
+		count int // 回调时本地剩余份数，用来确认在清理之后调用
+	}
+	calls := make(chan call, 4)
+	f.svc.cfg.AfterDaily = func(_ context.Context, info model.BackupInfo) {
+		list, _ := f.svc.List()
+		calls <- call{info, len(list)}
+	}
+	// 先放一份手动备份，清理后应只剩每日备份。
+	if _, err := f.svc.Create(context.Background(), ReasonManual); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go f.svc.RunDaily(ctx)
+	waitFor(t, "进入等待", func() bool { return f.clk.Waiters() == 1 })
+	f.clk.Advance(4 * time.Hour)
+	select {
+	case c := <-calls:
+		if c.info.Reason != ReasonDaily || c.count != 1 {
+			t.Fatalf("回调 = %+v，期望每日备份且已清理到 1 份", c)
+		}
+		p, err := f.svc.Path(c.info.Name)
+		if err != nil || filepath.Base(p) != c.info.Name {
+			t.Fatalf("Path = %q, %v", p, err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("每日备份成功后应调用 AfterDaily")
+	}
+}
+
+func TestPathRejectsBadNames(t *testing.T) {
+	f := newFixture(t, start0)
+	for _, n := range []string{"../secret.key", "pimon-backup-20260101-000000-daily.tar.gz", "x"} {
+		if _, err := f.svc.Path(n); !errors.Is(err, ErrNotFound) {
+			t.Errorf("Path(%q) = %v，期望 ErrNotFound", n, err)
+		}
+	}
+}

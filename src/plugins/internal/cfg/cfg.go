@@ -40,3 +40,20 @@ func Duration(c map[string]any, key string, def time.Duration) time.Duration {
 	}
 	return def
 }
+
+// List 读取字符串列表字段，兼容 []any（schema 规范化结果）与 []string；非字符串元素被忽略。
+func List(c map[string]any, key string) []string {
+	switch v := c[key].(type) {
+	case []string:
+		return append([]string(nil), v...)
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, e := range v {
+			if s, ok := e.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
+}

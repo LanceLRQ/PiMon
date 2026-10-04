@@ -155,3 +155,16 @@ func TestRingTruncatesLongText(t *testing.T) {
 		t.Errorf("短文本不应变化: %q", got)
 	}
 }
+
+func TestRing配对码键脱敏且不误伤error_code(t *testing.T) {
+	r := NewRing(5)
+	lg := slog.New(r.Handler(slog.LevelDebug))
+	lg.Info("配对", "pair_code", "ABCD-1234", "error_code", "device.offline")
+	a := r.Entries(slog.LevelDebug, 1)[0].Attrs
+	if strings.Contains(a, "ABCD-1234") || !strings.Contains(a, "pair_code=***") {
+		t.Fatalf("pair_code 应脱敏: %s", a)
+	}
+	if !strings.Contains(a, "error_code=device.offline") {
+		t.Fatalf("error_code 不应被脱敏: %s", a)
+	}
+}

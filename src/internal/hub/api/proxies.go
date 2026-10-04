@@ -73,7 +73,20 @@ func (s *server) updateProxy(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteInvalidJSON(w)
 		return
 	}
-	p, err := s.Proxies.Update(r.Context(), r.PathValue("id"), in)
+	id := r.PathValue("id")
+	// 可用位置改窄后，设备上已有的实例可能不再合规（如 VPS 上的实例只能用 any 代理），先检查再写库。
+	if (in.Location == model.ProxyLocationLAN || in.Location == model.ProxyLocationHub) && s.Instances != nil {
+		conflicts, err := s.Instances.ProxyLocationConflicts(r.Context(), id, in.Location)
+		if err != nil {
+			internalError(w, r, err)
+			return
+		}
+		if len(conflicts) > 0 {
+			writeConflictingInstances(w, conflicts)
+			return
+		}
+	}
+	p, err := s.Proxies.Update(r.Context(), id, in)
 	if err != nil {
 		writeProxyError(w, r, err)
 		return

@@ -15,6 +15,8 @@ export interface LibraryEntry {
   pluginId?: string
   widgetId?: string
   template?: string
+  /** 聚合条目按数据源自动汇总（hosts：主机灯组），没有逐项引用 */
+  dataSource?: string
   sizes: WidgetSize[]
 }
 
@@ -28,7 +30,7 @@ function pluginSizes(sizes: PluginWidgetSize[]): WidgetSize[] {
 export function buildLibrary(
   plugins: readonly PluginInfo[],
   catalog: WidgetCatalog | null,
-  templateTitle: (template: string) => string,
+  templateTitle: (template: string, dataSource?: string) => string,
 ): LibraryEntry[] {
   const out: LibraryEntry[] = []
   for (const p of plugins) {
@@ -51,11 +53,12 @@ export function buildLibrary(
   ] as const) {
     for (const e of entries) {
       out.push({
-        key: `${group}:${e.template}`,
+        key: e.data_source ? `${group}:${e.template}:${e.data_source}` : `${group}:${e.template}`,
         group,
-        title: templateTitle(e.template),
+        title: templateTitle(e.template, e.data_source),
         subtitle: e.template,
         template: e.template,
+        ...(e.data_source ? { dataSource: e.data_source } : {}),
         sizes: e.sizes,
       })
     }
@@ -92,7 +95,7 @@ export function allowedSizesOf(w: LayoutWidget, plugins: readonly PluginInfo[], 
     return decl && decl.sizes.length ? pluginSizes(decl.sizes) : [w.size]
   }
   const list = w.source === 'aggregate' ? catalog?.aggregate : catalog?.generic
-  const entry = list?.find((e) => e.template === w.template)
+  const entry = list?.find((e) => e.template === w.template && (e.data_source ?? '') === (w.binding.data_source ?? ''))
   return entry && entry.sizes.length ? entry.sizes : [w.size]
 }
 
@@ -135,5 +138,6 @@ export function createWidget(
       binding: inst ? { instance_id: inst.id } : {},
     }
   }
-  return { ...base, source: entry.group, template: entry.template, binding: { refs: [] } }
+  const binding = entry.dataSource ? { data_source: entry.dataSource } : { refs: [] }
+  return { ...base, source: entry.group, template: entry.template, binding }
 }

@@ -10,6 +10,7 @@ import (
 	_ "github.com/LanceLRQ/PiMon/src/plugins/hubself"
 	_ "github.com/LanceLRQ/PiMon/src/plugins/netreach"
 	_ "github.com/LanceLRQ/PiMon/src/plugins/ping"
+	_ "github.com/LanceLRQ/PiMon/src/plugins/systemd"
 	_ "github.com/LanceLRQ/PiMon/src/plugins/tcpcheck"
 	_ "github.com/LanceLRQ/PiMon/src/plugins/weather"
 )

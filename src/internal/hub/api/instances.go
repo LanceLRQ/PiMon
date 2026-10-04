@@ -8,7 +8,6 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/httpx"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
-	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
 )
 
 func (s *server) registerInstances(mux *http.ServeMux) {
@@ -26,8 +25,17 @@ func (s *server) registerInstances(mux *http.ServeMux) {
 // writeInstanceError 把实例服务的错误映射为 HTTP 响应；无法识别的走 500。
 // 采集错误（run.*）的文字已由运行时脱敏，放进 details.message 供前端展示。
 func writeInstanceError(w http.ResponseWriter, r *http.Request, err error) {
-	var fe model.FieldErrors
+	var (
+		fe model.FieldErrors
+		mi *instances.MachineInvalidError
+		pl *instances.ProxyLocationError
+	)
 	switch {
+	case errors.As(err, &mi):
+		httpx.WriteError(w, http.StatusUnprocessableEntity, httpx.CodeMachineInvalid, map[string]any{"reason": mi.Reason})
+	case errors.As(err, &pl):
+		httpx.WriteError(w, http.StatusUnprocessableEntity, httpx.CodeProxyLocationMismatch,
+			map[string]any{"field": pl.Field, "location": pl.Location})
 	case errors.Is(err, instances.ErrNotFound):
 		httpx.WriteError(w, http.StatusNotFound, httpx.CodeInstanceNotFound, nil)
 	case errors.Is(err, instances.ErrPluginNotFound):
@@ -36,12 +44,11 @@ func writeInstanceError(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteValidationFailed(w, fe)
 	case errors.Is(err, instances.ErrRunBusy):
 		httpx.WriteError(w, http.StatusConflict, httpx.CodeRunBusy, nil)
-	case errors.Is(err, runtime.ErrTimeout):
-		httpx.WriteError(w, http.StatusGatewayTimeout, httpx.CodeRunTimeout, map[string]any{"message": err.Error()})
-	case errors.Is(err, runtime.ErrFailed):
-		httpx.WriteError(w, http.StatusBadGateway, httpx.CodeRunFailed, map[string]any{"message": err.Error()})
 	default:
-		internalError(w, r, err)
+		// 设备离线、不兼容与采集超时、失败（本机与远程共用），其余为内部错误。
+		if !writeDeviceError(w, err) {
+			internalError(w, r, err)
+		}
 	}
 }
 

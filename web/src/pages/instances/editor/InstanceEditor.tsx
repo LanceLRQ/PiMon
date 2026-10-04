@@ -10,8 +10,11 @@ import { Button } from '@/ui/button'
 import { Note } from '@/ui/note'
 import { PageHeader } from '@/ui/page-header'
 import { usePlugins } from '../use-plugins'
+import { selectDevices, useLiveStore } from '@/store/live-store'
 import { creatablePlugins } from './catalog'
 import { EditorForm } from './EditorForm'
+import { defaultDevice, locationRole } from './location'
+import { RunsOnSelect } from './RunsOnSelect'
 import { Pane } from './Pane'
 import { PluginCatalog } from './PluginCatalog'
 import { PluginIcon } from './PluginIcon'
@@ -30,7 +33,9 @@ interface InstanceEditorProps {
 export function InstanceEditor({ mode, instanceId }: InstanceEditorProps) {
   const { t, i18n } = useTranslation()
   const lang = i18n.language === 'en' ? 'en' : 'zh'
-  const plugins = usePlugins()
+  const devices = useLiveStore(selectDevices)
+  // 用户在选择器里选的运行位置；没选时新建为中枢，编辑为实例当前的位置
+  const [chosen, setChosen] = useState<string | null>(null)
   const proxyList = useProxyList()
   const location = useLocation()
   const navigate = useNavigate()
@@ -42,9 +47,13 @@ export function InstanceEditor({ mode, instanceId }: InstanceEditorProps) {
   const [catalogOpen, setCatalogOpen] = useState(selectedId === null)
   const [formVersion, setFormVersion] = useState(0)
 
+  const detail = detailState.kind === 'ready' ? detailState.detail : null
+  // 编辑时要等详情载入才知道实例在哪台机器上
+  const machine: string | null = chosen ?? (mode === 'new' ? 'hub' : (detail?.runs_on ?? null))
+  const plugins = usePlugins(machine)
+
   const all = plugins.list?.plugins
   const creatable = useMemo(() => creatablePlugins(all ?? []), [all])
-  const detail = detailState.kind === 'ready' ? detailState.detail : null
   const plugin: PluginInfo | null =
     mode === 'new' ? (creatable.find((p) => p.id === selectedId) ?? null) : (all?.find((p) => p.id === detail?.plugin_id) ?? null)
 
@@ -52,25 +61,34 @@ export function InstanceEditor({ mode, instanceId }: InstanceEditorProps) {
     () => ({
       proxies: proxyList.proxies,
       proxiesFailed: proxyList.failed,
+      role: locationRole(devices, machine ?? 'hub'),
       lookup: plugin ? lookupRequest(plugin.id, lang) : async () => [],
     }),
-    [proxyList.proxies, proxyList.failed, plugin, lang],
+    [proxyList.proxies, proxyList.failed, plugin, lang, devices, machine],
   )
 
   const title = mode === 'new' ? t('pages.instanceNew') : t('pages.instanceEdit')
   const builtin = creatable.filter((p) => p.origin === 'builtin').length
 
   const pickPlugin = (p: PluginInfo) => {
+    // 只能在设备上跑的插件：中枢位置没有意义，改到第一台可用设备（没有则留在中枢并提示）
+    if (machine === 'hub' && !p.runs_on.includes('hub')) setChosen(defaultDevice(devices) ?? 'hub')
     setSelectedId(p.id)
     setOutcome(null)
     setCatalogOpen(false)
   }
 
+  // 编辑时位置选择器在表单里；表单显示不出来（取插件失败、位置上没有该插件）时放在提示下面，以便改回
+  const recoverPicker = mode === 'edit' && machine ? <RunsOnSelect value={machine} onChange={setChosen} plugin={null} id="f-runs-on" /> : null
+
   let body: React.ReactNode
   if (plugins.error) {
-    body = <Notice tone="crit">{t('editor.withDetail', { summary: t('editor.config.pluginsFailed'), detail: translateErrorValue(i18n, plugins.error) })}</Notice>
-  } else if (!all) {
-    body = <Notice>{t('shell.loading')}</Notice>
+    body = (
+      <Notice tone="crit">
+        {t('editor.withDetail', { summary: t('editor.config.pluginsFailed'), detail: translateErrorValue(i18n, plugins.error) })}
+        {recoverPicker && <div className="mt-2">{recoverPicker}</div>}
+      </Notice>
+    )
   } else if (mode === 'edit' && detailState.kind === 'loading') {
     body = <Notice>{t('shell.loading')}</Notice>
   } else if (mode === 'edit' && detailState.kind === 'error') {
@@ -83,8 +101,15 @@ export function InstanceEditor({ mode, instanceId }: InstanceEditorProps) {
         </Link>
       </Notice>
     )
+  } else if (!all) {
+    body = <Notice>{t('shell.loading')}</Notice>
   } else if (mode === 'edit' && detail && !plugin) {
-    body = <Notice tone="warn">{t('editor.config.pluginMissing', { id: detail.plugin_id })}</Notice>
+    body = (
+      <Notice tone="warn">
+        {machine !== detail.runs_on ? t('editor.config.runsOnNoPlugin', { id: detail.plugin_id }) : t('editor.config.pluginMissing', { id: detail.plugin_id })}
+        {recoverPicker && <div className="mt-2">{recoverPicker}</div>}
+      </Notice>
+    )
   } else if (!plugin) {
     body = (
       <>
@@ -99,6 +124,7 @@ export function InstanceEditor({ mode, instanceId }: InstanceEditorProps) {
             errorCount={0}
             busy={null}
             disabled
+            runsLabel="—"
             outcome={null}
             onSave={() => {}}
             onSaveTest={() => {}}
@@ -113,6 +139,8 @@ export function InstanceEditor({ mode, instanceId }: InstanceEditorProps) {
         mode={mode}
         plugin={plugin}
         detail={detail}
+        machine={machine ?? 'hub'}
+        onMachine={setChosen}
         outcome={outcome}
         onOutcome={setOutcome}
         autoTest={autoTest}
@@ -123,6 +151,7 @@ export function InstanceEditor({ mode, instanceId }: InstanceEditorProps) {
         }}
         onDetail={(d) => {
           setDetail(d)
+          setChosen(null)
           setFormVersion((v) => v + 1)
         }}
       />
@@ -168,6 +197,14 @@ export function InstanceEditor({ mode, instanceId }: InstanceEditorProps) {
                 <span className="text-muted-foreground">{t('editor.catalog.change')}</span>
                 <ChevronDown size={14} aria-hidden className={cn('transition-transform', catalogOpen && 'rotate-180')} />
               </button>
+            )}
+            {(!plugin || (plugin.runs_on.includes('agent') && machine !== null)) && (
+              <div className="border-b border-border px-3 py-2.5">
+                <label htmlFor="f-runs-on" className="mb-1 block font-mono text-[11px] text-muted-foreground">
+                  {t('editor.config.runsOn')}
+                </label>
+                <RunsOnSelect id="f-runs-on" value={machine ?? 'hub'} onChange={setChosen} plugin={plugin} />
+              </div>
             )}
             <div className={cn('flex min-h-0 flex-1 flex-col', plugin && !catalogOpen && 'max-[1099px]:hidden')}>
               <PluginCatalog plugins={creatable} selectedId={plugin?.id ?? null} onSelect={pickPlugin} />

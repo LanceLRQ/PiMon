@@ -62,7 +62,11 @@
     "hub-self": {
       "online": "Online",
       "offline": "Offline",
-      "unknown": "Unknown"
+      "unknown": "Unknown",
+      "backup_ok": "OK",
+      "backup_failed": "Failed",
+      "backup_stale": "No success in 48 h",
+      "backup_never": "Never succeeded"
     },
     "weather": {
       "city_required": "Please choose a city"
@@ -85,7 +89,8 @@
     "screens": "Screen manager",
     "layoutEditor": "Layout editor",
     "schedule": "Schedule & theme",
-    "remote": "Remote control"
+    "remote": "Remote control",
+    "devices": "Devices"
   },
   "status": {
     "ok": "OK",
@@ -95,9 +100,433 @@
     "error": "Collection failed",
     "stale": "Stale",
     "offline": "Offline",
+    "dormant": "Dormant",
     "maintenance": "Maintenance",
     "unconfigured": "Not configured",
-    "broken": "Broken reference"
+    "broken": "Broken reference",
+    "disconnected": "Connection lost",
+    "pending": "Pending"
+  },
+  "devices": {
+    "hub": "Hub",
+    "presence": {
+      "online": "Online",
+      "disconnected": "Connection lost, waiting to reconnect",
+      "offline": "Offline",
+      "dormant": "Dormant",
+      "pending": "Waiting to connect"
+    },
+    "upgrade": {
+      "agent": "Agent upgrade required",
+      "hub": "Hub upgrade required",
+      "differs": "Version differs"
+    },
+    "needsRepair": "Credential is no longer valid. Re-pair the device.",
+    "list": {
+      "sub": "{{count}} devices · dial-in {{in}} · dial-out {{out}} · plus the hub itself",
+      "add": "Add device",
+      "addTitle": "Add device",
+      "listTitle": "Device list",
+      "stripLabel": "Device status summary",
+      "strip": {
+        "online": "Online",
+        "disconnected": "Connection lost",
+        "offline": "Offline",
+        "dormant": "Dormant",
+        "pending": "Waiting to connect",
+        "upgrade": "Upgrade required"
+      },
+      "search": "Search by name, hostname or address",
+      "searchLabel": "Search devices",
+      "filter": {
+        "label": "Filter by status",
+        "all": "All",
+        "online": "Online",
+        "bad": "Problems",
+        "dormant": "Dormant",
+        "pending": "Waiting"
+      },
+      "cols": {
+        "status": "status",
+        "name": "name and role",
+        "direction": "direction",
+        "address": "address",
+        "platform": "os / arch",
+        "version": "version",
+        "instances": "instances",
+        "flags": "offline / maintenance",
+        "actions": "actions"
+      },
+      "role": {
+        "hub": "Hub",
+        "server": "Server",
+        "nas": "NAS",
+        "dev": "Dev machine",
+        "vps": "VPS"
+      },
+      "dir": {
+        "local": "Local",
+        "dial_in": "Dial-in",
+        "dial_out": "Dial-out",
+        "via": "via {{proxy}}",
+        "direct": "direct"
+      },
+      "flag": {
+        "allowOffline": "Offline allowed",
+        "noOffline": "Offline not allowed",
+        "maintenance": "Maintenance"
+      },
+      "lastSeen": "Last seen {{ago}}",
+      "neverSeen": "Never connected",
+      "hubUptime": "Up {{uptime}}",
+      "placeholder": {
+        "pending": "Not connected yet. Run the install command before the pairing code expires.",
+        "repairing": "Re-pairing (replaces {{name}})",
+        "dangling": "Dangling placeholder",
+        "needsUpgrade": "Upgrade required before it can connect"
+      },
+      "deletePlaceholder": "Delete placeholder",
+      "deleteTitle": "Delete placeholder device",
+      "deleteBody": "This deletes the placeholder \"{{name}}\". It never connected successfully, so no instance or screen is affected.",
+      "deleteConfirm": "Delete",
+      "deleted": "Deleted placeholder \"{{name}}\"",
+      "versionDiffers": "Differs from the hub version",
+      "openRow": "Open details of device {{name}}",
+      "loading": "Loading devices",
+      "empty": {
+        "title": "No devices yet",
+        "body": "A device is a machine running pimon-agent. Once added, plugins such as host metrics, Docker and storage health run on that machine and report to this screen."
+      },
+      "noMatch": "No matching devices. Clear the filter or change the search.",
+      "clearFilter": "Clear filter",
+      "count": "Showing {{shown}} of {{total}} devices",
+      "filtered": " · filtered",
+      "pinnedNote": "The hub is always the first row. It ignores filters and cannot be revoked.",
+      "legend": {
+        "online": "Online",
+        "disconnected": "Connection lost, waiting to reconnect",
+        "offline": "Offline",
+        "dormant": "Dormant: an offline device that may be offline",
+        "pending": "Waiting to connect: pairing code not used yet",
+        "upgrade": "Upgrade required: agent or hub is too old"
+      },
+      "menu": {
+        "label": "More actions",
+        "detail": "View details",
+        "repair": "Re-pair",
+        "revoke": "Revoke device"
+      }
+    },
+    "add": {
+      "description": "Add a device: dial-in has the device connect to the hub, dial-out has the hub connect to the device",
+      "tabsLabel": "Connection direction",
+      "tabIn": "Dial-in · agent connects to hub",
+      "tabOut": "Dial-out · hub connects to agent",
+      "close": "Close",
+      "back": "Edit",
+      "copyCommand": "Copy command",
+      "roleOption": "{{label}} · {{key}}",
+      "in": {
+        "intro": "For machines on the LAN (NAS, servers, dev machines). Run one command on the device and the agent connects to the hub with a pairing code. All settings are managed here; no secrets are stored on the device.",
+        "name": "Name",
+        "nameHelp": "Up to 64 characters. Leave empty to use the hostname reported by the agent.",
+        "namePlaceholder": "Empty uses the agent's hostname",
+        "role": "Role",
+        "roleHelp": "The role only groups devices and picks icons; it does not change behavior. Dev machines default to Allow offline.",
+        "allowOffline": "Allow offline",
+        "allowOfflineOn": "Shown as Dormant when offline, no alert",
+        "allowOfflineOff": "Shown as Offline with an alert",
+        "allowOfflineHelp": "For laptops that are often powered off: when on, offline shows as a gray Dormant state without alerts.",
+        "autoMetrics": "Create a host metrics instance",
+        "autoMetricsHint": "Creates a host-metrics instance on the device after it connects",
+        "generate": "Generate pairing code and command",
+        "generating": "Generating…",
+        "summary": "{{name}} · {{role}} · {{offline}} · {{auto}}",
+        "nameFallback": "(hostname)",
+        "offlineOn": "Allow offline",
+        "offlineOff": "No offline",
+        "autoOn": "Host metrics instance",
+        "autoOff": "No instance",
+        "hubSection": "Hub address",
+        "hubMeta": "The agent must be able to reach this address",
+        "hubLabel": "Hub address",
+        "hubHelp": "A device that cannot resolve the address will fail to connect; across subnets pick the one that routes.",
+        "runSection": "Run on the device",
+        "modeLabel": "Command style",
+        "modeOne": "One line",
+        "modeSteps": "Step by step",
+        "oneTitle": "One line · detects OS and architecture, verifies SHA-256, then installs",
+        "oneNoteDev": "Dev machines (macOS) use user mode and the script drops sudo; on a Linux dev machine append --user to the command.",
+        "oneNote": "Linux system mode needs root and the script will ask for sudo; macOS automatically uses user mode.",
+        "step1": "1 · Detect platform",
+        "step2": "2 · Download from the hub",
+        "step3": "3 · Verify SHA-256 (sha256sum on Linux, shasum -a 256 on macOS)",
+        "step4": "4 · Install (sudo on Linux, user mode on macOS)",
+        "step4Dev": "4 · Install (user mode, no sudo)",
+        "stepsNote": "The checksum and binary come from the same HTTP address, which only guards against corruption; use the HTTPS access address if that is not enough.",
+        "sudoersHint": "For disk SMART and other storage health data, add {{flag}} at the end of the command.",
+        "noEmbed": "This hub has no embedded agent, so the one-line and download commands will not work. Get the agent from GitHub Releases and install it by hand; the commands are shown as usual.",
+        "code": "Pairing code",
+        "codeKey": "--code · single use",
+        "codeHelp": "Valid for 15 minutes and single use; after it expires choose Edit to generate a new one.",
+        "fingerprint": "Hub SPKI fingerprint",
+        "fingerprintHelp": "The agent trusts only this public key fingerprint (pinning), not a CA. It is already in the one-line command; for step-by-step installs compare it with the terminal output.",
+        "optional": "Optional flags",
+        "optionalHelp": "To monitor Docker or storage health, append --docker-group or --sudoers to the command (curl | sh is non-interactive, so they must be explicit).",
+        "waiting": "Waiting for the agent to connect…",
+        "remaining": "Pairing code expires in {{time}}",
+        "expired": "Pairing code expired",
+        "expiredHint": "Choose Edit to generate a new pairing code.",
+        "connected": "Connected",
+        "connectedBody": "{{name}} joined · {{address}} · {{version}}",
+        "view": "View device details",
+        "expiresIn": "{{time}}",
+        "copyCode": "Copy pairing code",
+        "copyFingerprint": "Copy fingerprint",
+        "expiredHintRepair": "Choose Regenerate to get a new pairing code.",
+        "codeHelpRepair": "Valid for 15 minutes and single use; after it expires choose Regenerate.",
+        "foundNotOnline": "The device for this pairing was found as \"{{name}}\" but is not online yet ({{status}})"
+      },
+      "out": {
+        "step1": "Install on the VPS and open the pairing window",
+        "step1Meta": "Do this first",
+        "step1Body": "A VPS is not on your LAN, so the hub connects out to it: install the agent on the VPS in listening mode, then run pimon-agent pair to open a 15-minute pairing window; it prints the SPKI fingerprint and pairing code.",
+        "platform": "VPS platform",
+        "downloadTitle": "Download from GitHub Releases and verify SHA-256",
+        "installTitle": "Install in listening mode, then open the pairing window",
+        "noRelease": "This is a development build with no matching GitHub Release, so the download command is hidden. Put the agent binary on the VPS yourself, then run install --listen and pair.",
+        "tipFirewall": "Open TCP {{port}} (the --listen port) in the security group and firewall, allowing only the hub's egress IP; if the hub dials through a proxy, use the proxy's egress IP.",
+        "tipWindow": "Each pairing window lasts 15 minutes and closes after one successful pairing; after it expires run sudo pimon-agent pair again.",
+        "step2": "Enter what pair printed",
+        "address": "Address",
+        "addressPlaceholder": "203.0.113.5:31418",
+        "addressHelp": "Format host:port; wss:// is added automatically. Use the VPS public address, not the LAN IP printed by pair.",
+        "fingerprint": "SPKI fingerprint",
+        "fingerprintHelp": "Format SHA256:<base64>; compare it character by character with the SPKI fingerprint printed by pair.",
+        "code": "Pairing code",
+        "codeHelp": "Case-insensitive; separators are optional.",
+        "proxy": "Proxy",
+        "proxyDirect": "Direct",
+        "proxyHelp": "Which global proxy the hub uses to reach the VPS; manage them on the Proxies page.",
+        "name": "Name",
+        "namePlaceholder": "Empty uses the agent's hostname",
+        "role": "Role",
+        "autoMetrics": "Create a host metrics instance",
+        "autoMetricsHint": "Creates a host-metrics instance on the device after pairing",
+        "submit": "Pair and add",
+        "submitting": "Pairing…",
+        "progress": "Pairing, waiting up to 20 seconds",
+        "progressSteps": "Connecting to the VPS (through the proxy if selected); checking the SPKI fingerprint; submitting the pairing code and waiting for the agent",
+        "success": "Paired",
+        "successBody": "{{name}} is connected",
+        "view": "View device details"
+      },
+      "fail": {
+        "title": "Pairing failed",
+        "detail": "{{reason}} ({{code}})",
+        "view": "View the saved device",
+        "unreachable": {
+          "tip1": "Open TCP {{port}} in the cloud security group and the system firewall, allowing the hub's (or proxy's) egress IP.",
+          "tip2": "Use the VPS public address, with the same port as --listen (host:port).",
+          "tip3": "On the VPS run sudo pimon-agent status to confirm the agent is running in listening mode.",
+          "tip4": "If you picked a proxy, test on the Proxies page that it can reach this address."
+        },
+        "pin_mismatch": {
+          "tip1": "Compare the SPKI fingerprint printed by pimon-agent pair character by character, including the SHA256: prefix.",
+          "tip2": "Reinstalling the VPS or regenerating its certificate changes the fingerprint; once you are sure it is your machine, enter the new one.",
+          "tip3": "If it never matches, someone may be impersonating the VPS; try another network path."
+        },
+        "code_expired": {
+          "tip1": "Run sudo pimon-agent pair on the VPS again to get a new fingerprint and pairing code.",
+          "tip2": "Enter the new code in the form above and choose Pair and add again."
+        },
+        "bad_code": {
+          "tip1": "Check the pairing code character by character; separators are optional and case is ignored.",
+          "tip2": "A code works only once; if it was already used, run sudo pimon-agent pair on the VPS again."
+        },
+        "rate_limited": {
+          "tip1": "The agent caps failed attempts per source and has locked this one for a while; try again in about fifteen minutes.",
+          "tip2": "Check the address, fingerprint and code first so you do not trigger the lock again."
+        },
+        "incompatible": {
+          "tip1": "The device is kept in the device list and joins automatically once the agent is upgraded.",
+          "tip2": "Upgrade command: sudo pimon-agent upgrade --release <version>."
+        },
+        "timeout": {
+          "tip1": "Check the network from the hub to the VPS, and the proxy if one is used.",
+          "tip2": "Make sure the agent is running on the VPS; run sudo pimon-agent pair again if needed and retry."
+        },
+        "unknown": {
+          "tip1": "Open the System page and look in the hub log for why this pairing failed.",
+          "tip2": "Check the address, fingerprint and code, then retry."
+        }
+      },
+      "fieldError": {
+        "required": "Required",
+        "invalid": "Invalid value",
+        "out_of_range": "Out of range",
+        "address": {
+          "required": "Enter the address",
+          "invalid": "Bad address format: use host:port or wss://host:port (write IPv6 as [address]:port)"
+        },
+        "fingerprint": {
+          "required": "Enter the fingerprint",
+          "invalid": "The fingerprint must look like SHA256:<base64>; compare it with the pair output"
+        },
+        "code": {
+          "required": "Enter the pairing code",
+          "invalid": "Bad pairing code format; compare it with the pair output"
+        },
+        "name": {
+          "out_of_range": "The name can be at most 64 characters"
+        },
+        "role": {
+          "invalid": "This role is not supported"
+        },
+        "proxy_id": {
+          "invalid": "The selected proxy does not exist; choose again"
+        }
+      },
+      "agentInfoFailed": "Could not read the hub's connection info"
+    },
+    "detail": {
+      "title": "Device · {{name}}",
+      "hubTitle": "Hub · device details",
+      "srTitle": "Device details: {{name}}",
+      "readOnly": "Read only",
+      "editable": "Editable",
+      "close": "Close",
+      "dirty": "{{count}} unsaved",
+      "changed": "Modified",
+      "props": "Properties",
+      "connection": "Connection",
+      "version": "Version and upgrade",
+      "instances": "Instances on this device",
+      "logs": "Logs",
+      "logsMeta": "Fetched over the agent channel",
+      "notHandshaken": "Not connected yet",
+      "dialInMeta": "Dial-in",
+      "dialOutMeta": "Dial-out",
+      "maintenance": "Maintenance mode",
+      "maintenanceHint": "Screens show \"Maintenance\" and alerts are silenced meanwhile",
+      "allowOfflineHint": "Shown as \"Dormant\" when offline, no alert",
+      "addressHelp": "Edit when the VPS gets a new IP or port; no re-pairing needed if the certificate fingerprint is unchanged.",
+      "proxyMissing": "{{id}} (unavailable)",
+      "errName": "Name is required",
+      "saved": "Saved device \"{{name}}\"",
+      "mismatch": "The selected role or proxy is not usable by these instances. Instances on a VPS can only use proxies with location \"any\"; adjust them first: {{names}}",
+      "incompatibleMin": " (requires peer protocol version {{min}} or higher)",
+      "revoke": "Revoke device",
+      "repair": "Re-pair",
+      "revert": "Revert all",
+      "instanceCount": "{{count}}",
+      "viewInstances": "View in instances",
+      "noInstances": "No instances.",
+      "noInstancesPending": "No instances. Once the device connects, one appears if \"Create a host metrics instance automatically\" was on.",
+      "conn": {
+        "status": "Status",
+        "direction": "Direction",
+        "dirIn": "Dial-in · agent connects to the hub",
+        "dirOut": "Dial-out · hub connects to the agent",
+        "address": "Address",
+        "addressIn": "(latest source IP)",
+        "hostname": "Hostname",
+        "platform": "OS / arch",
+        "connectedFor": "Connected for",
+        "lastSeen": "Last seen",
+        "skew": "Clock skew",
+        "protocol": "Protocol version",
+        "proxy": "Proxy"
+      },
+      "up": {
+        "agentVersion": "Agent version",
+        "hubVersion": "Hub version",
+        "same": "Matches the hub",
+        "pending": "The version is shown once the device connects.",
+        "tooNew": "After the hub is upgraded the agent reconnects by itself; nothing to do on the device. See the System page for hub upgrades.",
+        "cmdIn": "Run on the device · downloads from the hub and verifies",
+        "cmdOut": "Run on the VPS · upgrades from GitHub Releases, --release is required",
+        "outHelp": "A dial-out device has no download channel to the hub; --release uses {{version}}, the same as the hub version.",
+        "proxyHint": "If GitHub is unreachable, append --proxy {{url}} to the command",
+        "noRelease": "This hub is not an official release build, so there is no matching Release and no upgrade command can be given."
+      },
+      "unsaved": {
+        "title": "Discard unsaved changes?",
+        "body": "The device properties have unsaved changes. Leaving now loses them.",
+        "stay": "Keep editing",
+        "leave": "Discard changes"
+      },
+      "hubOverview": "Overview",
+      "hubNote": "The hub itself is not a device row: it cannot be revoked and has no connection properties to edit. Instances running on the hub are listed below.",
+      "hubUptime": "Uptime",
+      "hubChannel": "Agent channel",
+      "hubPort": "Listen port",
+      "hubChannelOff": "Disabled",
+      "hubFingerprint": "SPKI fingerprint",
+      "hubVersion": "Hub version",
+      "hubProtocol": "Protocol / minimum compatible",
+      "hubPlatforms": "Embedded agent platforms",
+      "hubNoEmbed": "None (development build)",
+      "notFound": "Device not found or revoked",
+      "addressPlaceholder": "203.0.113.5:31418 or wss://…"
+    },
+    "logs": {
+      "level": "Log level",
+      "all": "All",
+      "info": "info",
+      "warn": "warn",
+      "error": "error",
+      "refresh": "Refresh logs",
+      "aria": "Device logs",
+      "unavailable": "The device is not online, so logs are unavailable. Logs are fetched live over the agent channel and are not stored on the hub.",
+      "loading": "Loading…",
+      "empty": "No matching logs",
+      "emptyAll": "No logs yet",
+      "err": {
+        "timeout": "The device did not return logs in time. Try again shortly.",
+        "failed": "Failed to fetch logs",
+        "offline": "The device is offline; logs cannot be viewed"
+      }
+    },
+    "revoke": {
+      "title": "Revoke device \"{{name}}\"?",
+      "body": "Revoking invalidates the device credential at once, drops its session and stops the agent from reconnecting (to bring it back you must pair again). Instances on the device are kept: their location shows \"Reference lost\" and collection is paused until you pick a new location for them.",
+      "loading": "Loading what will be affected…",
+      "failed": "Could not load the impact: {{detail}}",
+      "retry": "Retry",
+      "instances": "Instances",
+      "screens": "Screens using these instances",
+      "rules": "Alert rules",
+      "count": "{{count}}",
+      "countRules": "{{count}}",
+      "noInstances": "No instances",
+      "noScreens": "No screens use them",
+      "noRules": "No alert rules use them",
+      "screenNote": "their widgets show \"Reference lost\"",
+      "inputLabel": "Type the device name to confirm",
+      "inputPrompt": "Type the device name \"{{name}}\" to confirm",
+      "submit": "Revoke device",
+      "submitting": "Revoking…",
+      "done": "Revoked device \"{{name}}\""
+    },
+    "repair": {
+      "title": "Re-pair",
+      "whyTitle": "When to use it:",
+      "why1": "The machine running the agent was reinstalled, or its credential file was lost",
+      "why2": "You suspect the credential leaked and want the old one invalidated at once",
+      "why3": "A different machine replaces this device: instances, device settings and maintenance mode move to the new device, and the old device is replaced once pairing succeeds",
+      "repinIn": "If only the hub certificate was rebuilt (the fingerprint changed) you do not need to re-pair: run {{cmd}} on the device to update the pin (dial-in devices only).",
+      "outNote": "If the VPS only changed IP or port and the certificate is the same, change the address under Properties; no re-pairing needed. If the agent was reinstalled on the VPS and the certificate changed, re-pair here with the new fingerprint and pairing code.",
+      "generate": "Generate new pairing code",
+      "generating": "Generating…",
+      "regenerate": "Regenerate",
+      "issuedFor": "New pairing code for \"{{name}}\"",
+      "submit": "Re-pair",
+      "done": "Re-pairing finished: device \"{{name}}\" replaced the old one",
+      "replaced": "Re-pairing finished: the old device was replaced by the new one",
+      "placeholder": "This placeholder has not connected yet, so it cannot be re-paired. Re-pair it after it connects, or revoke it if it is no longer needed.",
+      "repinNoFp": "(The hub fingerprint could not be read; replace SHA256:… with the one shown on the System page.)"
+    }
   },
   "errors": {
     "request": {
@@ -123,7 +552,17 @@
     },
     "not_found": "Resource not found",
     "backup": {
-      "exists": "A backup with the same reason already exists for this second. Try again shortly."
+      "exists": "A backup with the same reason already exists for this second. Try again shortly.",
+      "remote_disabled": "Remote backup is not enabled; enable and save it in Settings first",
+      "remote_failed": "Remote backup failed",
+      "no_local": "There is no local backup to upload yet; create one first",
+      "remote_reason": {
+        "connect": "Cannot reach the remote; check the address, port and network",
+        "auth": "Wrong username or password",
+        "not_writable": "The directory does not exist and cannot be created, or is not writable",
+        "io": "Read/write error on the remote, or no progress for too long",
+        "local_read": "Error while reading the local backup file"
+      }
     },
     "plugin": {
       "not_found": "Plugin not found",
@@ -131,11 +570,31 @@
     },
     "proxy": {
       "not_found": "Proxy not found",
-      "in_use": "The proxy is used by instances and cannot be deleted"
+      "in_use": "The proxy is used by instances and cannot be deleted",
+      "location_mismatch": "The selected proxy cannot be used at this location: \"hub\" proxies are for the hub only, and a VPS can only pick \"Any\""
     },
     "instance": {
       "not_found": "Instance not found",
-      "in_use": "The instance is used by screens and cannot be deleted"
+      "in_use": "The instance is used by screens and cannot be deleted",
+      "machine_invalid": "Invalid run location",
+      "machine_reason": {
+        "device_not_found": "The selected device does not exist or has been revoked",
+        "runs_on_mismatch": "This plugin cannot run at the selected location",
+        "plugin_unavailable": "The selected device has not reported this plugin. Install it on the device and try again."
+      }
+    },
+    "device": {
+      "not_found": "Device not found",
+      "offline": "The device is offline; the action cannot be performed",
+      "incompatible": "The agent on this device is not compatible with the hub. Upgrade the agent.",
+      "incompatible_reason": {
+        "version_too_old": "The agent on this device is too old. Upgrade the agent.",
+        "version_too_new": "The agent on this device is newer than the hub. Upgrade the hub."
+      }
+    },
+    "agent": {
+      "disabled": "The agent channel is disabled, so devices cannot be paired. Set a listen address with --agent-addr.",
+      "binary_unavailable": "This hub has no embedded agent for the requested platform. Use a release hub built with make build, or get the agent from GitHub Releases."
     },
     "layout": {
       "conflict": "The layout was updated elsewhere. Reload before saving.",
@@ -148,6 +607,19 @@
       "timeout": "Collection timed out",
       "failed": "Collection failed",
       "busy": "This instance is running. Try again shortly."
+    },
+    "pairing": {
+      "failed": "Dial-out pairing failed",
+      "reason": {
+        "unreachable": "Cannot reach the agent. Check the address, port, firewall and proxy.",
+        "pin_mismatch": "Certificate fingerprint mismatch. Compare it with the one shown by the agent.",
+        "bad_code": "The pairing code is wrong or already used",
+        "code_expired": "The pairing code has expired. Generate a new one on the VPS.",
+        "rate_limited": "Too many attempts. The agent is temporarily locked, try again later.",
+        "incompatible": "The agent version is incompatible with the hub. The device is kept and will connect after the agent is upgraded.",
+        "timeout": "Pairing timed out. Check the network and try again.",
+        "unknown": "Pairing failed for an unknown reason. Check the hub logs."
+      }
     },
     "internal": "Internal hub error",
     "server": {
@@ -184,7 +656,10 @@
     "colon": ": ",
     "loadFailed": "Failed to load",
     "stay": "Stay",
-    "leave": "Leave"
+    "leave": "Leave",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyFailed": "Copy failed, please select and copy manually"
   },
   "login": {
     "title": "Sign in to the admin console",
@@ -331,6 +806,9 @@
     },
     "listTitle": "Instance list",
     "add": "Add instance",
+    "runBlockedCollect": "A paused instance on a device cannot be collected. Resume it first.",
+    "runBlockedPaused": "A paused instance on a device cannot be tested. Resume it first.",
+    "locationMissing": "{{id}} (stale reference)",
     "hubLocal": "hub (local)",
     "local": "local",
     "search": "Search instances, query syntax supported",
@@ -501,7 +979,6 @@
       "timezone": "Time zone",
       "instances": "Instances",
       "agents": "Agents online",
-      "agentsLater": "Coming in M2",
       "uptime": "Uptime"
     },
     "attention": {
@@ -510,7 +987,10 @@
       "none": "Nothing needs attention",
       "view": "View instance",
       "retry": "Retry now",
-      "lastSuccess": "last success {{ago}}"
+      "lastSuccess": "last success {{ago}}",
+      "viewDevice": "View device",
+      "deviceOffline": "Device offline",
+      "lastSeen": "last seen {{ago}}"
     },
     "screen": {
       "title": "Screen",
@@ -591,6 +1071,7 @@
     "lookupClear": "Clear",
     "lookupCandidates": "Candidates",
     "lookupUnsupported": "This plugin does not support candidate lookup",
+    "lookupRemote": "Plugins on a device do not support candidate lookup. Type the value directly.",
     "objectEmpty": "No entries yet.",
     "objectRow": "Entry {{n}}",
     "objectUp": "Move entry {{n}} up",
@@ -637,10 +1118,13 @@
       "namePlaceholder": "e.g. {{example}}",
       "runsOn": "Runs on",
       "runsHub": "hub (local)",
-      "runsAgent": "agent",
-      "agentLater": "Running on an agent comes in a later phase",
-      "runsOnHelp": "For now instances run on the hub itself.",
-      "agentOnly": "This plugin can only run on an agent, which is not available yet.",
+      "runsOnHelp": "Which machine collects for this instance. Once a device is chosen, the plugin list, form fields and usable proxies follow what that device reports.",
+      "runsOnHubOnly": "This plugin can only run on the hub itself.",
+      "runsOnNewHint": "Choose where it runs above the plugin catalog on the left.",
+      "runsOnOffline": "The device is offline. Changes take effect when it comes online; test runs are unavailable.",
+      "runsOnMoved": "The run location changed: the plugin's private state starts over, and the config is re-sent to the new location after saving.",
+      "runsOnNoPlugin": "Plugin \"{{id}}\" is not available at the chosen location. Pick another location.",
+      "agentOnly": "This plugin can only run on a device, and none is available, so it cannot be created yet.",
       "interval": "Refresh interval",
       "intervalOverride": "Override the plugin default ({{value}})",
       "intervalHelp": "At least {{min}}, at most 24 hours; formats like 30s, 5m, 1h.",
@@ -683,6 +1167,8 @@
       "noItems": "The report has no items.",
       "rawJson": "Raw report JSON",
       "rawSize": "{{size}} B",
+      "source": "Source device: {{name}}",
+      "sourceHub": "Source: {{name}}",
       "failedSaved": "The instance is saved, but this collection failed; the hub retries with backoff.",
       "failedNotSaved": "The test did not run.",
       "stale": "This is retained old data.",
@@ -894,9 +1380,45 @@
       "downloadBtn": "Download {{name}}",
       "downloadNone": "No backup to download yet",
       "nas": "NAS backup",
-      "nasHelp": "Encrypted sync to a NAS, coming in phase 2.",
-      "nasBadge": "M2",
-      "backupNow": "Back up now"
+      "nasHelp": "After each successful daily local backup, encrypt and upload it to a NAS. Fields can be edited and tested while disabled.",
+      "backupNow": "Back up now",
+      "remote": {
+        "enabled": "Enabled",
+        "type": "Target type",
+        "host": "Host",
+        "port": "Port",
+        "share": "Share",
+        "dir": "Directory",
+        "username": "Username",
+        "password": "Password",
+        "domain": "Domain",
+        "domainPlaceholder": "Optional",
+        "url": "URL",
+        "urlPlaceholder": "https://nas.local:5006/",
+        "dirHelp": "Directory under the share (or WebDAV root). Created if missing; leave empty for the root.",
+        "passphrase": "Backup passphrase",
+        "passphraseNew": "At least 12 characters",
+        "passphraseWarn": "If the passphrase is lost, encrypted backups cannot be recovered.",
+        "passphraseChanged": "Passphrase changed: later uploads use the new passphrase, and backups already uploaded still need the old one to restore. If the passphrase is lost, encrypted backups cannot be recovered.",
+        "keep": "Remote copies to keep",
+        "keepUnit": "copies",
+        "keepHelp": "Only the most recent copies are kept on the remote. NAS space is about copies × size of one backup.",
+        "test": "Test connection",
+        "testing": "Testing…",
+        "testOk": "Connected ({{type}}, {{ms}} ms)",
+        "testFailed": "Connection failed: {{reason}}",
+        "loadFailed": "Could not read the saved NAS backup settings. The NAS fields are disabled and will not be saved.",
+        "loading": "Reading the NAS backup settings…",
+        "reload": "Reload",
+        "reset": "Reset NAS settings",
+        "resetTitle": "Reset NAS settings",
+        "resetBody": "This clears the saved NAS backup settings, including the NAS password and backup passphrase, and turns off off-site backup. Backups already uploaded to the NAS and the upload history are not affected. Once the passphrase is cleared, previously uploaded backups cannot be decrypted, so make sure you have kept it elsewhere.",
+        "resetConfirm": "Reset",
+        "resetting": "Resetting…",
+        "resetFailed": "Reset failed: {{reason}}",
+        "resetDone": "NAS backup settings have been reset",
+        "saveFailed": "NAS backup could not be saved"
+      }
     },
     "reason": {
       "daily": "Daily",
@@ -955,6 +1477,30 @@
         },
         "keep": {
           "out_of_range": "Keep 1–30 copies"
+        },
+        "remote": {
+          "type": {
+            "invalid": "Unsupported target type"
+          },
+          "keep": {
+            "out_of_range": "Keep 1–365 copies"
+          },
+          "passphrase": {
+            "required": "Set a backup passphrase",
+            "out_of_range": "The passphrase must be at least 12 characters"
+          },
+          "smb_port": {
+            "out_of_range": "Port must be 1–65535"
+          },
+          "smb_host": {
+            "invalid": "Host is required and must not contain whitespace or control characters"
+          },
+          "smb_share": {
+            "invalid": "Invalid share name"
+          },
+          "webdav_url": {
+            "invalid": "URL must be a valid https:// or LAN http:// address"
+          }
         }
       }
     },
@@ -1105,7 +1651,45 @@
       "backupNow": "Back up now",
       "backingUp": "Backing up…",
       "created": "Created backup \"{{name}}\"",
-      "loadFailed": "Could not load the backup list"
+      "loadFailed": "Could not load the backup list",
+      "remote": {
+        "title": "Off-site backup",
+        "disabled": "Off-site backup is not enabled",
+        "goSettings": "Enable it in Settings",
+        "target": "Target",
+        "lastResult": "Latest",
+        "never": "No uploads yet",
+        "ok": "Succeeded",
+        "failed": "Failed",
+        "canceled": "Canceled",
+        "uploadNow": "Upload now",
+        "uploading": "Uploading…",
+        "uploaded": "Uploaded \"{{name}}\"",
+        "maybeRunning": "The request was interrupted; the upload may still be running in the background. Refresh the upload list later",
+        "loadFailed": "Could not load the off-site backup status",
+        "uploadsTitle": "Recent uploads",
+        "noUploads": "No uploads yet",
+        "unknownReason": "Unknown reason",
+        "cols": {
+          "time": "Time",
+          "file": "File",
+          "size": "Size",
+          "result": "Result"
+        }
+      }
+    },
+    "agent": {
+      "title": "Agent channel",
+      "meta": "device connections",
+      "loadFailed": "Cannot load agent channel info",
+      "disabled": "Disabled",
+      "port": "Channel port",
+      "fingerprint": "Certificate fingerprint",
+      "fingerprintCopy": "Copy fingerprint",
+      "platforms": "Downloadable platforms",
+      "noPlatforms": "None (not embedded in dev builds)",
+      "protocol": "Protocol version",
+      "protocolValue": "{{version}} (min compatible {{min}})"
     }
   },
   "screenThemes": {
@@ -1119,7 +1703,14 @@
     "broken": "Broken reference",
     "stale": "Stale",
     "offline": "Offline",
+    "dormant": "Dormant",
     "maintenance": "Maintenance",
+    "host": {
+      "hub": "Hub",
+      "disconnected": "Link lost",
+      "pending": "Waiting",
+      "incompatible": "Upgrade needed"
+    },
     "templatePending": "This template will be available in a later version",
     "never": "Never",
     "textEmpty": "No text set",
@@ -1196,6 +1787,9 @@
     "screen": {
       "online": "online",
       "offline": "offline"
+    },
+    "dataSource": {
+      "hosts": "Host lights"
     },
     "template": {
       "value": "Generic · Value",
@@ -1297,6 +1891,8 @@
       "iconNone": "No icon",
       "text": "Body text",
       "threshold": "Manual threshold colouring",
+      "hostsAuto": "Automatically includes the hub and every confirmed device, no per-item binding. Each cell shows the device name, its online state and the CPU of the first host-metrics instance on it.",
+      "hostsThreshold": "For host lights the threshold applies to each machine's CPU reading.",
       "thresholdOff": "When off, the widget follows the data item's own state; numeric items stay neutral.",
       "direction": "Trigger direction",
       "above": "Above",
@@ -1749,6 +2345,19 @@
       "touchYes": "touch available",
       "touchUnknown": "not reported yet",
       "touchSub": "Tap the screen to light it when touch is present"
+    }
+  },
+  "backup": {
+    "upload_reason": {
+      "connect": "Cannot reach the remote",
+      "auth": "Wrong username or password",
+      "not_writable": "Directory cannot be created or is not writable",
+      "io": "Read/write error on the remote, or no progress for too long",
+      "canceled": "Upload canceled because the hub was shutting down",
+      "config": "Invalid remote configuration",
+      "no_local": "Local backup missing or unreadable",
+      "local_read": "Error while reading the local backup file",
+      "cleanup_failed": "Uploaded, but removing expired remote backups failed"
     }
   }
 }

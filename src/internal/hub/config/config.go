@@ -11,30 +11,34 @@ import (
 )
 
 const (
-	defaultAddr     = ":31415"
-	defaultDataDir  = "/var/lib/pimon"
-	defaultLogLevel = "info"
+	defaultAddr      = ":31415"
+	defaultAgentAddr = ":31418"
+	defaultDataDir   = "/var/lib/pimon"
+	defaultLogLevel  = "info"
 )
 
 // Config 是中枢启动配置。
 type Config struct {
-	Addr     string // HTTP(S) 监听地址
-	DataDir  string // 数据目录
-	LogLevel string // debug | info | warn | error
+	Addr      string // HTTP(S) 监听地址
+	AgentAddr string // agent 通道监听地址；空串表示不启用，只有显式 --agent-addr "" 才会得到空串（PIMON_AGENT_ADDR 为空按未设置处理，回落 :31418）
+	DataDir   string // 数据目录
+	LogLevel  string // debug | info | warn | error
 }
 
 // Parse 按「命令行参数 > 环境变量 > 默认值」的优先级解析配置；数据目录转为绝对路径。
 // getenv 由调用方注入（通常为 os.Getenv）；返回值中的 rest 为命令行剩余的位置参数。
 func Parse(args []string, getenv func(string) string) (cfg Config, rest []string, err error) {
 	cfg = Config{
-		Addr:     pick(getenv("PIMON_ADDR"), defaultAddr),
-		DataDir:  pick(getenv("PIMON_DATA_DIR"), defaultDataDir),
-		LogLevel: pick(getenv("PIMON_LOG_LEVEL"), defaultLogLevel),
+		Addr:      pick(getenv("PIMON_ADDR"), defaultAddr),
+		AgentAddr: pick(getenv("PIMON_AGENT_ADDR"), defaultAgentAddr),
+		DataDir:   pick(getenv("PIMON_DATA_DIR"), defaultDataDir),
+		LogLevel:  pick(getenv("PIMON_LOG_LEVEL"), defaultLogLevel),
 	}
 
 	fs := flag.NewFlagSet("pimon-hub", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.StringVar(&cfg.Addr, "addr", cfg.Addr, "监听地址")
+	fs.StringVar(&cfg.AgentAddr, "agent-addr", cfg.AgentAddr, "agent 通道监听地址")
 	fs.StringVar(&cfg.DataDir, "data-dir", cfg.DataDir, "数据目录")
 	fs.StringVar(&cfg.LogLevel, "log-level", cfg.LogLevel, "日志级别：debug|info|warn|error")
 	if err = fs.Parse(args); err != nil {

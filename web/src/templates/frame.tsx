@@ -50,6 +50,13 @@ function DimBadge({ status, lastSuccessAt }: { status: Extract<DisplayStatus, { 
   )
 }
 
+/** 弱化叠加在状态之上：dormant 比 dim 更淡并去色，其余只降透明度 */
+export function dimStyle(dormant: boolean): CSSProperties {
+  return dormant
+    ? { opacity: 'var(--state-dormant-opacity)', filter: 'var(--state-dormant-filter)' }
+    : { opacity: 'var(--state-dim-opacity)' }
+}
+
 function LevelBadge({ level }: { level: Extract<DisplayStatus, { kind: 'level' }>['level'] }) {
   const { t } = useTranslation()
   return (
@@ -78,6 +85,7 @@ export function WidgetFrame({ widget, data, statusMode = 'full', hideHeader = fa
       : null
   const weight = level ? channels[level].weight : null
   const dimmed = status?.kind === 'dim'
+  const dormant = status?.kind === 'dim' && status.reason === 'dormant'
   const placeholder = status?.kind === 'placeholder' ? status.reason : null
 
   // 边框只用 border 简写：占位态与普通态之间切换时，不混用简写与展开写法，避免 React 报样式冲突
@@ -130,7 +138,7 @@ export function WidgetFrame({ widget, data, statusMode = 'full', hideHeader = fa
           <span>{t(`screenWidget.${placeholder}`)}</span>
         </div>
       ) : (
-        <div data-widget-body="" className="min-h-0 flex-1" style={dimmed ? { opacity: 'var(--state-dim-opacity)' } : undefined}>
+        <div data-widget-body="" className="min-h-0 flex-1" style={dimmed ? dimStyle(dormant) : undefined}>
           {children}
         </div>
       )}

@@ -1,14 +1,15 @@
 import type { ReactNode } from 'react'
-import { CircleHelp, CircleX, Clock, OctagonAlert, TriangleAlert, Unlink, CirclePlus, Wrench, WifiOff, type LucideIcon } from 'lucide-react'
+import { CircleHelp, CircleX, Clock, Moon, OctagonAlert, TriangleAlert, Unlink, CirclePlus, Wrench, WifiOff, type LucideIcon } from 'lucide-react'
 import { statusLevels, type StatusLevel } from '@/themes/types'
 import { useThemeRuntime } from './theme-context'
 
 // 屏幕端主题化状态组件（Ruling 15、设计 10.3）：
 //   ok/warning/critical/unknown/error —— 主题的 marker（形）+ weight（强调）+ 色；
-//   stale/offline/maintenance —— 灰显叠加（--state-dim-opacity）+ 时间戳 + 图标，保留底层 report_status 的 marker；
+//   stale/offline/dormant/maintenance —— 灰显叠加（--state-dim-opacity；dormant 另用 --state-dormant-*）+ 时间戳 + 图标，保留底层 report_status 的 marker；
 //   unconfigured/broken —— 占位卡（--state-placeholder-border）。
 
-export type DimReason = 'stale' | 'offline' | 'maintenance'
+// dormant（设备离线且允许离线）比普通灰显更淡并去色（--state-dormant-opacity / --state-dormant-filter），图标用静音色；offline 的图标用警示色。
+export type DimReason = 'stale' | 'offline' | 'dormant' | 'maintenance'
 export type PlaceholderReason = 'unconfigured' | 'broken'
 
 export type DisplayStatus =
@@ -20,7 +21,7 @@ export function resolveStatus(displayState: string, reportStatus: string | undef
   if ((statusLevels as readonly string[]).includes(displayState)) {
     return { kind: 'level', level: displayState as StatusLevel }
   }
-  if (displayState === 'stale' || displayState === 'offline' || displayState === 'maintenance') {
+  if (displayState === 'stale' || displayState === 'offline' || displayState === 'dormant' || displayState === 'maintenance') {
     const level = reportStatus === 'ok' || reportStatus === 'warning' || reportStatus === 'critical' ? reportStatus : 'unknown'
     return { kind: 'dim', level, reason: displayState }
   }
@@ -70,9 +71,14 @@ const levelIcons: Record<Exclude<StatusLevel, 'ok'>, [string, LucideIcon]> = {
   unknown: ['circle-help', CircleHelp],
   error: ['circle-x', CircleX],
 }
+const dimIconColor: Partial<Record<DimReason, string>> = {
+  offline: 'text-s-warning',
+  dormant: 'text-s-muted-fg',
+}
 const dimIcons: Record<DimReason, [string, LucideIcon]> = {
   stale: ['clock', Clock],
   offline: ['wifi-off', WifiOff],
+  dormant: ['moon', Moon],
   maintenance: ['wrench', Wrench],
 }
 export const placeholderIcons: Record<PlaceholderReason, [string, LucideIcon]> = {
@@ -97,7 +103,8 @@ export function LevelIcon({ level, size }: { level: StatusLevel; size?: number }
 
 export function DimIcon({ reason, size }: { reason: DimReason; size?: number }) {
   const [name, icon] = dimIcons[reason]
-  return <StatusIcon name={name} icon={icon} size={size} />
+  const color = dimIconColor[reason]
+  return <StatusIcon name={name} icon={icon} size={size} className={color ? `inline-flex shrink-0 ${color}` : undefined} />
 }
 
 interface MarkerProps {

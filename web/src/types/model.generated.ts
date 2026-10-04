@@ -25,6 +25,367 @@ export interface BackupInfo {
    */
   size: number /* int64 */;
 }
+/**
+ * 远端备份目标类型。
+ */
+export const BackupRemoteSMB = "smb";
+/**
+ * 远端备份目标类型。
+ */
+export const BackupRemoteWebDAV = "webdav";
+/**
+ * BackupSecretState 是密钥字段的回显形式：{"set": true}，不含明文。
+ */
+export interface BackupSecretState {
+  set: boolean;
+}
+/**
+ * BackupRemote 是远端备份目标配置（GET 与 PUT 的响应）。两种类型的字段分列保存，切换类型不丢另一类型已填的值。
+ */
+export interface BackupRemote {
+  enabled: boolean;
+  /**
+   * Type 是 smb | webdav。
+   */
+  type: string;
+  smb_host: string;
+  smb_port: number /* int */;
+  smb_share: string;
+  smb_dir: string;
+  smb_username: string;
+  smb_password: BackupSecretState;
+  smb_domain: string;
+  webdav_url: string;
+  webdav_dir: string;
+  webdav_username: string;
+  webdav_password: BackupSecretState;
+  /**
+   * Passphrase 表示备份口令是否已设置；口令丢失将无法恢复已加密的备份。
+   */
+  passphrase: BackupSecretState;
+  /**
+   * Keep 是远端保留份数（1–365）。
+   */
+  keep: number /* int */;
+  /**
+   * UpdatedAt 为空表示从未保存过。
+   */
+  updated_at?: string;
+  /**
+   * PassphraseChanged 仅在 PUT 响应中有意义：本次保存改了已有的备份口令，之后上传的备份用新口令加密。
+   */
+  passphrase_changed: boolean;
+}
+/**
+ * BackupRemoteInput 是 PUT 与测试连接的请求体。密钥字段为明文字符串，留空表示保留已保存的值。
+ */
+export interface BackupRemoteInput {
+  enabled: boolean;
+  type: string;
+  smb_host: string;
+  smb_port: number /* int */;
+  smb_share: string;
+  smb_dir: string;
+  smb_username: string;
+  smb_password: string;
+  smb_domain: string;
+  webdav_url: string;
+  webdav_dir: string;
+  webdav_username: string;
+  webdav_password: string;
+  passphrase: string;
+  keep: number /* int */;
+}
+/**
+ * BackupUpload 是一次远端上传的记录。
+ */
+export interface BackupUpload {
+  id: number /* int64 */;
+  /**
+   * Name 是远端文件名（本地备份名加 .age）。
+   */
+  name: string;
+  /**
+   * TargetType 是 smb | webdav。
+   */
+  target_type: string;
+  started_at: string;
+  finished_at: string;
+  /**
+   * Size 是实际写到远端的密文字节数；失败时为已写入的字节数。
+   */
+  size: number /* int64 */;
+  success: boolean;
+  /**
+   * Reason 是入库的原文「<机器码>:<说明>」（见 UploadReason* 常量），成功且无附注时为空；说明不含密码与口令。
+   * 前端用 ReasonCode 翻译（i18n 键 backup.upload_reason.<code>），ReasonDetail 作为补充说明显示。
+   */
+  reason: string;
+  /**
+   * ReasonCode 是从 Reason 解析出的机器码；成功且无附注时为空。
+   */
+  reason_code: string;
+  /**
+   * ReasonDetail 是从 Reason 解析出的说明（可为空）。
+   */
+  reason_detail: string;
+}
+/**
+ * BackupUploadList 是 GET /api/backups/remote/uploads 的响应：最近的上传记录（新到旧）与「最近一次结果」。
+ * LastResult 与 hub-self 判定同口径：跳过因中枢关停被取消的记录，没有记录时为 null。
+ */
+export interface BackupUploadList {
+  uploads: BackupUpload[];
+  last_result: BackupUpload | null;
+}
+/**
+ * 上传记录的原因机器码（两端契约，不可随意改名）。前 4 个与 backup.remote_failed 的 details.reason 相同。
+ */
+export const UploadReasonConnect = "connect";
+/**
+ * 上传记录的原因机器码（两端契约，不可随意改名）。前 4 个与 backup.remote_failed 的 details.reason 相同。
+ */
+export const UploadReasonAuth = "auth";
+/**
+ * 上传记录的原因机器码（两端契约，不可随意改名）。前 4 个与 backup.remote_failed 的 details.reason 相同。
+ */
+export const UploadReasonNotWritable = "not_writable";
+/**
+ * 上传记录的原因机器码（两端契约，不可随意改名）。前 4 个与 backup.remote_failed 的 details.reason 相同。
+ */
+export const UploadReasonIO = "io";
+/**
+ * UploadReasonCanceled 表示上传被取消（中枢关停）；它不算失败，hub-self 判定时跳过。
+ */
+export const UploadReasonCanceled = "canceled";
+/**
+ * UploadReasonConfig 表示配置不合法，未能构造目标。
+ */
+export const UploadReasonConfig = "config";
+/**
+ * UploadReasonNoLocal 表示本地备份缺失或不可读。
+ */
+export const UploadReasonNoLocal = "no_local";
+/**
+ * UploadReasonLocalRead 表示上传途中读取本地备份文件出错（与远端读写失败区分）；同为 backup.remote_failed 的 details.reason。
+ */
+export const UploadReasonLocalRead = "local_read";
+/**
+ * UploadReasonCleanupFailed 表示上传成功（Success 仍为 true），但清理远端过期备份失败。
+ */
+export const UploadReasonCleanupFailed = "cleanup_failed";
+/**
+ * BackupRemoteTest 是测试连接成功时的响应；失败走错误码 backup.remote_failed。
+ */
+export interface BackupRemoteTest {
+  /**
+   * Success 恒为 true（失败不返回本结构）。
+   */
+  success: boolean;
+  /**
+   * TargetType 是本次测试的目标类型 smb | webdav。
+   */
+  target_type: string;
+  /**
+   * ElapsedMS 是连接、建目录、写入并删除测试文件的总耗时（毫秒）。
+   */
+  elapsed_ms: number /* int64 */;
+}
+
+//////////
+// source: device.go
+
+/**
+ * 设备角色取值。
+ */
+export const DeviceRoleServer = "server";
+/**
+ * 设备角色取值。
+ */
+export const DeviceRoleNAS = "nas";
+/**
+ * 设备角色取值。
+ */
+export const DeviceRoleDev = "dev";
+/**
+ * 设备角色取值。
+ */
+export const DeviceRoleVPS = "vps";
+/**
+ * DeviceDialIn 表示 agent 主动连中枢。
+ */
+export const DeviceDialIn = "dial_in";
+/**
+ * DeviceDialOut 表示中枢主动连 agent（公网 VPS）。
+ */
+export const DeviceDialOut = "dial_out";
+/**
+ * 设备在线状态取值。
+ */
+export const PresenceOnline = "online";
+/**
+ * 设备在线状态取值。
+ */
+export const PresenceDisconnected = "disconnected";
+/**
+ * 设备在线状态取值。
+ */
+export const PresenceOffline = "offline";
+/**
+ * 设备在线状态取值。
+ */
+export const PresencePending = "pending";
+/**
+ * PresenceDormant 是允许离线的设备离线时对外显示的状态。
+ */
+export const PresenceDormant = "dormant";
+/**
+ * DeviceIncompatible 描述设备 agent 与中枢协议不兼容的原因。
+ */
+export interface DeviceIncompatible {
+  reason: string;
+  /**
+   * RequiredMin 是要求对端至少具备的协议版本。
+   */
+  required_min: number /* int */;
+}
+/**
+ * Device 是设备列表项与详情。凭据、凭据哈希与密文都不在此结构中。
+ * Presence、ConnError、ClockSkewMs 是运行时值，由中枢在内存中填写，不入库。
+ */
+export interface Device {
+  id: string;
+  name: string;
+  role: string;
+  direction: string;
+  /**
+   * Address 拨出设备为 wss://host:port；拨入设备为最近一次连接的来源 IP（只读）。
+   */
+  address: string;
+  hostname: string;
+  proxy_id: string;
+  allow_offline: boolean;
+  maintenance: boolean;
+  agent_version: string;
+  os: string;
+  arch: string;
+  /**
+   * ProtocolVersion 为 0 表示从未握手。
+   */
+  protocol_version: number /* int */;
+  /**
+   * Replaces 非空表示这是重新配对产生的占位，值为被替换设备的 id。
+   */
+  replaces: string;
+  /**
+   * Confirmed 为 false 表示占位尚未确认（还没成功握手）。
+   */
+  confirmed: boolean;
+  incompatible: DeviceIncompatible | null;
+  presence: string;
+  conn_error?: string;
+  clock_skew_ms: number | null;
+  last_seen_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+/**
+ * DeviceInput 是更新设备的请求体。Address 与 ProxyID 只对拨出设备生效，缺省表示不改。
+ */
+export interface DeviceInput {
+  name: string;
+  role: string;
+  allow_offline: boolean;
+  maintenance: boolean;
+  address?: string;
+  proxy_id?: string;
+}
+/**
+ * PairingRequest 是生成拨入配对码的请求体。AllowOffline 缺省时按角色决定（dev 默认开）。
+ */
+export interface PairingRequest {
+  name: string;
+  role: string;
+  allow_offline?: boolean;
+  auto_host_metrics?: boolean;
+}
+/**
+ * PairingResult 是拨入配对码的响应。
+ */
+export interface PairingResult {
+  code: string;
+  expires_at: string;
+  urls: string[];
+  fingerprint: string;
+  /**
+   * Command 是一行安装命令，Steps 是分步命令。
+   */
+  command: string;
+  steps: string[];
+}
+/**
+ * DialOutRequest 是拨出配对（中枢主动连 agent）的请求体。
+ */
+export interface DialOutRequest {
+  address: string;
+  fingerprint: string;
+  code: string;
+  proxy_id: string;
+  name: string;
+  role: string;
+  allow_offline?: boolean;
+  auto_host_metrics?: boolean;
+}
+/**
+ * InstanceRef 是设备影响分析中引用的实例。
+ */
+export interface InstanceRef {
+  id: string;
+  name: string;
+}
+/**
+ * RuleRef 是设备影响分析中引用的告警规则（M4 前恒为空）。
+ */
+export interface RuleRef {
+  id: string;
+  name: string;
+}
+/**
+ * DeviceImpact 是吊销或重新配对某设备前展示的影响范围。
+ */
+export interface DeviceImpact {
+  instances: InstanceRef[];
+  screens: ScreenRef[];
+  rules: RuleRef[];
+}
+/**
+ * AgentInfo 是 GET /api/agent/info 的响应：agent 通道的接入信息。
+ */
+export interface AgentInfo {
+  /**
+   * AgentPort 是通道实际监听的端口；通道未启用时为 0。
+   */
+  agent_port: number /* int */;
+  /**
+   * Fingerprint 是中枢证书公钥的 SPKI 指纹（SHA256:...）。
+   */
+  fingerprint: string;
+  hub_version: string;
+  protocol_version: number /* int */;
+  min_compatible_version: number /* int */;
+  /**
+   * Platforms 是中枢内嵌的 agent 平台（如 linux-amd64），没有内嵌时为空数组。
+   */
+  platforms: string[];
+  /**
+   * ReleaseURLTemplate 是 GitHub Releases 的下载地址模板（<os>、<arch> 为占位）；开发构建为空串。
+   */
+  release_url_template: string;
+  /**
+   * ReleaseChecksums 是 Release 产物的 SHA-256（键 os-arch）；开发构建或没有内嵌时为空对象。
+   */
+  release_checksums: { [key: string]: string};
+}
 
 //////////
 // source: errors.go
@@ -126,6 +487,10 @@ export interface InstanceInput {
    * IntervalSeconds 是刷新间隔覆盖，0 表示沿用 manifest 的默认间隔。
    */
   interval_seconds: number /* int */;
+  /**
+   * RunsOn 是运行位置：hub 或设备 ID。创建时缺省为 hub；更新时缺省表示保留原运行位置。
+   */
+  runs_on?: string;
 }
 /**
  * Instance 是实例列表项，也是详情与运行结果的公共部分。
@@ -135,7 +500,7 @@ export interface Instance {
   plugin_id: string;
   name: string;
   /**
-   * RunsOn 本期固定为 hub。
+   * RunsOn 是运行位置：hub 或设备 ID。
    */
   runs_on: string;
   /**
@@ -304,6 +669,21 @@ export const WidgetSourceGeneric = "generic";
  */
 export const WidgetSourceAggregate = "aggregate";
 /**
+ * 聚合小组件的数据源（WidgetBinding.DataSource）。为空表示按 Refs 逐项绑定。
+ */
+/**
+ * AggregateSourceHosts 是主机灯组：自动包含中枢与全部已确认设备，不使用 Refs，模板固定 status-grid。
+ */
+export const AggregateSourceHosts = "hosts";
+/**
+ * HostStateMaintenance 表示设备处于维护模式，优先于在线状态。
+ */
+export const HostStateMaintenance = "maintenance";
+/**
+ * HostStateIncompatible 表示设备未在线且与中枢协议不兼容，需要升级。
+ */
+export const HostStateIncompatible = "incompatible";
+/**
  * IndexScreenID 是首页 screen 的固定 id，布局里必须存在且不可删除。
  */
 export const IndexScreenID = "index";
@@ -401,10 +781,13 @@ export interface ResolvedRef {
  *   - plugin 来源：InstanceID 指定实例，数据项由 manifest 声明的槽决定；为空表示占位，
  *     解析布局时绑定到该插件最早创建的实例。
  *   - generic 来源：Refs 至多一项；aggregate 来源：Refs 为参与汇总的数据项。
+ *   - aggregate 来源且 DataSource 非空：数据由服务端按数据源自动汇总，Refs 必须为空
+ *     （目前只有 hosts，即主机灯组）。
  */
 export interface WidgetBinding {
   instance_id?: string;
   refs?: WidgetRef[];
+  data_source?: string;
 }
 /**
  * LayoutWidget 是 screen 上的一个小组件放置记录。
@@ -549,9 +932,11 @@ export interface LayoutRollbackRequest {
 }
 /**
  * CatalogEntry 是通用或聚合目录里的一个模板及其允许的尺寸。
+ * DataSource 仅聚合目录：非空表示按数据源自动汇总的条目（如主机灯组 hosts），与 Template 一起区分条目。
  */
 export interface CatalogEntry {
   template: string;
+  data_source?: string;
   sizes: WidgetSize[];
 }
 /**
@@ -595,10 +980,37 @@ export interface ResolvedWidget {
   slots: { [key: string]: ResolvedRef[]};
   /**
    * DisplayState 是统一展示状态：无绑定为 unconfigured，引用失效为 broken，
-   * 否则为被绑定实例的展示状态（聚合取其中最严重的）。
+   * 否则为被绑定实例的展示状态（聚合取其中最严重的）；主机灯组固定为 ok，各格自己表达状态。
    */
   display_state: string;
   options: { [key: string]: any};
+  /**
+   * Hosts 仅主机灯组（data_source 为 hosts）：中枢固定第一，其后按设备创建顺序，只含已确认设备。
+   */
+  hosts?: ResolvedHost[];
+}
+/**
+ * ResolvedHost 是主机灯组里的一格。
+ */
+export interface ResolvedHost {
+  /**
+   * ID 为 hub 或设备 id。
+   */
+  id: string;
+  /**
+   * Name 是设备名；中枢为空串，由前端按语言显示「中枢」。
+   */
+  name: string;
+  /**
+   * State 是 online | disconnected | offline | dormant | pending | maintenance | incompatible；
+   * 中枢固定为 online。维护模式优先；设备未在线且协议不兼容时为 incompatible。
+   */
+  state: string;
+  /**
+   * InstanceID 是该机器上 CPU 读数的来源实例（最早创建的 host-metrics 实例），没有时为空；
+   * 读数引用同时放在 Slots["items"]（数据项 cpu）。
+   */
+  instance_id?: string;
 }
 /**
  * ResolvedScreen 是解析后的 screen。
@@ -822,15 +1234,15 @@ export interface PluginLookupResponse {
 // source: proxy.go
 
 /**
- * ProxyLocationHub 表示仅中枢所在网络可用。
+ * ProxyLocationHub 表示仅中枢本机上的实例可用。
  */
 export const ProxyLocationHub = "hub";
 /**
- * ProxyLocationLAN 表示仅局域网内的 agent 可用。
+ * ProxyLocationLAN 表示中枢与非 VPS 设备上的实例可用。
  */
 export const ProxyLocationLAN = "lan";
 /**
- * ProxyLocationAny 表示任意位置可用。
+ * ProxyLocationAny 表示任意位置可用（VPS 设备上的实例只能选它）。
  */
 export const ProxyLocationAny = "any";
 /**

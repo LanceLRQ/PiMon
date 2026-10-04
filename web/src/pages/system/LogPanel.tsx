@@ -16,13 +16,13 @@ const levels: LogLevel[] = ['all', 'info', 'warn', 'error']
 // 中枢内存日志最多 500 条，页面一次取满
 const fetchLimit = 500
 
-function formatLogTime(iso: string, locale: string): string {
+export function formatLogTime(iso: string, locale: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleTimeString(locale, { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 })
 }
 
-const levelClass: Record<string, string> = {
+export const levelClass: Record<string, string> = {
   debug: 'text-muted-foreground',
   info: 'text-ink-2',
   warn: 'text-status-warn',

@@ -1,0 +1,19 @@
+name: Agent macOS
+
+# 只手动触发：在 macOS runner 上跑真实 launchctl 的 agent 安装测试。
+on:
+  workflow_dispatch:
+
+jobs:
+  launchd:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache-dependency-path: src/go.sum
+      - name: launchd 真实测试
+        env:
+          PIMON_LAUNCHD_TEST: '1'
+        run: cd src && go test -race -count=1 ./internal/agent/install/... ./internal/sysinstall/...

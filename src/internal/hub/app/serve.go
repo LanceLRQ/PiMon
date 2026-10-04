@@ -5,11 +5,13 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"net"
 	"sync"
 
+	"github.com/LanceLRQ/PiMon/src/internal/agentlink"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/sdnotify"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/server"
-	"github.com/LanceLRQ/PiMon/src/internal/hub/tlscert"
+	"github.com/LanceLRQ/PiMon/src/pkg/protocol/agent"
 )
 
 // Serve 运行服务直到 ctx 结束。优雅关闭超时只记日志，不视为失败；
@@ -22,17 +24,26 @@ func (a *App) Serve(ctx context.Context) error {
 		return err
 	}
 
+	slog.Info("中枢证书指纹", "fingerprint", a.spki.String())
 	var cert *tls.Certificate
 	if a.settings.Get().HTTPSEnabled {
-		c, err := tlscert.LoadOrCreate(a.cfg.CertPath(), a.cfg.KeyPath(), a.opts.clk.Now(), a.opts.tlsEnv)
+		cert = &a.cert
+		slog.Info("HTTPS 已启用")
+	}
+	// agent 通道的监听先于网页监听建立：端口被占用时尽早失败，且此时尚未启动任何后台协程。
+	var agentLn net.Listener
+	if a.cfg.AgentAddr != "" {
+		l, err := net.Listen("tcp", a.cfg.AgentAddr)
 		if err != nil {
-			return fmt.Errorf("准备 HTTPS 证书: %w", err)
+			return fmt.Errorf("监听 agent 通道 %s 失败（端口可能被占用）: %w", a.cfg.AgentAddr, err)
 		}
-		cert = &c
-		slog.Info("HTTPS 已启用", "fingerprint", tlscert.Fingerprint(c))
+		agentLn = l
 	}
 	ln, err := server.Listen(a.cfg.Addr)
 	if err != nil {
+		if agentLn != nil {
+			_ = agentLn.Close()
+		}
 		return err
 	}
 	a.listenAddr.Store(ln.Addr().String())
@@ -43,10 +54,35 @@ func (a *App) Serve(ctx context.Context) error {
 		stop()
 		wg.Wait()
 	}()
+	// 远端备份服务以 bg 为生命周期：立即上传不跟随请求 ctx，关停时取消进行中的上传，wg 等它写完记录再关数据库。
+	remoteDone := a.remote.Start(bg)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-remoteDone
+	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		a.backups.RunDaily(bg)
+	}()
+	// agent 通道监听放进 wg：它先于 instances 停止与数据库关闭退出（会话断开时会写最后在线时间）。
+	if agentLn != nil {
+		if err := a.serveAgents(bg, agentLn, &wg); err != nil {
+			_ = ln.Close()
+			return err
+		}
+	}
+	// 拨出管理器：为每台拨出设备启动重连循环；bg 结束时停止（先于数据库关闭，会话断开时会写最后在线时间）。
+	if err := a.dialout.Start(bg); err != nil {
+		_ = ln.Close()
+		return fmt.Errorf("启动拨出管理器: %w", err)
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-bg.Done()
+		a.dialout.Close()
 	}()
 	// 监视失败（目录不可建、inotify 额度用尽等）不影响中枢运行：记 Warn，
 	// 插件目录的变化改靠 POST /api/plugins/rescan 手动重新扫描。
@@ -113,6 +149,34 @@ func (a *App) Serve(ctx context.Context) error {
 			return nil
 		}
 		return err
+	}
+	return nil
+}
+
+// serveAgents 在 wg 内启动 agent 通道监听，并记录实际监听地址。
+func (a *App) serveAgents(ctx context.Context, ln net.Listener, wg *sync.WaitGroup) error {
+	l, err := agentlink.NewListener(agentlink.ListenerConfig{
+		Cert: a.cert, Role: agent.RoleHub, Auth: a.agents, Clock: a.opts.clk,
+		Handler: a.agents.HandlerFor, OnSession: a.agents.Attach,
+	})
+	if err != nil {
+		_ = ln.Close()
+		return fmt.Errorf("创建 agent 通道监听: %w", err)
+	}
+	addr := ln.Addr().String()
+	a.agentAddr.Store(addr)
+	slog.Info("agent 通道已监听", "addr", addr)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := l.Serve(ctx, ln); err != nil && ctx.Err() == nil {
+			// 监听已失效：清空地址，避免 /api/agent/info 继续展示一个连不上的端口。
+			a.agentAddr.Store("")
+			slog.Error("agent 通道监听异常退出", "addr", addr, "err", err)
+		}
+	}()
+	if a.opts.onAgentListen != nil {
+		a.opts.onAgentListen(addr)
 	}
 	return nil
 }

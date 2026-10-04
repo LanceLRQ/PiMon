@@ -169,6 +169,20 @@ func (s *streamSource) startedCount() int {
 type fakeProxies struct {
 	mu    sync.Mutex
 	known map[string]*proxy.Proxy
+	// locs 是代理的可用位置，未登记的已知代理视为 any。
+	locs map[string]string
+}
+
+func (f *fakeProxies) Location(_ context.Context, id string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.known[id]; !ok {
+		return "", proxies.ErrNotFound
+	}
+	if l, ok := f.locs[id]; ok {
+		return l, nil
+	}
+	return model.ProxyLocationAny, nil
 }
 
 func (f *fakeProxies) Resolve(_ context.Context, id string) (*proxy.Proxy, error) {

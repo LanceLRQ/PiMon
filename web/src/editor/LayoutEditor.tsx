@@ -9,7 +9,7 @@ import { translateErrorValue } from '@/i18n/errors'
 import { usePlugins } from '@/pages/instances/use-plugins'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/lib/use-mobile'
-import { selectInstances, selectSettings, serverNow, useLiveStore } from '@/store/live-store'
+import { selectDevices, selectInstances, selectSettings, serverNow, useLiveStore } from '@/store/live-store'
 import { DEFAULT_THEME_ID, isThemeId, themes, type ThemeId, type ThemeRuntime } from '@/themes'
 import type { Grid, LayoutState, ScreenStatus, WidgetCatalog, WidgetSize } from '@/types/generated'
 import { Button } from '@/ui/button'
@@ -133,6 +133,7 @@ function EditorBody() {
   const [conflict, setConflict] = useState<ConflictInfo | null>(null)
   const plugins = usePlugins()
   const instances = useLiveStore(selectInstances)
+  const devices = useLiveStore(selectDevices)
   const settings = useLiveStore(selectSettings)
   const lang = i18n.language === 'en' ? 'en' : 'zh'
 
@@ -159,7 +160,7 @@ function EditorBody() {
   const catalog = server?.catalog ?? null
   const pluginList = useMemo(() => plugins.list?.plugins ?? [], [plugins.list])
   const library = useMemo(
-    () => buildLibrary(pluginList, catalog, (tpl) => t(`layoutEd.template.${tpl}`, { defaultValue: tpl })),
+    () => buildLibrary(pluginList, catalog, (tpl, ds) => (ds ? t(`layoutEd.dataSource.${ds}`, { defaultValue: ds }) : t(`layoutEd.template.${tpl}`, { defaultValue: tpl }))),
     [pluginList, catalog, t],
   )
   const screen = currentScreen(state)
@@ -171,8 +172,8 @@ function EditorBody() {
   const dirty = changes.length > 0
 
   const resolved = useMemo(
-    () => (screen ? resolveScreen(screen, { plugins: pluginList, instances }) : null),
-    [screen, pluginList, instances],
+    () => (screen ? resolveScreen(screen, { plugins: pluginList, instances, devices }) : null),
+    [screen, pluginList, instances, devices],
   )
   const instanceIds = useMemo(() => referencedInstanceIds(resolved?.widgets ?? []), [resolved])
   const data = useCanvasData(instanceIds, instances)

@@ -2,13 +2,14 @@ package model
 
 import "time"
 
-// 代理可用位置取值。本期只用于数据与表单过滤，按位置真正限制在 M2（agent）才有意义。
+// 代理可用位置取值：限制哪些运行位置上的实例可以选用该代理（创建与更新实例时校验）。
+// 中枢主动拨出的连接由中枢发起，三种都可用。
 const (
-	// ProxyLocationHub 表示仅中枢所在网络可用。
+	// ProxyLocationHub 表示仅中枢本机上的实例可用。
 	ProxyLocationHub = "hub"
-	// ProxyLocationLAN 表示仅局域网内的 agent 可用。
+	// ProxyLocationLAN 表示中枢与非 VPS 设备上的实例可用。
 	ProxyLocationLAN = "lan"
-	// ProxyLocationAny 表示任意位置可用。
+	// ProxyLocationAny 表示任意位置可用（VPS 设备上的实例只能选它）。
 	ProxyLocationAny = "any"
 )
 

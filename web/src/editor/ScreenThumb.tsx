@@ -8,6 +8,7 @@ import type { Grid, Instance, LayoutScreen, PluginInfo, ResolvedScreen } from '@
 import '@/themes/index.css'
 import { DEFAULT_VIEWPORT } from './geometry'
 import { referencedInstanceIds, resolveScreen } from './resolve-draft'
+import { selectDevices, useLiveStore } from '@/store/live-store'
 import { useCanvasData } from './use-canvas-data'
 
 export interface ScreenThumbProps {
@@ -66,7 +67,8 @@ export function useThumbScreens(
   plugins: readonly PluginInfo[],
   instances: readonly Instance[],
 ): { resolved: ResolvedScreen[]; data: InstanceDataMap } {
-  const resolved = useMemo(() => screens.map((s) => resolveScreen(s, { plugins, instances })), [screens, plugins, instances])
+  const devices = useLiveStore(selectDevices)
+  const resolved = useMemo(() => screens.map((s) => resolveScreen(s, { plugins, instances, devices })), [screens, plugins, instances, devices])
   const ids = useMemo(() => referencedInstanceIds(resolved.flatMap((s) => s.widgets)), [resolved])
   const data = useCanvasData(ids, instances)
   return { resolved, data }

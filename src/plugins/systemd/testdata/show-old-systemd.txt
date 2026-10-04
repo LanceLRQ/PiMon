@@ -1,0 +1,7 @@
+Id=ssh.service
+LoadState=loaded
+ActiveState=active
+SubState=running
+Result=success
+Type=notify
+

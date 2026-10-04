@@ -5,11 +5,12 @@ import "time"
 // DisplayState 是实例/小组件的统一展示状态（设计 3.5）。
 type DisplayState string
 
-// 展示状态，共 10 个取值；前六个是覆盖 report.status 的状态，后四个对应 report.status。
+// 展示状态，共 11 个取值；前七个是覆盖 report.status 的状态，后四个对应 report.status。
 const (
 	DisplayUnconfigured DisplayState = "unconfigured" // 占位，尚未绑定实例
 	DisplayBroken       DisplayState = "broken"       // 引用失效
 	DisplayOffline      DisplayState = "offline"      // 设备离线
+	DisplayDormant      DisplayState = "dormant"      // 设备离线且允许离线（休眠）
 	DisplayMaintenance  DisplayState = "maintenance"  // 维护中
 	DisplayError        DisplayState = "error"        // 采集失败：采集没做成
 	DisplayStale        DisplayState = "stale"        // 过期
@@ -26,8 +27,9 @@ const StaleFactor = 3
 type DisplayInput struct {
 	Unconfigured bool // 占位，尚未绑定实例
 	Broken       bool // 引用失效（实例已删、设备已吊销、插件消失或尺寸不再支持）
-	Offline      bool // 设备离线（M1 不会出现）
-	Maintenance  bool // 设备维护模式（M1 不会出现）
+	Offline      bool // 设备离线且不允许离线
+	Dormant      bool // 设备离线且允许离线；与 Offline 互斥，由调用方保证
+	Maintenance  bool // 设备维护模式
 	LastFailed   bool // 最近一次采集失败
 	// LastSuccessAt 是最后一次成功采集（Streamer 为最后一次 emit）的 Unix 毫秒；0 表示从未成功。
 	LastSuccessAt int64
@@ -39,7 +41,7 @@ type DisplayInput struct {
 }
 
 // ComputeDisplayState 按优先级取第一个成立的状态：
-// 未配置 > 引用失效 > 离线 > 维护 > 采集失败 > 过期 > report.status。
+// 未配置 > 引用失效 > 离线 = 休眠 > 维护 > 采集失败 > 过期 > report.status。
 // now 由调用方传入（生产用 clock.Now()，测试用假时钟）。
 func ComputeDisplayState(in DisplayInput, now time.Time) DisplayState {
 	switch {
@@ -49,6 +51,8 @@ func ComputeDisplayState(in DisplayInput, now time.Time) DisplayState {
 		return DisplayBroken
 	case in.Offline:
 		return DisplayOffline
+	case in.Dormant:
+		return DisplayDormant
 	case in.Maintenance:
 		return DisplayMaintenance
 	case in.LastFailed:

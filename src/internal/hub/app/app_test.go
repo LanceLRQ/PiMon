@@ -301,7 +301,7 @@ func TestRestoreSubcommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	if err := Restore(cfg, filepath.Join(cfg.BackupDir(), info.Name), &out); err != nil {
+	if err := Restore(cfg, filepath.Join(cfg.BackupDir(), info.Name), &out, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(cfg.DBPath()); err != nil {
@@ -310,7 +310,7 @@ func TestRestoreSubcommand(t *testing.T) {
 	if !strings.Contains(out.String(), "停止服务") {
 		t.Fatalf("应提示先停止服务: %q", out.String())
 	}
-	if err := Restore(cfg, filepath.Join(cfg.DataDir, "nope.tar.gz"), &out); err == nil {
+	if err := Restore(cfg, filepath.Join(cfg.DataDir, "nope.tar.gz"), &out, nil); err == nil {
 		t.Fatal("不存在的备份应报错")
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/app"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/install"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
@@ -32,7 +34,7 @@ const usage = `用法: pimon-hub <命令> [参数]
   serve                     启动中枢服务
   setup-code [--if-needed]  生成新的首次设置码（尚未设置管理员时）；--if-needed 沿用仍有效的现有码，已有管理员时退出码为 3
   reset-password            从标准输入读取新密码并重置管理员密码
-  restore [参数] <备份文件>  从备份包恢复（必须先停止服务）
+  restore [参数] <备份文件>  从备份包恢复（必须先停止服务；加密备份用 --passphrase-file <文件> 给口令，省略则提示输入）
   install [--desktop-user <用户>] [--kiosk]
                             在树莓派上一键部署 hub（需 root：sudo ./pimon-hub install）
   kiosk [参数]              屏幕守护进程：看护 Chromium kiosk（由 labwc autostart 以桌面用户启动）
@@ -44,8 +46,12 @@ const usage = `用法: pimon-hub <命令> [参数]
 
 参数（用于 serve、setup-code、reset-password、restore，须写在位置参数之前）:
   --addr <地址>        监听地址，默认 :31415（环境变量 PIMON_ADDR）
+  --agent-addr <地址>  agent 通道监听地址，默认 :31418（环境变量 PIMON_AGENT_ADDR；只有 --agent-addr "" 才能关闭，环境变量为空按未设置处理）
   --data-dir <目录>    数据目录，默认 /var/lib/pimon（环境变量 PIMON_DATA_DIR）
   --log-level <级别>   debug|info|warn|error，默认 info（环境变量 PIMON_LOG_LEVEL）
+
+restore 的参数:
+  --passphrase-file <文件>  加密备份的口令文件（去掉末尾换行）；省略时交互输入，不回显；未加密备份会忽略它
 
 install 的参数:
   --desktop-user <用户>  桌面用户，加入 pimon 组以读取屏幕令牌（默认读取 lightdm 自动登录用户）
@@ -155,6 +161,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 	if cmd == "setup-code" {
 		rest, ifNeeded = takeFlag(rest, "--if-needed")
 	}
+	passFile := ""
+	if cmd == "restore" {
+		var perr error
+		if rest, passFile, perr = takeValueFlag(rest, "--passphrase-file"); perr != nil {
+			_, _ = fmt.Fprintln(stderr, "错误:", perr)
+			return 2
+		}
+	}
 	cfg, pos, err := config.Parse(rest, getenv)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "错误:", err)
@@ -164,7 +178,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(s
 		lv.Set(cfg.SlogLevel())
 	}
 
-	if err := dispatch(context.Background(), cmd, ifNeeded, cfg, pos, stdin, stdout, stderr, getenv); err != nil {
+	if err := dispatch(context.Background(), cmd, ifNeeded, passFile, cfg, pos, stdin, stdout, stderr, getenv); err != nil {
 		var ee exitError
 		if errors.As(err, &ee) {
 			return ee.code
@@ -197,6 +211,45 @@ func takeFlag(args []string, name string) ([]string, bool) {
 	return out, found
 }
 
+// takeValueFlag 从参数里取出带值的选项 name（接受 `--name 值` 与 `--name=值`，遇到 -- 之后不再识别），
+// 返回剩余参数与值；同一选项出现多次时以最后一次为准，缺值或值为空时报错。
+func takeValueFlag(args []string, name string) ([]string, string, error) {
+	out := make([]string, 0, len(args))
+	val := ""
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			out = append(out, args[i:]...)
+			break
+		}
+		switch {
+		case a == name:
+			if i+1 >= len(args) {
+				return nil, "", fmt.Errorf("参数 %s 需要一个值", name)
+			}
+			i++
+			val = args[i]
+			if val == "" {
+				return nil, "", fmt.Errorf("参数 %s 的值不能为空", name)
+			}
+		case strings.HasPrefix(a, name+"="):
+			val = strings.TrimPrefix(a, name+"=")
+			if val == "" {
+				return nil, "", fmt.Errorf("参数 %s 的值不能为空", name)
+			}
+		default:
+			out = append(out, a)
+		}
+	}
+	return out, val, nil
+}
+
+// isTerminal 判断 in 是否为终端。
+func isTerminal(in io.Reader) bool {
+	f, ok := in.(*os.File)
+	return ok && term.IsTerminal(int(f.Fd()))
+}
+
 // exitSetupCodeAdminExists 是 setup-code --if-needed 在已有管理员时的退出码，供安装脚本区分「无需设置码」与失败。
 const exitSetupCodeAdminExists = 3
 
@@ -212,7 +265,7 @@ func (e usageError) Error() string { return string(e) }
 // checkRootRun 是「root 运行拒绝」的检查点，测试中替换以免依赖真实 root。
 var checkRootRun = app.CheckRootRun
 
-func dispatch(ctx context.Context, cmd string, ifNeeded bool, cfg config.Config, pos []string,
+func dispatch(ctx context.Context, cmd string, ifNeeded bool, passFile string, cfg config.Config, pos []string,
 	stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string) error {
 	// serve 由 systemd 以服务用户运行，不做此检查；其余会写数据目录的子命令必须拒绝 root。
 	if cmd != "serve" {
@@ -224,7 +277,13 @@ func dispatch(ctx context.Context, cmd string, ifNeeded bool, cfg config.Config,
 		if len(pos) != 1 {
 			return usageError("用法: pimon-hub restore [参数] <备份文件>")
 		}
-		return app.Restore(cfg, pos[0], stdout)
+		var ask backup.PassphraseFunc
+		if passFile != "" {
+			ask = app.PassphraseFromFile(passFile)
+		} else {
+			ask = app.PassphrasePrompt(stdin, stdout, isTerminal(stdin))
+		}
+		return app.Restore(cfg, pos[0], stdout, ask)
 	}
 	if cmd == "serve" {
 		// 在打开数据库之前取数据目录锁，持有到进程结束，防止 restore 在服务运行时覆盖数据库。
@@ -267,10 +326,6 @@ func dispatch(ctx context.Context, cmd string, ifNeeded bool, cfg config.Config,
 		_, _ = fmt.Fprintf(stdout, "首次设置码: %s\n有效期至: %s\n", code, exp.Local().Format(time.DateTime))
 		return nil
 	default: // reset-password
-		isTerm := false
-		if f, ok := stdin.(*os.File); ok {
-			isTerm = term.IsTerminal(int(f.Fd()))
-		}
-		return a.ResetPassword(ctx, stdin, stdout, isTerm)
+		return a.ResetPassword(ctx, stdin, stdout, isTerminal(stdin))
 	}
 }

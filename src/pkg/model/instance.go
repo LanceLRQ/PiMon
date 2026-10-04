@@ -15,6 +15,8 @@ type InstanceInput struct {
 	Config map[string]any `json:"config"`
 	// IntervalSeconds 是刷新间隔覆盖，0 表示沿用 manifest 的默认间隔。
 	IntervalSeconds int `json:"interval_seconds"`
+	// RunsOn 是运行位置：hub 或设备 ID。创建时缺省为 hub；更新时缺省表示保留原运行位置。
+	RunsOn string `json:"runs_on,omitempty"`
 }
 
 // Instance 是实例列表项，也是详情与运行结果的公共部分。
@@ -22,7 +24,7 @@ type Instance struct {
 	ID       string `json:"id"`
 	PluginID string `json:"plugin_id"`
 	Name     string `json:"name"`
-	// RunsOn 本期固定为 hub。
+	// RunsOn 是运行位置：hub 或设备 ID。
 	RunsOn string `json:"runs_on"`
 	// IntervalSeconds 是覆盖值（0 为未覆盖）；EffectiveIntervalSeconds 是实际生效的间隔。
 	IntervalSeconds          int  `json:"interval_seconds"`

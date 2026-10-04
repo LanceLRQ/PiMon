@@ -12,6 +12,15 @@ import (
 // syncStore 把当前可用插件的 manifest 写入 manifests 表，
 // 不在当前可用集合里的旧记录保留并标为不可用。
 func (r *Registry) syncStore(ctx context.Context, plugins []Plugin) error {
+	ms := make([]MachineManifest, len(plugins))
+	for i, p := range plugins {
+		ms[i] = MachineManifest{Origin: p.Origin, Manifest: p.Manifest}
+	}
+	return r.syncRows(ctx, MachineHub, ms)
+}
+
+// syncRows 在一个事务里把 machine 的可用 manifest upsert 为可用，该机器其余可用记录标为不可用。
+func (r *Registry) syncRows(ctx context.Context, machine string, ms []MachineManifest) error {
 	if r.cfg.DB == nil {
 		return nil
 	}
@@ -22,13 +31,12 @@ func (r *Registry) syncStore(ctx context.Context, plugins []Plugin) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	keep := make([]any, 0, len(plugins)*2+1)
-	keep = append(keep, MachineHub)
+	keep := make([]any, 0, len(ms)*2)
 	var cond []string
-	for _, p := range plugins {
-		raw, err := json.Marshal(p.Manifest)
+	for _, m := range ms {
+		raw, err := json.Marshal(m.Manifest)
 		if err != nil {
-			return fmt.Errorf("序列化 manifest %s: %w", p.ID, err)
+			return fmt.Errorf("序列化 manifest %s: %w", m.Manifest.ID, err)
 		}
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO manifests (machine, plugin_id, version, origin, manifest_json, available, first_seen_at, updated_at)
@@ -40,17 +48,17 @@ ON CONFLICT (machine, plugin_id, version) DO UPDATE SET
     updated_at = CASE WHEN manifests.available = 1 AND manifests.manifest_json = excluded.manifest_json
                       AND manifests.origin = excluded.origin
                       THEN manifests.updated_at ELSE excluded.updated_at END`,
-			MachineHub, p.ID, p.Manifest.Version, string(p.Origin), string(raw), now, now); err != nil {
-			return fmt.Errorf("写入 manifest %s: %w", p.ID, err)
+			machine, m.Manifest.ID, m.Manifest.Version, string(m.Origin), string(raw), now, now); err != nil {
+			return fmt.Errorf("写入 manifest %s: %w", m.Manifest.ID, err)
 		}
 		cond = append(cond, "(plugin_id = ? AND version = ?)")
-		keep = append(keep, p.ID, p.Manifest.Version)
+		keep = append(keep, m.Manifest.ID, m.Manifest.Version)
 	}
 	query := `UPDATE manifests SET available = 0, updated_at = ? WHERE machine = ? AND available = 1`
-	args := []any{now, MachineHub}
+	args := []any{now, machine}
 	if len(cond) > 0 {
 		query += ` AND NOT (` + strings.Join(cond, " OR ") + `)`
-		args = append(args, keep[1:]...)
+		args = append(args, keep...)
 	}
 	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 		return fmt.Errorf("标记不可用的 manifest: %w", err)

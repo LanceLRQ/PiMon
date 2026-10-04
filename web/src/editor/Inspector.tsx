@@ -145,6 +145,10 @@ function BindingField({ widget, instances, plugins, onBinding }: Pick<InspectorP
       </Select>
     )
   }
+  // 按数据源自动汇总（主机灯组）：没有逐项引用，保存带 refs 会被后端拒绝
+  if (widget.binding.data_source) {
+    return <p className="text-[12px] leading-[1.55] text-muted-foreground">{t('layoutEd.insp.hostsAuto')}</p>
+  }
   const refs = widget.binding.refs ?? []
   if (widget.source === 'generic') {
     return <RefPicker idPrefix="insp-ref" instances={instances} plugins={plugins} value={refs[0] ?? null} onChange={(r) => onBinding({ refs: [r] })} />
@@ -222,6 +226,7 @@ export function Inspector(props: InspectorProps) {
   const options = widget.options ?? {}
   const title = typeof options.title === 'string' ? options.title : ''
   const icon = typeof options.icon === 'string' ? options.icon : ''
+  const isHosts = widget.binding.data_source === 'hosts'
   const thr = readThresholdForm(options.threshold)
   const sizeOptions = allowedSizes.map((s) => ({ value: sizeToKey(s), label: `${s.cols}×${s.rows}`, title: `${s.cols}×${s.rows}` }))
   const setThreshold = (patch: Partial<typeof thr>) => props.onOptions({ threshold: buildThreshold({ ...thr, ...patch }) })
@@ -229,7 +234,7 @@ export function Inspector(props: InspectorProps) {
   return (
     <div data-testid="inspector" data-widget-id={widget.id}>
       <div className="border-b border-border px-3.5 py-3">
-        <b className="block text-[14px] font-medium">{decl?.name ?? (widget.template ? t(`layoutEd.template.${widget.template}`, { defaultValue: widget.template }) : widget.id)}</b>
+        <b className="block text-[14px] font-medium">{decl?.name ?? (isHosts ? t('layoutEd.dataSource.hosts') : widget.template ? t(`layoutEd.template.${widget.template}`, { defaultValue: widget.template }) : widget.id)}</b>
         <small className="font-mono text-[11.5px] text-muted-foreground">{widget.plugin_id ?? widget.template} · {template || '—'}</small>
       </div>
       <Field no="p1" label={t('layoutEd.insp.source')}>
@@ -333,7 +338,7 @@ export function Inspector(props: InspectorProps) {
             />
           </>
         )}
-        {thresholdTemplates.has(template) && (
+        {(thresholdTemplates.has(template) || isHosts) && (
           <div className="mt-3">
             <div className="flex items-center justify-between text-[13px]">
               <span id="insp-thr-label">{t('layoutEd.insp.threshold')}</span>
@@ -364,6 +369,9 @@ export function Inspector(props: InspectorProps) {
               </div>
             ) : (
               <p className="mt-1.5 text-[11.5px] leading-[1.55] text-muted-foreground">{t('layoutEd.insp.thresholdOff')}</p>
+            )}
+            {isHosts && (
+              <p className="mt-1.5 text-[11.5px] leading-[1.55] text-muted-foreground">{t('layoutEd.insp.hostsThreshold')}</p>
             )}
           </div>
         )}

@@ -22,7 +22,9 @@ type options struct {
 	stderr   io.Writer
 	tlsEnv   tlscert.Env
 	onListen func(addr string)
-	logRing  *logging.Ring
+	// onAgentListen 在 agent 通道监听成功后调用，参数为实际监听地址。
+	onAgentListen func(addr string)
+	logRing       *logging.Ring
 }
 
 func defaultOptions() options {
@@ -58,3 +60,6 @@ func WithOnListen(f func(addr string)) Option { return func(o *options) { o.onLi
 
 // WithLogRing 注入内存日志缓冲，系统页的「最近日志」读取它；不注入则日志列表恒为空。
 func WithLogRing(r *logging.Ring) Option { return func(o *options) { o.logRing = r } }
+
+// WithOnAgentListen 注入 agent 通道监听成功后的回调，参数为实际监听地址（端口为 0 时用于得知端口）。
+func WithOnAgentListen(f func(addr string)) Option { return func(o *options) { o.onAgentListen = f } }

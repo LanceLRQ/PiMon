@@ -30,7 +30,7 @@ export interface NavItem {
   match?: (pathname: string) => boolean
   sub?: NavSubItem[]
   // 后续里程碑的入口：灰显，不可点击
-  milestone?: 'm2' | 'm4'
+  milestone?: 'm4'
 }
 
 const under = (base: string) => (p: string) => p === base || p.startsWith(`${base}/`)
@@ -68,11 +68,11 @@ export const navItems: NavItem[] = [
   { no: '04', icon: Globe, labelKey: 'nav.proxies', to: '/proxies' },
   { no: '05', icon: Settings2, labelKey: 'nav.settings', to: '/settings' },
   { no: '06', icon: Cpu, labelKey: 'nav.system', to: '/system' },
+  { no: '07', icon: HardDrive, labelKey: 'nav.devices', to: '/devices' },
 ]
 
 // 后续阶段入口（侧栏分组「later」下灰显）
 export const laterItems: NavItem[] = [
-  { no: '07', icon: HardDrive, labelKey: 'nav.devices', to: '/devices', milestone: 'm2' },
   { no: '08', icon: Bell, labelKey: 'nav.alerts', to: '/alerts', milestone: 'm4' },
   { no: '09', icon: Send, labelKey: 'nav.channels', to: '/channels', milestone: 'm4' },
 ]

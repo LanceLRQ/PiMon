@@ -10,6 +10,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"os"
+	goruntime "runtime"
 	"sort"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/runtime"
 	"github.com/LanceLRQ/PiMon/src/plugins/internal/cfg"
+	"github.com/LanceLRQ/PiMon/src/plugins/internal/cmdexec"
 )
 
 //go:embed plugin.yaml
@@ -54,12 +56,13 @@ type counters struct {
 
 // Plugin 是 host-metrics 的 Source 实现。
 type Plugin struct {
-	m *manifest.Manifest
-	s Sampler
+	m    *manifest.Manifest
+	s    Sampler
+	goos string
 }
 
 func init() {
-	runtime.Register(New(newSystemSampler(throttleIO{run: runCommand, readFile: os.ReadFile})))
+	runtime.Register(New(newSystemSampler(throttleIO{run: commandRunner(cmdexec.New()), readFile: os.ReadFile})))
 }
 
 // New 用给定取数来源构造插件。
@@ -68,7 +71,7 @@ func New(s Sampler) *Plugin {
 	if err != nil {
 		panic("host-metrics 内置 manifest 不合法: " + err.Error())
 	}
-	return &Plugin{m: m, s: s}
+	return &Plugin{m: m, s: s, goos: goruntime.GOOS}
 }
 
 // Manifest 实现 runtime.Source。
@@ -170,7 +173,7 @@ func (p *Plugin) disks(ctx context.Context, rep *report.Report, th thresholds) {
 	}
 	var cands []Partition
 	for _, part := range parts {
-		if realMount(part) {
+		if realMount(p.goos, part) {
 			cands = append(cands, part)
 		}
 	}

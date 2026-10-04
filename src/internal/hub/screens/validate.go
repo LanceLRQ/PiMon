@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/manifest"
 )
@@ -36,6 +37,13 @@ type snapshot struct {
 	instances map[string]model.Instance
 	// earliest 是插件 id → 该插件最早创建的实例 id（占位绑定用）。
 	earliest map[string]string
+	// hosts 是主机灯组的各格，只在解析且布局含灯组时填写（见 hostCells）。
+	hosts []model.ResolvedHost
+}
+
+// earlier 判断 a 是否比 b 更早创建：创建时间相同时按 id 升序，保证结果确定。
+func earlier(a, b model.Instance) bool {
+	return a.CreatedAt.Before(b.CreatedAt) || (a.CreatedAt.Equal(b.CreatedAt) && a.ID < b.ID)
 }
 
 func newSnapshot(list []model.Instance) *snapshot {
@@ -43,16 +51,45 @@ func newSnapshot(list []model.Instance) *snapshot {
 	for _, in := range list {
 		sn.instances[in.ID] = in
 		cur, ok := sn.earliest[in.PluginID]
-		if !ok {
-			sn.earliest[in.PluginID] = in.ID
-			continue
-		}
-		c := sn.instances[cur]
-		if in.CreatedAt.Before(c.CreatedAt) || (in.CreatedAt.Equal(c.CreatedAt) && in.ID < cur) {
+		if !ok || earlier(in, sn.instances[cur]) {
 			sn.earliest[in.PluginID] = in.ID
 		}
 	}
 	return sn
+}
+
+// machineOf 返回实例的运行位置，旧数据为空时按中枢。
+func machineOf(in model.Instance) string {
+	if in.RunsOn == "" {
+		return plugins.MachineHub
+	}
+	return in.RunsOn
+}
+
+// pluginAt 按运行位置取插件：先查中枢注册表；查不到且 machine 是设备时，查该设备上报的 manifest
+// （只在设备上存在的 exec 插件）。设备缓存未命中时会读库，不得在 DB 事务内调用。
+func (s *Service) pluginAt(machine, id string) (plugins.Plugin, bool) {
+	if p, ok := s.reg.Get(id); ok && p.Manifest != nil {
+		return p, true
+	}
+	if machine == "" || machine == plugins.MachineHub {
+		return plugins.Plugin{}, false
+	}
+	p, ok := s.reg.MachinePlugin(machine, id)
+	return p, ok && p.Manifest != nil
+}
+
+// widgetPlugin 取 plugin 来源小组件的插件：运行位置取绑定实例的；占位取该插件最早创建的实例的。
+func (s *Service) widgetPlugin(w *model.LayoutWidget, sn *snapshot) (plugins.Plugin, bool) {
+	id := w.Binding.InstanceID
+	if id == "" {
+		id = sn.earliest[w.PluginID]
+	}
+	machine := ""
+	if in, ok := sn.instances[id]; ok && in.PluginID == w.PluginID {
+		machine = machineOf(in)
+	}
+	return s.pluginAt(machine, w.PluginID)
 }
 
 // normalize 把 nil 切片与 nil 映射规整为空值，使序列化结果稳定、前端无需判空。
@@ -201,7 +238,10 @@ func (s *Service) checkWidget(screenID string, w *model.LayoutWidget, path strin
 		if len(w.Binding.Refs) > 0 {
 			bad("binding.refs")
 		}
-		if p, ok := s.reg.Get(w.PluginID); !ok || p.Manifest == nil {
+		if w.Binding.DataSource != "" {
+			bad("binding.data_source")
+		}
+		if p, ok := s.widgetPlugin(w, sn); !ok {
 			if w.PluginID != "" {
 				brk(model.LayoutBrokenPluginMissing)
 			}
@@ -225,10 +265,21 @@ func (s *Service) checkWidget(screenID string, w *model.LayoutWidget, path strin
 		if w.Binding.InstanceID != "" {
 			bad("binding.instance_id")
 		}
-		if sizes, ok := catalogSizes(w.Source, w.Template); !ok {
+		ds := w.Binding.DataSource
+		switch sizes, ok := catalogSizes(w.Source, w.Template, ds); {
+		case ds != "" && (w.Source != model.WidgetSourceAggregate || ds != model.AggregateSourceHosts):
+			bad("binding.data_source")
+		case !ok:
 			bad("template")
-		} else {
+		default:
 			allowed = catalogKeys(sizes)
+		}
+		if ds != "" {
+			// 按数据源自动汇总，不接受逐项绑定。
+			if len(w.Binding.Refs) > 0 {
+				bad("binding.refs")
+			}
+			break
 		}
 		limit := 1
 		if w.Source == model.WidgetSourceAggregate {

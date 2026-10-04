@@ -106,18 +106,36 @@ func TestViaSocksProxy(t *testing.T) {
 	}
 }
 
-func TestHTTPProxyRejected(t *testing.T) {
-	px := proxytest.NewHTTP(t)
+func TestViaHTTPProxyConnect(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	px := proxytest.NewHTTPConnect(t, "", "")
 	pr, err := proxy.Parse("http://" + px.Addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = collect(t, map[string]any{"host": "127.0.0.1", "port": 9000.0}, pr)
-	if err == nil || !strings.Contains(err.Error(), "socks") {
-		t.Fatalf("http 代理应报清楚的错误: %v", err)
+	port := ln.Addr().(*net.TCPAddr).Port
+	rep, err := collect(t, map[string]any{"host": "127.0.0.1", "port": float64(port)}, pr)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(px.Seen()) != 0 {
-		t.Fatal("不得向 http 代理发起任何请求")
+	if rep.Status != report.StatusOK {
+		t.Fatalf("经 http 代理 CONNECT 应可达: %+v", rep)
+	}
+	if seen := px.Seen(); len(seen) != 1 || seen[0].Target != ln.Addr().String() {
+		t.Fatalf("代理应看到 CONNECT 目标: %+v", seen)
 	}
 }
 

@@ -3,6 +3,7 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,10 +12,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/LanceLRQ/PiMon/src/internal/certs"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/agentdist"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/agentsrv"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/api"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/backup/remote"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/config"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/devices"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/history"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/plugins"
@@ -27,6 +33,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/internal/hub/settings"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/store"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/system"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/tlscert"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/webui"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/ws"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
@@ -45,25 +52,44 @@ type App struct {
 	cfg  config.Config
 	opts options
 
-	db          *store.DB
-	box         *secret.Box
-	settings    *settings.Service
-	admins      *auth.Admins
-	setupCodes  *auth.SetupCodes
-	sessions    *auth.Sessions
-	screen      *auth.ScreenTokens
-	backups     *backup.Service
-	plugins     *plugins.Registry
-	instances   *instances.Service
-	screens     *screens.Service
-	screenState *screenstate.Service
-	history     *history.Service
-	ws          *ws.Hub
-	notifier    *sdnotify.Notifier
-	handler     http.Handler
+	db         *store.DB
+	box        *secret.Box
+	settings   *settings.Service
+	admins     *auth.Admins
+	setupCodes *auth.SetupCodes
+	sessions   *auth.Sessions
+	screen     *auth.ScreenTokens
+	backups    *backup.Service
+	// remote 是远端（NAS）备份服务；backupAfterDaily 是每日备份成功后的回调，在装配远端服务后赋值。
+	remote           *remote.Service
+	backupAfterDaily func(ctx context.Context, info model.BackupInfo)
+	plugins          *plugins.Registry
+	instances        *instances.Service
+	screens          *screens.Service
+	screenState      *screenstate.Service
+	devices          *devices.Store
+	presence         *devices.Presence
+	// deviceViews 是设备的对外视图，REST 与 WS 共用。
+	deviceViews *devices.Viewer
+	// machineNotes 把设备状态变化转成其上实例的变化通知。
+	machineNotes *machineNotifier
+	agents       *agentsrv.Server
+	// dialout 是拨出管理器（hub 主动连公网 VPS 上的 agent），Serve 时启动。
+	dialout *agentsrv.DialOut
+	// dispatcher 是远程实例的下发器：既是实例服务的 Remote，也是 agent 通道的 Router。
+	dispatcher *agentsrv.Dispatcher
+	// cert 是网页 HTTPS 与 agent 通道共用的中枢证书，spki 是其公钥指纹。
+	cert     tls.Certificate
+	spki     certs.SPKI
+	history  *history.Service
+	ws       *ws.Hub
+	notifier *sdnotify.Notifier
+	handler  http.Handler
 	// listenAddr 是 Serve 实际监听的地址（host:port），设置码页据此拼手机访问地址。
 	listenAddr atomic.Value
-	closed     bool
+	// agentAddr 是 agent 通道实际监听的地址，未启用时为空。
+	agentAddr atomic.Value
+	closed    bool
 }
 
 // Open 按固定顺序启动：建数据目录 → 密钥 → 打开数据库 → 版本变化时升级前备份 →
@@ -87,6 +113,7 @@ func Open(ctx context.Context, cfg config.Config, opt ...Option) (*App, error) {
 	}
 	a := &App{cfg: cfg, opts: o, db: db, box: box}
 	if err := a.assemble(ctx, dbExisted); err != nil {
+		a.stopAgents()
 		_ = db.Close()
 		return nil, err
 	}
@@ -99,6 +126,11 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		return backup.New(backup.Config{
 			DB: a.db, Clock: o.clk, SecretPath: a.cfg.SecretKeyPath(),
 			Dir: a.cfg.BackupDir(), Settings: set,
+			AfterDaily: func(ctx context.Context, info model.BackupInfo) {
+				if a.backupAfterDaily != nil {
+					a.backupAfterDaily(ctx, info)
+				}
+			},
 		})
 	}
 
@@ -142,6 +174,11 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	a.sessions = auth.NewSessions(a.db, o.clk)
 	a.screen = auth.NewScreenTokens(a.db, o.clk, a.cfg.ScreenTokenPath())
 	a.backups = backups(st.Get)
+	a.remote = remote.NewService(remote.ServiceConfig{
+		Repo: remote.NewRepo(a.db, a.box, o.clk), Local: a.backups, Clock: o.clk,
+	})
+	// 每日本地备份成功后，目标已启用时立即上传刚生成的那份（失败只记录不重试）。
+	a.backupAfterDaily = a.remote.AfterDaily
 	a.notifier = sdnotify.New(o.getenv, os.Getpid)
 	a.plugins = plugins.New(plugins.Config{
 		Dir: a.cfg.PluginDir(), DB: a.db, Clock: o.clk, Builtins: runtime.Builtins(),
@@ -160,8 +197,8 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	proxyStore := proxies.New(proxies.Config{
 		DB: a.db, Box: a.box, Clock: o.clk,
 		Referrers: a.instances,
-		// 代理被修改或删除后，引用它的实例要按新内容重新排程。
-		OnChange: a.instances.Refresh,
+		// 代理被修改或删除后，引用它的实例要按新内容重新排程，拨出设备按新代理重连（代理已删除则停止拨号）。
+		OnChange: a.onProxiesChanged,
 	})
 	a.instances.UseProxies(proxyStore)
 	a.screens = screens.New(screens.Config{DB: a.db, Clock: o.clk, Plugins: a.plugins, Instances: a.instances})
@@ -176,6 +213,59 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	if err := a.screenState.Load(ctx); err != nil {
 		return fmt.Errorf("加载屏幕时段计划: %w", err)
 	}
+	a.devices = devices.New(devices.Config{DB: a.db, Box: a.box, Clock: o.clk})
+	known, err := a.devices.List(ctx)
+	if err != nil {
+		return fmt.Errorf("读取设备列表: %w", err)
+	}
+	knownIDs := make([]string, len(known))
+	for i, d := range known {
+		knownIDs[i] = d.ID
+	}
+	// 已知设备在 hub 启动后的宽限期内为 pending，之后仍未连上才算 offline。
+	a.presence = devices.NewPresence(o.clk, o.clk.Now(), knownIDs)
+	// 实例按运行位置校验、展示时查设备属性与在线状态；远程下发器（Remote）在 agent 通道服务建好后接入。
+	a.instances.UseDevices(newDeviceStates(a.devices, a.presence))
+	// 设备在线状态或属性变化后，刷新其上全部实例的展示；回调只登记设备，不读库、不阻塞。
+	a.machineNotes = newMachineNotifier(a.instances.NotifyMachine)
+	a.presence.OnChange(a.machineNotes.Submit)
+	a.devices.OnChange(func(id string, _ bool) { a.machineNotes.Submit(id) })
+	// 证书总是加载：agent 通道无论网页是否启用 HTTPS 都要用它，指纹也供配对命令展示。
+	if a.cert, err = tlscert.LoadOrCreate(a.cfg.CertPath(), a.cfg.KeyPath(), o.clk.Now(), o.tlsEnv); err != nil {
+		return fmt.Errorf("准备中枢证书: %w", err)
+	}
+	if a.spki, err = certs.SPKIOf(a.cert); err != nil {
+		return fmt.Errorf("计算证书指纹: %w", err)
+	}
+	if a.agents, err = agentsrv.New(agentsrv.Config{
+		Devices: a.devices, Presence: a.presence, Plugins: a.plugins, Clock: o.clk, HubVersion: o.version,
+	}); err != nil {
+		return fmt.Errorf("创建 agent 通道服务: %w", err)
+	}
+	// 下发器同时接入实例服务（实例变化 → 合并下发）与 agent 通道（设备就绪 → 全量下发、回执）。
+	dist := agentdist.Embedded()
+	if a.dispatcher, err = agentsrv.NewDispatcher(agentsrv.DispatcherConfig{
+		Server: a.agents, Instances: a.instances, Devices: a.devices, Plugins: a.plugins, Clock: o.clk,
+		HubVersion: o.version, AgentChecksums: dist.Checksums,
+		// 网页端口取 Serve 实际监听的地址；Serve 先于 agent 通道接受连接写入它。
+		WebPort: func() int {
+			v, _ := a.listenAddr.Load().(string)
+			return agentsrv.WebPortFrom(v)
+		},
+	}); err != nil {
+		return fmt.Errorf("创建下发器: %w", err)
+	}
+	a.instances.UseRemote(a.dispatcher)
+	a.agents.UseRouter(a.dispatcher)
+	if a.dialout, err = agentsrv.NewDialOut(agentsrv.DialOutConfig{Server: a.agents, Proxies: proxyStore}); err != nil {
+		return fmt.Errorf("创建拨出管理器: %w", err)
+	}
+	// 设备视图在 REST 与 WS 里共用：在线状态读内存，连接错误来自拨出管理器，时钟偏移来自会话。
+	a.deviceViews = devices.NewViewer(devices.ViewerConfig{
+		Store: a.devices, Presence: a.presence, ConnError: a.dialout.ConnError, ClockSkew: a.agents.ClockSkew,
+	})
+	// 主机灯组按设备视图生成各格（中枢固定第一，其后为已确认设备）。
+	a.screens.UseDevices(a.deviceViews)
 	// hub-self 的统计来源在 instances 与 history 就绪后才能绑定，先于 Load 以便首次采集就有数据。
 	hubself.Bind(hubStats{
 		inst: a.instances, hist: a.history, started: o.clk.Now(), dataDir: a.cfg.DataDir,
@@ -185,6 +275,8 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 			return online, true
 		},
 		screenStatus: a.screenState.Status,
+		onlineAgents: a.presence.Online,
+		remoteBackup: a.remote.Status,
 	})
 	if err := a.instances.Load(ctx); err != nil {
 		return fmt.Errorf("恢复实例状态: %w", err)
@@ -203,11 +295,16 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	limiter := auth.NewLimiter(o.clk, loginMaxFailures, loginLockTime)
 	// 实例与设置的变化经广播中心合并后推给 UI WebSocket 的订阅者。
 	a.ws = ws.New(ws.Config{
-		Clock: o.clk, Build: o.version, Instances: a.instances, Settings: st, Sessions: a.sessions,
+		Clock: o.clk, Build: o.version, Instances: a.instances, Devices: a.deviceViews, Settings: st, Sessions: a.sessions,
 		Layouts: a.screens, ScreenState: a.screenState, ScreenData: a.instances, Sink: a.screenState,
 		KioskAuth: &kioskGate{tokens: a.screen, limiter: limiter}, Kiosk: a.screenState,
 	})
 	a.instances.OnChange(a.ws.NotifyInstance)
+	// 设备的在线状态、属性与连接错误变化经广播中心合并后推给订阅 devices 的管理员。
+	// 这三个回调可能在 agentsrv 的会话流程锁内触发，NotifyDevice 只做内存登记，读库与拼视图都在广播中心自己的协程里。
+	a.presence.OnChange(a.ws.NotifyDevice)
+	a.devices.OnChange(func(id string, _ bool) { a.ws.NotifyDevice(id) })
+	a.dialout.OnConnErrChange(a.ws.NotifyDevice)
 	// 屏幕布局、状态、一次性指令不进合并窗口，变化时立即推送。
 	a.screens.OnChange(a.ws.NotifyLayout)
 	a.screenState.OnChange(a.ws.NotifyScreenState)
@@ -220,7 +317,8 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		a.screenState.Refresh()
 	})
 	a.handler = api.New(api.Deps{
-		DataDir: a.cfg.DataDir,
+		AgentDist: dist,
+		DataDir:   a.cfg.DataDir,
 		ListenAddr: func() string {
 			v, _ := a.listenAddr.Load().(string)
 			return v
@@ -233,19 +331,37 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 		System: system.New(system.Config{
 			Clock: o.clk, Version: o.version, DataDir: a.cfg.DataDir, Plugins: a.plugins, Ring: o.logRing,
 		}),
-		Settings:     st,
-		Hasher:       auth.Hasher{Params: o.params},
-		Limiter:      limiter,
-		SetupCodes:   a.setupCodes,
-		Admins:       a.admins,
-		Sessions:     a.sessions,
-		ScreenTokens: a.screen,
-		Backups:      a.backups,
-		Proxies:      proxyStore,
-		Web:          webui.New(webui.Embedded(), o.version),
-		WS:           a.ws.Handler(),
+		Settings:       st,
+		Hasher:         auth.Hasher{Params: o.params},
+		Limiter:        limiter,
+		SetupCodes:     a.setupCodes,
+		Admins:         a.admins,
+		Sessions:       a.sessions,
+		ScreenTokens:   a.screen,
+		Backups:        a.backups,
+		RemoteBackups:  a.remote,
+		Proxies:        proxyStore,
+		Devices:        a.devices,
+		DeviceLogs:     a.dispatcher,
+		DialOut:        a.dialout,
+		DeviceViews:    a.deviceViews,
+		DeviceSessions: a.agents,
+		AgentInfo: func() api.AgentChannel {
+			return api.AgentChannel{Addr: a.AgentAddr(), Fingerprint: a.spki.String(), HubVersion: o.version,
+				Platforms: dist.Platforms(), ReleaseChecksums: dist.Checksums()}
+		},
+		Web: webui.New(webui.Embedded(), o.version),
+		WS:  a.ws.Handler(),
 	})
 	return nil
+}
+
+// onProxiesChanged 在代理被修改或删除后扇出给实例调度与拨出管理器。
+func (a *App) onProxiesChanged() {
+	a.instances.Refresh()
+	if a.dialout != nil {
+		a.dialout.Refresh()
+	}
 }
 
 // deliverScreenCommand 把一次性屏幕指令（refresh、switch）发给在线的屏幕会话；
@@ -278,12 +394,47 @@ func (a *App) Handler() http.Handler { return a.handler }
 // hub-self 把它与实例当前状态落盘失败数（instances.Service.WriteErrors）相加作为「写库错误」。
 func (a *App) HistoryWriteErrors() int64 { return a.history.WriteErrors() }
 
-// Close 关闭数据库；可重复调用。
+// AgentAddr 返回 agent 通道实际监听的地址（host:port）；未启用或尚未监听时为空。
+func (a *App) AgentAddr() string {
+	v, _ := a.agentAddr.Load().(string)
+	return v
+}
+
+// AgentSPKI 返回中枢证书的 SPKI 指纹，agent 配对时用它钉扎。
+func (a *App) AgentSPKI() certs.SPKI { return a.spki }
+
+// stopAgents 按「拨出管理器、下发器、会话服务、在线状态、设备通知、广播中心」的顺序释放 agent 通道相关资源，须在关闭数据库之前调用。
+// 调用前监听必须已停止（Serve 返回），否则新连接会在关闭后到达；拨出管理器先停，关停期间不再新建拨出会话；
+// 下发器停止后会话的回调一律忽略，不再读库。
+func (a *App) stopAgents() {
+	if a.dialout != nil {
+		a.dialout.Close()
+	}
+	if a.dispatcher != nil {
+		a.dispatcher.Close()
+	}
+	if a.agents != nil {
+		a.agents.Close()
+	}
+	if a.presence != nil {
+		a.presence.Close()
+	}
+	if a.machineNotes != nil {
+		a.machineNotes.Close()
+	}
+	// 广播中心最后关：前面各步触发的设备变化通知在它关闭后一律作废，之后不会再读库推送。
+	if a.ws != nil {
+		a.ws.Close()
+	}
+}
+
+// Close 依次停止 agent 通道服务与在线状态计时协程，再关闭数据库；可重复调用。
 func (a *App) Close() error {
 	if a.closed {
 		return nil
 	}
 	a.closed = true
+	a.stopAgents()
 	return a.db.Close()
 }
 

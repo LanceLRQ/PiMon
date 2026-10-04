@@ -69,7 +69,7 @@ func TestLockDataDir_持有期间restore被拒绝(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	err = Restore(cfg, "/nonexistent.tar.gz", &out)
+	err = Restore(cfg, "/nonexistent.tar.gz", &out, nil)
 	if !errors.Is(err, ErrDataDirBusy) {
 		t.Fatalf("err = %v，期望 ErrDataDirBusy", err)
 	}
@@ -77,7 +77,7 @@ func TestLockDataDir_持有期间restore被拒绝(t *testing.T) {
 		t.Fatalf("第二次 LockDataDir err = %v", err)
 	}
 	_ = lk.Release()
-	if err := Restore(cfg, "/nonexistent.tar.gz", &out); errors.Is(err, ErrDataDirBusy) || err == nil {
+	if err := Restore(cfg, "/nonexistent.tar.gz", &out, nil); errors.Is(err, ErrDataDirBusy) || err == nil {
 		t.Fatalf("释放后应走到打开备份包的错误: %v", err)
 	}
 }

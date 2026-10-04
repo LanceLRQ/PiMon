@@ -3,11 +3,12 @@ package hostmetrics
 import (
 	"context"
 	"errors"
-	"os/exec"
+	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/report"
+	"github.com/LanceLRQ/PiMon/src/plugins/internal/cmdexec"
 )
 
 // 树莓派 get_throttled 的位含义（当前状态为低 4 位，历史状态为 16–19 位）。
@@ -29,8 +30,18 @@ type throttleIO struct {
 	readFile func(path string) ([]byte, error)
 }
 
-func runCommand(ctx context.Context, name string, args ...string) ([]byte, error) {
-	return exec.CommandContext(ctx, name, args...).Output()
+// commandRunner 把 cmdexec 执行器适配为 throttleIO.run：非 0 退出按失败处理，stdout 受 1 MiB 上限。
+func commandRunner(r cmdexec.Runner) func(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		res, err := r.Run(ctx, name, args...)
+		if err != nil {
+			return nil, err
+		}
+		if res.ExitCode != 0 {
+			return nil, fmt.Errorf("%s 退出码 %d", name, res.ExitCode)
+		}
+		return res.Stdout, nil
+	}
 }
 
 // readThrottled 先试 vcgencmd，再试 sysfs 文件；都没有时返回错误，调用方不输出该项。

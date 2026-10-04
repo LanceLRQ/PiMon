@@ -11,12 +11,15 @@ export interface FormContextValue {
   // null 表示尚未加载完成
   proxies: Proxy[] | null
   proxiesFailed: boolean
+  // 实例的运行位置：'hub' 表示中枢本机，否则是设备角色（server、nas、dev、vps）；决定可用代理与 lookup 能否查询
+  role: string
   lookup(key: string, query: string, signal: AbortSignal): Promise<LookupCandidate[]>
 }
 
 const empty: FormContextValue = {
   proxies: [],
   proxiesFailed: false,
+  role: 'hub',
   lookup: async () => [],
 }
 

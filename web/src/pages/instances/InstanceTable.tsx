@@ -20,7 +20,8 @@ import { NumberTag } from '@/ui/numbered-label'
 import { StatusLabel, StatusShape, isDimmedState } from '@/ui/status-shape'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ui/table'
 import { WordmarkBadge } from '@/ui/wordmark-badge'
-import type { InstanceActions } from './actions'
+import { remotePaused, type InstanceActions } from './actions'
+import { useLocationLabels } from './locations'
 import {
   defaultDir,
   emptyFilter,
@@ -68,10 +69,6 @@ function readingOf(inst: Instance): string {
   return inst.summary || inst.issue || inst.last_error || ''
 }
 
-function runsLabel(t: (k: string) => string, runsOn: string) {
-  return runsOn === 'hub' ? t('instances.hubLocal') : runsOn
-}
-
 // 实例表：总览与实例列表页共用。查询语法 + 筛选 + 排序 + 行菜单；
 // 行数据来自实时 store，patch 到达时只有对应行变化；「更新于」随 now 每秒刷新。
 export function InstanceTable({
@@ -94,14 +91,15 @@ export function InstanceTable({
   const { t, i18n } = useTranslation()
   const mobile = useIsMobile()
   const [filter, setFilter] = useState<TableFilter>(emptyFilter)
+  const loc = useLocationLabels()
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'status', dir: 'desc' })
 
   const locations = useMemo(() => [...new Set(instances.map((i) => i.runs_on))].sort(), [instances])
   const plugins = useMemo(() => [...new Set(instances.map((i) => i.plugin_id))].sort(), [instances])
   const attentionCount = useMemo(() => instances.filter((i) => isAttention(i)).length, [instances])
   const visible = useMemo(
-    () => sortInstances(filterInstances(instances, filter), sort.key, sort.dir, i18n.language === 'en' ? 'en' : 'zh'),
-    [instances, filter, sort, i18n.language],
+    () => sortInstances(filterInstances(instances, filter, loc.names), sort.key, sort.dir, i18n.language === 'en' ? 'en' : 'zh', (id) => loc.text(id, t('instances.local'))),
+    [instances, filter, sort, i18n.language, loc, t],
   )
 
   // 筛选后看不到的行不再保留在选择里，避免批量操作静默作用于隐藏的行
@@ -197,7 +195,7 @@ export function InstanceTable({
             <span className="rounded-[2px] border border-border px-1 font-mono text-[10.5px] text-muted-foreground">
               {inst.runs_on === 'hub' ? 'hub' : 'agent'}
             </span>
-            <span className="text-[13px]">{inst.runs_on === 'hub' ? t('instances.local') : inst.runs_on}</span>
+            <span className="text-[13px]">{loc.text(inst.runs_on, t('instances.local'))}</span>
           </span>
         </TableCell>
         <TableCell mono className={cn('max-w-[260px] truncate text-[12.5px]', (inst.display_state === 'error' || !reading) && 'text-muted-foreground')} title={reading || t('items.unknown')}>
@@ -254,11 +252,11 @@ export function InstanceTable({
           {t('instances.filter.attention')} <span className="font-mono">{attentionCount}</span>
         </button>
         <FilterMenu
-          label={filter.location ? t('instances.filter.locationSet', { value: filter.location }) : t('instances.filter.location')}
+          label={filter.location ? t('instances.filter.locationSet', { value: loc.text(filter.location, t('instances.hubLocal')) }) : t('instances.filter.location')}
           active={filter.location !== null}
           title={t('instances.filter.location')}
           allLabel={t('instances.filter.allLocations')}
-          options={locations.map((l) => ({ value: l, label: runsLabel(t, l) }))}
+          options={locations.map((l) => ({ value: l, label: loc.text(l, t('instances.hubLocal')) }))}
           value={filter.location}
           onChange={(location) => setFilter((f) => ({ ...f, location }))}
         />
@@ -311,7 +309,7 @@ export function InstanceTable({
               <span className="min-w-0">
                 <span className="block truncate text-[14px] font-medium">{inst.name}</span>
                 <span className="block truncate font-mono text-[11px] text-muted-foreground">
-                  {inst.plugin_id} · {runsLabel(t, inst.runs_on)}
+                  {inst.plugin_id} · {loc.text(inst.runs_on, t('instances.hubLocal'))}
                 </span>
               </span>
               <span className="max-w-[40vw] text-right">
@@ -456,6 +454,7 @@ interface RowMenuProps {
 export function RowMenu({ inst, actions, onOpen }: RowMenuProps) {
   const { t } = useTranslation()
   const running = actions.running.has(inst.id)
+  const blocked = remotePaused(inst)
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -468,7 +467,11 @@ export function RowMenu({ inst, actions, onOpen }: RowMenuProps) {
         <DropdownMenuItem onSelect={() => onOpen(inst)}>
           <SquareArrowOutUpRight /> {t('instances.menu.detail')}
         </DropdownMenuItem>
-        <DropdownMenuItem disabled={running} onSelect={() => void actions.run(inst)}>
+        <DropdownMenuItem
+          disabled={running || blocked}
+          title={blocked ? t('instances.runBlockedCollect') : undefined}
+          onSelect={() => void actions.run(inst)}
+        >
           <RefreshCw /> {t('instances.menu.run')}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => actions.edit(inst)}>

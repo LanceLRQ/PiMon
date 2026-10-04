@@ -41,31 +41,6 @@ type Plugin struct {
 	RunPath string
 }
 
-// IssueKind 是加载问题的类别。
-type IssueKind string
-
-// 加载问题类别。
-const (
-	IssueInvalidManifest IssueKind = "invalid_manifest"
-	IssueIDMismatch      IssueKind = "id_mismatch"
-	IssueNotExec         IssueKind = "runtime_not_exec"
-	IssueMissingRun      IssueKind = "missing_run"
-	IssueNotExecutable   IssueKind = "not_executable"
-	IssueInsecure        IssueKind = "insecure"
-	IssueConflict        IssueKind = "conflict"
-	// IssueDirUnreadable 表示插件根目录本身读取失败（权限、不是目录等），此时只有内置插件可用。
-	IssueDirUnreadable IssueKind = "dir_unreadable"
-)
-
-// Issue 是某个插件目录未能加载的原因。
-type Issue struct {
-	Dir      string
-	ID       string
-	Kind     IssueKind
-	Message  string
-	Problems []manifest.Problem
-}
-
 // Snapshot 是一次扫描后的结果。
 type Snapshot struct {
 	Plugins []Plugin
@@ -92,6 +67,11 @@ type Registry struct {
 	snap      Snapshot
 	byID      map[string]Plugin
 	listeners []func()
+
+	// machMu 保护 agent 设备的可用插件缓存（machCache）与各机器的失效代数（machGen）。
+	machMu    sync.Mutex
+	machCache map[string]*machineCache
+	machGen   map[string]uint64
 }
 
 // New 创建注册表。Builtins 通常传 runtime.Builtins()；Debounce 缺省 1 秒，EUID 缺省 os.Geteuid。

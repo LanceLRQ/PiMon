@@ -17,6 +17,8 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/backup/remote"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/devices"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/history"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/logging"
@@ -74,6 +76,23 @@ type env struct {
 	client    *http.Client
 	tokenFn   string
 	ring      *logging.Ring
+	pairer    *fakePairer
+	devices   *devices.Store
+	devLogs   *fakeDeviceLogs
+	pres      *devices.Presence
+	sessions  *fakeSessions
+	agentCh   *AgentChannel
+}
+
+// deviceFacts 把设备仓库适配为实例服务的 DeviceStates（与 app 中的适配器相同）。
+type deviceFacts struct{ s *devices.Store }
+
+func (d deviceFacts) Device(id string) (instances.DeviceFacts, bool) {
+	dev, err := d.s.Get(context.Background(), id)
+	if err != nil {
+		return instances.DeviceFacts{}, false
+	}
+	return instances.DeviceFacts{Role: dev.Role}, true
 }
 
 func newEnv(t *testing.T) *env { return newEnvWith(t) }
@@ -116,6 +135,11 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 	hist := history.New(history.Config{DB: db, Clock: clk, Retention: func() model.RetentionSettings { return st.Get().Retention }})
 	inst := instances.New(instances.Config{DB: db, Box: box, Clock: clk, Plugins: reg, History: hist})
 	ring := logging.NewRing(5)
+	devs := devices.New(devices.Config{DB: db, Box: box, Clock: clk})
+	pres := devices.NewPresence(clk, clk.Now(), nil)
+	t.Cleanup(pres.Close)
+	sessions := &fakeSessions{done: map[string]chan struct{}{}}
+	agentCh := &AgentChannel{Addr: "0.0.0.0:31418", Fingerprint: "SHA256:testfp", HubVersion: "v-test", Platforms: []string{"linux-amd64"}}
 	deps := Deps{
 		System: system.New(system.Config{
 			Clock: clk, Version: "v-test", DataDir: dir, Plugins: reg, Ring: ring,
@@ -138,9 +162,16 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 			DB: db, Clock: clk, SecretPath: keyPath,
 			Dir: filepath.Join(dir, "backups"), Settings: st.Get,
 		}),
-		Proxies: proxies.New(proxies.Config{DB: db, Box: box, Clock: clk, Referrers: refs}),
+		Proxies:        proxies.New(proxies.Config{DB: db, Box: box, Clock: clk, Referrers: refs}),
+		DialOut:        &fakePairer{},
+		DeviceLogs:     &fakeDeviceLogs{},
+		Devices:        devs,
+		DeviceViews:    devices.NewViewer(devices.ViewerConfig{Store: devs, Presence: pres}),
+		DeviceSessions: sessions,
+		AgentInfo:      func() AgentChannel { return *agentCh },
 	}
 	inst.UseProxies(deps.Proxies)
+	inst.UseDevices(deviceFacts{deps.Devices})
 	deps.Screens = screens.New(screens.Config{DB: db, Clock: clk, Plugins: reg, Instances: inst})
 	inst.UseScreenRefs(deps.Screens)
 	deps.ScreenState = screenstate.New(screenstate.Config{DB: db, Clock: clk, Timezone: func() string { return st.Get().Timezone }})
@@ -150,9 +181,20 @@ func newEnvWith(t *testing.T, extra ...runtime.Source) *env {
 	if err := deps.ScreenTokens.EnsureExists(ctx); err != nil {
 		t.Fatal(err)
 	}
+	deps.RemoteBackups = remote.NewService(remote.ServiceConfig{
+		Repo: remote.NewRepo(db, box, clk), Local: deps.Backups, Clock: clk, WorkFactor: 10,
+	})
+	remoteCtx, remoteStop := context.WithCancel(context.Background())
+	remoteDone := deps.RemoteBackups.Start(remoteCtx)
+	t.Cleanup(func() {
+		remoteStop()
+		<-remoteDone
+	})
 	srv := httptest.NewServer(New(deps))
 	t.Cleanup(srv.Close)
-	e := &env{t: t, clk: clk, deps: deps, db: db, refs: refs, plugins: reg, pluginDir: pluginDir, hasher: hasher, srv: srv, tokenFn: tokenPath, ring: ring}
+	e := &env{t: t, clk: clk, deps: deps, db: db, refs: refs, plugins: reg, pluginDir: pluginDir, hasher: hasher, srv: srv, tokenFn: tokenPath, ring: ring,
+		pairer: deps.DialOut.(*fakePairer), devices: deps.Devices, devLogs: deps.DeviceLogs.(*fakeDeviceLogs),
+		pres: pres, sessions: sessions, agentCh: agentCh}
 	e.client = e.newClient()
 	return e
 }

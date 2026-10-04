@@ -62,7 +62,11 @@
     "hub-self": {
       "online": "在线",
       "offline": "离线",
-      "unknown": "未知"
+      "unknown": "未知",
+      "backup_ok": "正常",
+      "backup_failed": "失败",
+      "backup_stale": "超过 48 小时未成功",
+      "backup_never": "尚未成功"
     },
     "weather": {
       "city_required": "请选择城市"
@@ -85,7 +89,8 @@
     "screens": "屏幕管理",
     "layoutEditor": "布局编辑器",
     "schedule": "时段计划与主题",
-    "remote": "远程操作"
+    "remote": "远程操作",
+    "devices": "设备"
   },
   "status": {
     "ok": "正常",
@@ -95,9 +100,433 @@
     "error": "采集失败",
     "stale": "过期",
     "offline": "离线",
+    "dormant": "休眠",
     "maintenance": "维护中",
     "unconfigured": "未配置",
-    "broken": "引用失效"
+    "broken": "引用失效",
+    "disconnected": "连接中断",
+    "pending": "等待连接"
+  },
+  "devices": {
+    "hub": "中枢",
+    "presence": {
+      "online": "在线",
+      "disconnected": "连接中断，等待重连",
+      "offline": "离线",
+      "dormant": "休眠",
+      "pending": "等待连接"
+    },
+    "upgrade": {
+      "agent": "需要升级 agent",
+      "hub": "需要升级中枢",
+      "differs": "版本不同"
+    },
+    "needsRepair": "凭据已失效，需要重新配对",
+    "list": {
+      "sub": "{{count}} 台设备 · 拨入 {{in}} · 拨出 {{out}} · 另有中枢本机",
+      "add": "添加设备",
+      "addTitle": "添加设备",
+      "listTitle": "设备列表",
+      "stripLabel": "设备状态汇总",
+      "strip": {
+        "online": "在线",
+        "disconnected": "连接中断",
+        "offline": "离线",
+        "dormant": "休眠",
+        "pending": "等待连接",
+        "upgrade": "需要升级"
+      },
+      "search": "按名称、主机名、地址搜索",
+      "searchLabel": "搜索设备",
+      "filter": {
+        "label": "按状态筛选",
+        "all": "全部",
+        "online": "在线",
+        "bad": "异常",
+        "dormant": "休眠",
+        "pending": "等待连接"
+      },
+      "cols": {
+        "status": "状态",
+        "name": "名称与角色",
+        "direction": "连接方向",
+        "address": "地址",
+        "platform": "系统 / 架构",
+        "version": "版本",
+        "instances": "实例",
+        "flags": "离线 / 维护",
+        "actions": "操作"
+      },
+      "role": {
+        "hub": "中枢",
+        "server": "服务器",
+        "nas": "NAS",
+        "dev": "开发机",
+        "vps": "VPS"
+      },
+      "dir": {
+        "local": "本机",
+        "dial_in": "拨入",
+        "dial_out": "拨出",
+        "via": "经 {{proxy}}",
+        "direct": "直连"
+      },
+      "flag": {
+        "allowOffline": "允许离线",
+        "noOffline": "不允许离线",
+        "maintenance": "维护中"
+      },
+      "lastSeen": "最后在线 {{ago}}",
+      "neverSeen": "从未连接",
+      "hubUptime": "已运行 {{uptime}}",
+      "placeholder": {
+        "pending": "尚未连接，请在配对码有效期内执行安装命令",
+        "repairing": "重新配对中（替换 {{name}}）",
+        "dangling": "悬挂占位",
+        "needsUpgrade": "需要升级后才能接入"
+      },
+      "deletePlaceholder": "删除占位",
+      "deleteTitle": "删除占位设备",
+      "deleteBody": "将删除占位「{{name}}」，它还没有成功接入，不影响任何实例与屏幕。",
+      "deleteConfirm": "删除",
+      "deleted": "已删除占位「{{name}}」",
+      "versionDiffers": "与中枢版本不同",
+      "openRow": "查看设备 {{name}} 的详情",
+      "loading": "设备列表加载中",
+      "empty": {
+        "title": "还没有添加设备",
+        "body": "设备是装了 pimon-agent 的机器。添加后，主机指标、Docker、存储健康等插件就能在它们本机上运行，数据汇到这块屏幕。"
+      },
+      "noMatch": "没有匹配的设备，清除筛选或修改搜索词",
+      "clearFilter": "清除筛选",
+      "count": "显示 {{shown}} / {{total}} 台设备",
+      "filtered": " · 已筛选",
+      "pinnedNote": "中枢本机固定第一行，不参与筛选，不可吊销",
+      "legend": {
+        "online": "在线",
+        "disconnected": "连接中断，等待重连",
+        "offline": "离线",
+        "dormant": "休眠，允许离线的设备离线",
+        "pending": "等待连接，配对码未用",
+        "upgrade": "需要升级，agent 或中枢版本过旧"
+      },
+      "menu": {
+        "label": "更多操作",
+        "detail": "查看详情",
+        "repair": "重新配对",
+        "revoke": "吊销设备"
+      }
+    },
+    "add": {
+      "description": "添加设备：拨入由设备主动连中枢，拨出由中枢主动连设备",
+      "tabsLabel": "连接方向",
+      "tabIn": "拨入 · agent 主动连中枢",
+      "tabOut": "拨出 · 中枢主动连 agent",
+      "close": "关闭",
+      "back": "返回修改",
+      "copyCommand": "复制命令",
+      "roleOption": "{{label}} · {{key}}",
+      "in": {
+        "intro": "适用于局域网里的机器（NAS、服务器、开发机）。在设备上执行一行命令，agent 会带着配对码主动连到中枢，配置全部在这里管理，设备上不落盘密钥。",
+        "name": "名称",
+        "nameHelp": "最多 64 个字符，留空则用 agent 上报的主机名。",
+        "namePlaceholder": "留空则用 agent 上报的主机名",
+        "role": "角色",
+        "roleHelp": "角色只用于分组与图标，不改变行为。开发机默认开启「允许离线」。",
+        "allowOffline": "允许离线",
+        "allowOfflineOn": "离线时显示「休眠」，不告警",
+        "allowOfflineOff": "离线时显示「离线」并告警",
+        "allowOfflineHelp": "笔记本等经常关机的设备开启后，离线显示为灰色「休眠」，不告警。",
+        "autoMetrics": "自动创建主机指标实例",
+        "autoMetricsHint": "连接成功后在该设备上建一个 host-metrics 实例",
+        "generate": "生成配对码与命令",
+        "generating": "生成中…",
+        "summary": "{{name}} · {{role}} · {{offline}} · {{auto}}",
+        "nameFallback": "（用主机名）",
+        "offlineOn": "允许离线",
+        "offlineOff": "不允许离线",
+        "autoOn": "自动创建主机指标",
+        "autoOff": "不建实例",
+        "hubSection": "中枢地址",
+        "hubMeta": "agent 要能访问到这个地址",
+        "hubLabel": "hub 地址",
+        "hubHelp": "设备解析不了的地址会连不上；跨网段时选能路由到的那个。",
+        "runSection": "在设备上执行",
+        "modeLabel": "命令形式",
+        "modeOne": "一行命令",
+        "modeSteps": "分步命令",
+        "oneTitle": "一行命令 · 自动识别系统与架构，校验 SHA-256 后安装",
+        "oneNoteDev": "开发机（macOS）走用户模式，脚本会自动去掉 sudo；Linux 开发机在命令末尾追加 --user。",
+        "oneNote": "Linux 系统模式需要 root，脚本会提示 sudo；macOS 自动走用户模式。",
+        "step1": "1 · 识别平台",
+        "step2": "2 · 从中枢下载",
+        "step3": "3 · 校验 SHA-256（Linux 用 sha256sum，macOS 用 shasum -a 256）",
+        "step4": "4 · 安装（Linux 用 sudo，macOS 用户模式）",
+        "step4Dev": "4 · 安装（用户模式，不用 sudo）",
+        "stepsNote": "分步安装的校验和与二进制来自同一个 HTTP 地址，只防得住传输损坏；不放心就改走 HTTPS 访问地址。",
+        "sudoersHint": "需要硬盘 SMART 等存储健康数据时，在命令末尾加 {{flag}}。",
+        "noEmbed": "当前中枢没有内嵌 agent，一行命令和分步下载命令不可用，请从 GitHub Releases 获取 agent 后手工安装；命令仍照常显示。",
+        "code": "配对码",
+        "codeKey": "--code · 一次性",
+        "codeHelp": "15 分钟内有效，使用一次即作废；过期后点「返回修改」重新生成。",
+        "fingerprint": "中枢 SPKI 指纹",
+        "fingerprintHelp": "agent 只信任这个公钥指纹（钉扎），不依赖 CA。一行命令里已带上，分步安装时可与终端输出核对。",
+        "optional": "可选参数",
+        "optionalHelp": "要监控 Docker 或存储健康，在命令末尾追加 --docker-group、--sudoers（经 curl | sh 运行时为非交互，需显式给出）。",
+        "waiting": "等待 agent 连接…",
+        "remaining": "配对码剩余 {{time}}",
+        "expired": "配对码已过期",
+        "expiredHint": "点「返回修改」重新生成配对码。",
+        "connected": "已连接",
+        "connectedBody": "{{name}} 已接入 · {{address}} · {{version}}",
+        "view": "查看设备详情",
+        "expiresIn": "{{time}}",
+        "copyCode": "复制配对码",
+        "copyFingerprint": "复制指纹",
+        "expiredHintRepair": "点「重新生成」获取新的配对码。",
+        "codeHelpRepair": "15 分钟内有效，使用一次即作废；过期后点「重新生成」。",
+        "foundNotOnline": "已找到本次配对的设备「{{name}}」，但它还没有上线（{{status}}）"
+      },
+      "out": {
+        "step1": "在 VPS 上安装并开启配对窗口",
+        "step1Meta": "先做这一步",
+        "step1Body": "VPS 不在局域网，由中枢主动连过去：先在 VPS 上以「监听」模式安装 agent，再执行 pimon-agent pair 打开 15 分钟配对窗口，它会打印 SPKI 指纹与配对码。",
+        "platform": "VPS 平台",
+        "downloadTitle": "从 GitHub Releases 下载并校验 SHA-256",
+        "installTitle": "安装为监听模式，再开启配对窗口",
+        "noRelease": "这是开发构建，没有对应的 GitHub Release，下载命令已隐藏。请自行把 agent 二进制放到 VPS 后，再执行 install --listen 与 pair。",
+        "tipFirewall": "安全组 / 防火墙放行 TCP {{port}}（即 --listen 的端口），来源只填中枢的出口 IP；中枢经代理拨出时，填代理的出口 IP。",
+        "tipWindow": "每次配对窗口 15 分钟，配对成功一次即关闭；过期后重新执行 sudo pimon-agent pair。",
+        "step2": "填写 pair 输出的内容",
+        "address": "地址",
+        "addressPlaceholder": "203.0.113.5:31418",
+        "addressHelp": "格式 host:port，自动补 wss://；填 VPS 的公网地址，不是 pair 输出里的本机局域网 IP。",
+        "fingerprint": "SPKI 指纹",
+        "fingerprintHelp": "格式 SHA256:<base64>，逐字核对 pair 输出的「SPKI 指纹」。",
+        "code": "配对码",
+        "codeHelp": "不区分大小写，分隔符可有可无。",
+        "proxy": "代理",
+        "proxyDirect": "直连",
+        "proxyHelp": "中枢到 VPS 这一跳走哪个全局代理，在「代理」页维护。",
+        "name": "名称",
+        "namePlaceholder": "留空则用 agent 上报的主机名",
+        "role": "角色",
+        "autoMetrics": "自动创建主机指标实例",
+        "autoMetricsHint": "配对成功后在该设备上建一个 host-metrics 实例",
+        "submit": "配对并添加",
+        "submitting": "配对中…",
+        "progress": "正在配对，最长等待 20 秒",
+        "progressSteps": "连接 VPS（经代理时先过代理）；核对 SPKI 指纹；提交配对码，等待 agent 确认",
+        "success": "配对成功",
+        "successBody": "{{name}} 已连接",
+        "view": "查看设备详情"
+      },
+      "fail": {
+        "title": "配对失败",
+        "detail": "{{reason}}（{{code}}）",
+        "view": "查看已保留的设备",
+        "unreachable": {
+          "tip1": "云厂商安全组与系统防火墙放行 TCP {{port}}，来源为中枢（或代理）的出口 IP。",
+          "tip2": "地址写的是 VPS 公网地址，端口与 --listen 一致（host:port）。",
+          "tip3": "在 VPS 上执行 sudo pimon-agent status，确认 agent 在运行且处于监听模式。",
+          "tip4": "选了代理时，到「代理」页测试它能否访问该地址。"
+        },
+        "pin_mismatch": {
+          "tip1": "逐字核对 pimon-agent pair 输出的「SPKI 指纹」，注意不要漏掉 SHA256: 前缀。",
+          "tip2": "VPS 重装过或证书重建过，指纹会变；确认是自己的机器后再填新指纹。",
+          "tip3": "指纹始终对不上，可能有人在中途冒充 VPS，换一条网络路径再试。"
+        },
+        "code_expired": {
+          "tip1": "在 VPS 上重新执行 sudo pimon-agent pair，会得到新的指纹与配对码。",
+          "tip2": "把新配对码填回上面的表单后再次点「配对并添加」。"
+        },
+        "bad_code": {
+          "tip1": "逐字核对配对码，可以带分隔符也可以不带，不区分大小写。",
+          "tip2": "配对码只能用一次；已经用过就在 VPS 上重新执行 sudo pimon-agent pair。"
+        },
+        "rate_limited": {
+          "tip1": "agent 对同一来源的失败次数有上限，暂时被锁定，等十几分钟后再试。",
+          "tip2": "先核对地址、指纹与配对码都对，再重试，避免再次触发锁定。"
+        },
+        "incompatible": {
+          "tip1": "设备已保留在设备列表里，在 VPS 上升级 agent 后会自动接入。",
+          "tip2": "升级命令：sudo pimon-agent upgrade --release <版本号>。"
+        },
+        "timeout": {
+          "tip1": "检查中枢到 VPS 的网络，经代理时检查代理是否可用。",
+          "tip2": "确认 VPS 上的 agent 在运行，必要时重新执行 sudo pimon-agent pair 后重试。"
+        },
+        "unknown": {
+          "tip1": "到「系统」页查看中枢日志，找到这次配对的失败原因。",
+          "tip2": "核对地址、指纹与配对码后重试。"
+        }
+      },
+      "fieldError": {
+        "required": "必填",
+        "invalid": "取值不合法",
+        "out_of_range": "超出允许范围",
+        "address": {
+          "required": "请填写地址",
+          "invalid": "地址格式不对：可写 host:port 或 wss://host:port（IPv6 写成 [地址]:端口）"
+        },
+        "fingerprint": {
+          "required": "请填写指纹",
+          "invalid": "指纹须形如 SHA256:<base64>，请逐字核对 pair 输出"
+        },
+        "code": {
+          "required": "请填写配对码",
+          "invalid": "配对码格式不对，请逐字核对 pair 输出"
+        },
+        "name": {
+          "out_of_range": "名称最多 64 个字符"
+        },
+        "role": {
+          "invalid": "不支持这个角色"
+        },
+        "proxy_id": {
+          "invalid": "所选代理不存在，请重新选择"
+        }
+      },
+      "agentInfoFailed": "读取中枢接入信息失败"
+    },
+    "detail": {
+      "title": "设备 · {{name}}",
+      "hubTitle": "中枢 · 设备详情",
+      "srTitle": "设备详情：{{name}}",
+      "readOnly": "只读",
+      "editable": "可编辑",
+      "close": "关闭",
+      "dirty": "未保存改动 {{count}}",
+      "changed": "已修改",
+      "props": "属性",
+      "connection": "连接",
+      "version": "版本与升级",
+      "instances": "该设备上的实例",
+      "logs": "日志",
+      "logsMeta": "经 agent 通道拉取",
+      "notHandshaken": "尚未握手",
+      "dialInMeta": "拨入",
+      "dialOutMeta": "拨出",
+      "maintenance": "维护模式",
+      "maintenanceHint": "维护期间屏幕标记「维护中」，告警静默",
+      "allowOfflineHint": "离线时显示「休眠」，不告警",
+      "addressHelp": "VPS 换了 IP 或端口时改这里；证书指纹不变则无需重新配对。",
+      "proxyMissing": "{{id}}（不可用）",
+      "errName": "名称不能为空",
+      "saved": "已保存设备「{{name}}」",
+      "mismatch": "所选角色或代理在这些实例上不可用，VPS 上的实例只能用「任意」位置的代理，请先调整它们：{{names}}",
+      "incompatibleMin": "（要求对端协议版本不低于 {{min}}）",
+      "revoke": "吊销设备",
+      "repair": "重新配对",
+      "revert": "撤销全部",
+      "instanceCount": "{{count}} 个",
+      "viewInstances": "在实例列表查看",
+      "noInstances": "没有实例。",
+      "noInstancesPending": "没有实例。设备连上后，若开启了「自动创建主机指标实例」会出现一条。",
+      "conn": {
+        "status": "状态",
+        "direction": "方向",
+        "dirIn": "拨入 · agent 主动连中枢",
+        "dirOut": "拨出 · 中枢主动连 agent",
+        "address": "地址",
+        "addressIn": "（最近来源 IP）",
+        "hostname": "主机名",
+        "platform": "系统 / 架构",
+        "connectedFor": "已连接时长",
+        "lastSeen": "最后在线",
+        "skew": "时钟偏移",
+        "protocol": "协议版本",
+        "proxy": "代理"
+      },
+      "up": {
+        "agentVersion": "agent 版本",
+        "hubVersion": "中枢版本",
+        "same": "与中枢一致",
+        "pending": "设备连上之后显示版本。",
+        "tooNew": "升级中枢后 agent 会自动重连，无需操作设备。中枢升级见「系统」页。",
+        "cmdIn": "在设备上执行 · 从中枢下载并校验",
+        "cmdOut": "在 VPS 上执行 · 从 GitHub Releases 升级，必须带 --release",
+        "outHelp": "拨出设备没有到中枢的下载通道；--release 取 {{version}}，与中枢版本一致。",
+        "proxyHint": "访问 GitHub 不通时，在命令末尾追加 --proxy {{url}}",
+        "noRelease": "当前中枢不是正式发布版本，没有对应的 Release，无法给出升级命令。"
+      },
+      "unsaved": {
+        "title": "放弃未保存的改动？",
+        "body": "设备属性有未保存的改动，现在离开会丢失它们。",
+        "stay": "继续编辑",
+        "leave": "放弃改动"
+      },
+      "hubOverview": "概况",
+      "hubNote": "中枢本机不是设备行：不能吊销，也没有连接属性可编辑。插件在中枢本机运行的实例见下方。",
+      "hubUptime": "已运行",
+      "hubChannel": "agent 通道",
+      "hubPort": "监听端口",
+      "hubChannelOff": "未启用",
+      "hubFingerprint": "SPKI 指纹",
+      "hubVersion": "中枢版本",
+      "hubProtocol": "协议 / 最低兼容",
+      "hubPlatforms": "内嵌 agent 平台",
+      "hubNoEmbed": "无（开发构建）",
+      "notFound": "设备不存在或已吊销",
+      "addressPlaceholder": "203.0.113.5:31418 或 wss://…"
+    },
+    "logs": {
+      "level": "日志级别",
+      "all": "全部",
+      "info": "info",
+      "warn": "warn",
+      "error": "error",
+      "refresh": "刷新日志",
+      "aria": "设备日志",
+      "unavailable": "设备当前不在线，日志不可用。日志经 agent 通道实时拉取，不在中枢保存。",
+      "loading": "加载中…",
+      "empty": "没有符合条件的日志",
+      "emptyAll": "暂无日志",
+      "err": {
+        "timeout": "设备没有及时返回日志，请稍后刷新",
+        "failed": "拉取日志失败",
+        "offline": "设备离线，无法查看日志"
+      }
+    },
+    "revoke": {
+      "title": "吊销设备「{{name}}」？",
+      "body": "吊销后该设备的凭据立即失效，会话被断开，agent 不能再接入（要接回须重新配对）。设备上的实例会保留，运行位置显示「引用失效」并暂停采集，直到你为它们重新选择运行位置。",
+      "loading": "正在读取影响范围…",
+      "failed": "读取影响范围失败：{{detail}}",
+      "retry": "重试",
+      "instances": "实例",
+      "screens": "引用这些实例的 screen",
+      "rules": "告警规则",
+      "count": "{{count}} 个",
+      "countRules": "{{count}} 条",
+      "noInstances": "没有实例",
+      "noScreens": "没有 screen 引用",
+      "noRules": "没有告警规则引用",
+      "screenNote": "其中的小组件显示「引用失效」",
+      "inputLabel": "输入设备名确认",
+      "inputPrompt": "输入设备名「{{name}}」以确认",
+      "submit": "吊销设备",
+      "submitting": "正在吊销…",
+      "done": "已吊销设备「{{name}}」"
+    },
+    "repair": {
+      "title": "重新配对",
+      "whyTitle": "适用场景：",
+      "why1": "agent 所在机器重装了系统，或本机凭据文件丢了",
+      "why2": "怀疑凭据泄露，想让旧凭据立刻失效",
+      "why3": "换了一台机器接替原设备：实例、设备配置与维护模式迁到新设备，配对成功后旧设备才被接替",
+      "repinIn": "只是中枢证书重建（指纹变了）不需要重新配对：在设备上执行 {{cmd}} 更新钉扎即可（仅拨入设备）。",
+      "outNote": "只是 VPS 换了 IP 或端口、证书没变：直接在「属性」里改地址，不必重新配对。VPS 上 agent 重装、证书变了：用新的指纹与配对码在这里重新配对。",
+      "generate": "生成新配对码",
+      "generating": "正在生成…",
+      "regenerate": "重新生成",
+      "issuedFor": "为「{{name}}」生成的新配对码",
+      "submit": "重新配对",
+      "done": "重新配对完成，设备「{{name}}」已接替旧设备",
+      "replaced": "重新配对完成，旧设备已被新设备接替",
+      "placeholder": "占位设备还没有成功接入，不能重新配对。设备连上之后可以重新配对；不再需要它请吊销。",
+      "repinNoFp": "（读取不到中枢指纹，请把 SHA256:… 换成「系统」页显示的指纹。）"
+    }
   },
   "errors": {
     "request": {
@@ -123,7 +552,17 @@
     },
     "not_found": "资源不存在",
     "backup": {
-      "exists": "同一秒内已有相同原因的备份，请稍后再试"
+      "exists": "同一秒内已有相同原因的备份，请稍后再试",
+      "remote_disabled": "远端备份未启用，请先在设置中启用并保存",
+      "remote_failed": "远端备份失败",
+      "no_local": "还没有可上传的本地备份，请先创建一份备份",
+      "remote_reason": {
+        "connect": "连不上远端，请检查地址、端口与网络",
+        "auth": "用户名或密码错误",
+        "not_writable": "目录不存在且无法创建，或没有写入权限",
+        "io": "读写远端时出错或长时间没有进展",
+        "local_read": "读取本地备份文件时出错"
+      }
     },
     "plugin": {
       "not_found": "插件不存在",
@@ -131,11 +570,31 @@
     },
     "proxy": {
       "not_found": "代理不存在",
-      "in_use": "代理正被实例引用，无法删除"
+      "in_use": "代理正被实例引用，无法删除",
+      "location_mismatch": "所选代理不能在该运行位置使用：可用位置为「hub」的代理只能给中枢用，VPS 上只能选「任意」"
     },
     "instance": {
       "not_found": "实例不存在",
-      "in_use": "实例正被屏幕引用，无法删除"
+      "in_use": "实例正被屏幕引用，无法删除",
+      "machine_invalid": "运行位置不合法",
+      "machine_reason": {
+        "device_not_found": "所选设备不存在或已被吊销",
+        "runs_on_mismatch": "该插件不能在所选位置运行",
+        "plugin_unavailable": "所选设备没有上报该插件，请在设备上安装后重试"
+      }
+    },
+    "device": {
+      "not_found": "设备不存在",
+      "offline": "设备不在线，无法执行该操作",
+      "incompatible": "设备上的 agent 版本与中枢不兼容，请升级 agent",
+      "incompatible_reason": {
+        "version_too_old": "设备上的 agent 版本过旧，请升级 agent",
+        "version_too_new": "设备上的 agent 比中枢新，请升级中枢"
+      }
+    },
+    "agent": {
+      "disabled": "agent 通道未启用，无法配对设备。请在启动参数 --agent-addr 中指定监听地址。",
+      "binary_unavailable": "hub 没有内嵌这个平台的 agent，无法下载。请使用 make build 构建的发布版 hub，或从 GitHub Releases 获取 agent。"
     },
     "layout": {
       "conflict": "布局已被他人更新，请刷新后再保存",
@@ -148,6 +607,19 @@
       "timeout": "采集超时",
       "failed": "采集失败",
       "busy": "该实例正在运行，请稍后再试"
+    },
+    "pairing": {
+      "failed": "拨出配对失败",
+      "reason": {
+        "unreachable": "连不上 agent，请检查地址、端口、防火墙与代理",
+        "pin_mismatch": "证书指纹不匹配，请核对 agent 显示的指纹",
+        "bad_code": "配对码错误或已被使用",
+        "code_expired": "配对码已过期，请在 VPS 上重新生成",
+        "rate_limited": "尝试次数过多，agent 已暂时锁定，请稍后再试",
+        "incompatible": "agent 版本与中枢不兼容，设备已保留，升级 agent 后会自动接入",
+        "timeout": "配对超时，请检查网络后重试",
+        "unknown": "配对失败，原因未知，请查看中枢日志"
+      }
     },
     "internal": "中枢内部错误",
     "server": {
@@ -184,7 +656,10 @@
     "colon": "：",
     "loadFailed": "加载失败",
     "stay": "留下",
-    "leave": "离开"
+    "leave": "离开",
+    "copy": "复制",
+    "copied": "已复制",
+    "copyFailed": "复制失败，请手动选中复制"
   },
   "login": {
     "title": "登录管理界面",
@@ -331,6 +806,9 @@
     },
     "listTitle": "实例列表",
     "add": "添加实例",
+    "runBlockedCollect": "已暂停的设备实例不能采集，请先恢复",
+    "runBlockedPaused": "已暂停的设备实例不能测试，请先恢复",
+    "locationMissing": "{{id}}（引用失效）",
     "hubLocal": "hub 本机",
     "local": "本机",
     "search": "搜索实例，支持查询语法",
@@ -501,7 +979,6 @@
       "timezone": "时区",
       "instances": "实例数",
       "agents": "在线 agent",
-      "agentsLater": "M2 提供",
       "uptime": "运行时长"
     },
     "attention": {
@@ -510,7 +987,10 @@
       "none": "没有需要处理的项",
       "view": "查看实例",
       "retry": "立即重试",
-      "lastSuccess": "上次成功 {{ago}}"
+      "lastSuccess": "上次成功 {{ago}}",
+      "viewDevice": "查看设备",
+      "deviceOffline": "设备离线",
+      "lastSeen": "上次在线 {{ago}}"
     },
     "screen": {
       "title": "屏幕",
@@ -591,6 +1071,7 @@
     "lookupClear": "清除",
     "lookupCandidates": "候选结果",
     "lookupUnsupported": "此插件暂不支持候选查询",
+    "lookupRemote": "设备上的插件不支持候选查询，请直接填写。",
     "objectEmpty": "还没有任何一项。",
     "objectRow": "第 {{n}} 项",
     "objectUp": "上移第 {{n}} 项",
@@ -637,10 +1118,13 @@
       "namePlaceholder": "例如：{{example}}",
       "runsOn": "运行位置",
       "runsHub": "hub 本机",
-      "runsAgent": "agent",
-      "agentLater": "agent 运行位置在后续阶段提供",
-      "runsOnHelp": "本期实例只在中枢本机运行。",
-      "agentOnly": "这个插件只能在 agent 上运行，本期暂不能创建。",
+      "runsOnHelp": "实例在哪台机器上采集。选设备后，插件列表、表单字段与可用代理都按该设备上报的内容。",
+      "runsOnHubOnly": "这个插件只能在中枢本机运行。",
+      "runsOnNewHint": "运行位置在左侧「选插件」上方选择。",
+      "runsOnOffline": "设备离线，保存后会在设备上线时生效；测试运行不可用。",
+      "runsOnMoved": "运行位置已更改：插件私有状态会从头开始，保存后配置会重新下发到新位置。",
+      "runsOnNoPlugin": "插件「{{id}}」在所选位置不可用，请改选其他位置。",
+      "agentOnly": "这个插件只能在设备上运行，当前没有可用设备，暂不能创建。",
       "interval": "刷新间隔",
       "intervalOverride": "覆盖插件默认值（{{value}}）",
       "intervalHelp": "最短 {{min}}，最长 24 小时；格式 30s、5m、1h。",
@@ -683,6 +1167,8 @@
       "noItems": "报告里没有数据项。",
       "rawJson": "原始报告 JSON",
       "rawSize": "{{size}} B",
+      "source": "来源设备：{{name}}",
+      "sourceHub": "来源：{{name}}",
       "failedSaved": "实例已保存，但本次采集失败；中枢会按退避策略重试。",
       "failedNotSaved": "本次测试没有执行。",
       "stale": "这是保留的旧数据。",
@@ -894,9 +1380,45 @@
       "downloadBtn": "下载 {{name}}",
       "downloadNone": "还没有备份可下载",
       "nas": "NAS 备份",
-      "nasHelp": "加密后同步到 NAS，阶段 2 提供。",
-      "nasBadge": "M2",
-      "backupNow": "立即备份"
+      "nasHelp": "每日本地备份成功后加密上传到 NAS；未启用时也可编辑字段与测试连接。",
+      "backupNow": "立即备份",
+      "remote": {
+        "enabled": "启用",
+        "type": "目标类型",
+        "host": "主机",
+        "port": "端口",
+        "share": "共享名",
+        "dir": "目录",
+        "username": "用户名",
+        "password": "密码",
+        "domain": "域",
+        "domainPlaceholder": "可选",
+        "url": "地址",
+        "urlPlaceholder": "https://nas.local:5006/",
+        "dirHelp": "相对共享（或 WebDAV 根）的目录，不存在时自动创建；留空表示根目录。",
+        "passphrase": "备份口令",
+        "passphraseNew": "至少 12 个字符",
+        "passphraseWarn": "口令丢失将无法恢复已加密的备份。",
+        "passphraseChanged": "口令已更改：此后上传的备份用新口令加密，已上传的旧备份仍需旧口令才能恢复；口令丢失将无法恢复已加密的备份。",
+        "keep": "远端保留份数",
+        "keepUnit": "份",
+        "keepHelp": "远端只保留最近这些份。NAS 空间约为「份数 × 单份大小」。",
+        "test": "测试连接",
+        "testing": "测试中…",
+        "testOk": "连接成功（{{type}}，用时 {{ms}} 毫秒）",
+        "testFailed": "连接失败：{{reason}}",
+        "loadFailed": "无法读取已保存的 NAS 备份配置，NAS 部分已禁用且不会被保存。",
+        "loading": "正在读取 NAS 备份配置…",
+        "reload": "重新读取",
+        "reset": "重置 NAS 配置",
+        "resetTitle": "重置 NAS 配置",
+        "resetBody": "将清空已保存的 NAS 备份配置，包括 NAS 密码与备份口令，并关闭异地备份；已上传到 NAS 的备份与上传记录不受影响。口令清空后将无法解密此前已上传的备份，请确认已另行保存口令。",
+        "resetConfirm": "确认重置",
+        "resetting": "重置中…",
+        "resetFailed": "重置失败：{{reason}}",
+        "resetDone": "NAS 备份配置已重置",
+        "saveFailed": "NAS 备份保存失败"
+      }
     },
     "reason": {
       "daily": "每日",
@@ -955,6 +1477,30 @@
         },
         "keep": {
           "out_of_range": "保留 1–30 份"
+        },
+        "remote": {
+          "type": {
+            "invalid": "不支持这个目标类型"
+          },
+          "keep": {
+            "out_of_range": "保留 1–365 份"
+          },
+          "passphrase": {
+            "required": "请设置备份口令",
+            "out_of_range": "备份口令至少 12 个字符"
+          },
+          "smb_port": {
+            "out_of_range": "端口须为 1–65535"
+          },
+          "smb_host": {
+            "invalid": "主机不能为空，且不含空白或控制字符"
+          },
+          "smb_share": {
+            "invalid": "共享名不合法"
+          },
+          "webdav_url": {
+            "invalid": "地址须是 https:// 或局域网 http:// 的有效地址"
+          }
         }
       }
     },
@@ -1105,7 +1651,45 @@
       "backupNow": "立即备份",
       "backingUp": "备份中…",
       "created": "已生成备份「{{name}}」",
-      "loadFailed": "无法加载备份列表"
+      "loadFailed": "无法加载备份列表",
+      "remote": {
+        "title": "异地备份",
+        "disabled": "异地备份未启用",
+        "goSettings": "前往设置启用",
+        "target": "目标",
+        "lastResult": "最近一次",
+        "never": "尚无上传记录",
+        "ok": "成功",
+        "failed": "失败",
+        "canceled": "已取消",
+        "uploadNow": "立即上传",
+        "uploading": "上传中…",
+        "uploaded": "已上传「{{name}}」",
+        "maybeRunning": "请求中断，上传可能仍在后台进行，请稍后刷新上传记录",
+        "loadFailed": "无法加载异地备份状态",
+        "uploadsTitle": "最近上传记录",
+        "noUploads": "暂无上传记录",
+        "unknownReason": "未知原因",
+        "cols": {
+          "time": "时间",
+          "file": "文件",
+          "size": "大小",
+          "result": "结果"
+        }
+      }
+    },
+    "agent": {
+      "title": "agent 通道",
+      "meta": "设备连接",
+      "loadFailed": "无法加载 agent 通道信息",
+      "disabled": "未启用",
+      "port": "通道端口",
+      "fingerprint": "证书指纹",
+      "fingerprintCopy": "复制指纹",
+      "platforms": "可下载平台",
+      "noPlatforms": "无（开发构建未内嵌）",
+      "protocol": "协议版本",
+      "protocolValue": "{{version}}（最低兼容 {{min}}）"
     }
   },
   "screenThemes": {
@@ -1119,7 +1703,14 @@
     "broken": "引用失效",
     "stale": "过期",
     "offline": "离线",
+    "dormant": "休眠",
     "maintenance": "维护中",
+    "host": {
+      "hub": "中枢",
+      "disconnected": "连接中断",
+      "pending": "等待连接",
+      "incompatible": "需要升级"
+    },
     "templatePending": "模板将在后续版本提供",
     "never": "从未",
     "textEmpty": "未设置文本",
@@ -1196,6 +1787,9 @@
     "screen": {
       "online": "在线",
       "offline": "离线"
+    },
+    "dataSource": {
+      "hosts": "主机灯组"
     },
     "template": {
       "value": "通用 · 数值",
@@ -1297,6 +1891,8 @@
       "iconNone": "不显示图标",
       "text": "正文",
       "threshold": "手动阈值配色",
+      "hostsAuto": "自动包含中枢与全部已确认的设备，无需逐项绑定。每格显示设备名与在线状态，以及该设备上第一个 host-metrics 实例的 CPU。",
+      "hostsThreshold": "主机灯组的阈值作用于各机器的 CPU 读数。",
       "thresholdOff": "关闭时按数据项自身的状态着色，数值项保持中性色。",
       "direction": "触发方向",
       "above": "高于",
@@ -1749,6 +2345,19 @@
       "touchYes": "有触摸",
       "touchUnknown": "尚未上报",
       "touchSub": "有触摸时点屏幕即亮"
+    }
+  },
+  "backup": {
+    "upload_reason": {
+      "connect": "连不上远端",
+      "auth": "用户名或密码错误",
+      "not_writable": "目录无法创建或没有写入权限",
+      "io": "读写远端时出错或长时间没有进展",
+      "canceled": "中枢关停，上传已取消",
+      "config": "远端配置不合法",
+      "no_local": "本地备份缺失或不可读",
+      "local_read": "读取本地备份文件时出错",
+      "cleanup_failed": "上传成功，但清理远端过期备份失败"
     }
   }
 }

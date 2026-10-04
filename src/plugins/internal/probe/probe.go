@@ -116,7 +116,7 @@ func HTTP(ctx context.Context, o HTTPOptions) (HTTPResult, error) {
 }
 
 // TCP 向 addr（host:port）发起一次 TCP 连接并立即关闭，返回建立连接的耗时。
-// 代理只接受 socks；选了 http 代理时错误满足 errors.Is(err, proxy.ErrRawTCPUnsupported)。
+// 代理可为 socks 或 http/https CONNECT 隧道；不会绕过代理直连。
 func TCP(ctx context.Context, addr string, pr *proxy.Proxy, timeout time.Duration, clk clock.Clock) (time.Duration, error) {
 	if clk == nil {
 		clk = clock.Real{}
@@ -149,9 +149,6 @@ func classify(parent, own context.Context, host string, err error) error {
 	var ne net.Error
 	if errors.Is(own.Err(), context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()) {
 		return ErrTimeout
-	}
-	if errors.Is(err, proxy.ErrRawTCPUnsupported) {
-		return err
 	}
 	var ue *url.Error
 	if errors.As(err, &ue) {

@@ -18,6 +18,11 @@ export function runTimeoutMs(plugin: PluginInfo | undefined): number {
   return Math.max(60_000, (2 * timeout + 10) * 1000)
 }
 
+// 已暂停且运行在设备上的实例：agent 不会收到它，手动采集只会得到 502，前端直接禁用
+export function remotePaused(inst: Pick<Instance, 'paused' | 'runs_on'>): boolean {
+  return inst.paused && inst.runs_on !== 'hub'
+}
+
 export interface InstanceActions {
   // 正在执行手动采集的实例 id
   running: ReadonlySet<string>
@@ -139,12 +144,17 @@ export function useInstanceManager(plugins: PluginInfo[] | undefined, onDeleted?
   const actions: InstanceActions = {
     running,
     async run(inst) {
+      if (remotePaused(inst)) return
       const o = await runCore(inst)
       if (o.failed) failure(o.error, inst.name)
       else toast.show(t('instances.toast.ran', { name: inst.name }))
     },
     async runMany(list) {
-      const outcomes = await pool(list, batchConcurrency, runCore)
+      const outcomes = await pool(
+        list.filter((i) => !remotePaused(i)),
+        batchConcurrency,
+        runCore,
+      )
       summarize(outcomes, (count) => t('instances.toast.ranMany', { count }))
     },
     async setPaused(inst, paused) {

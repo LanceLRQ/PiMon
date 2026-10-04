@@ -128,6 +128,7 @@ describe('自动表单：每种字段类型的渲染与取值', () => {
     await waitFor(() => expect(lastBody(api.calls, 'POST', '/api/instances')).toBeDefined())
     expect(lastBody(api.calls, 'POST', '/api/instances')).toEqual({
       plugin_id: 'kitchen',
+      runs_on: 'hub',
       name: '新实例',
       interval_seconds: 0,
       config: {
@@ -148,13 +149,13 @@ describe('自动表单：每种字段类型的渲染与取值', () => {
     expect(await screen.findByText('列表页')).toBeInTheDocument()
   })
 
-  it('代理下拉：直连 + 本期可用位置（hub、any）的代理', async () => {
+  it('代理下拉：中枢本机上直连 + hub、lan、any 位置的代理', async () => {
     const user = userEvent.setup()
     await mountNew()
     await pickKitchen(user)
     const sel = screen.getByLabelText(/^代理/)
-    await waitFor(() => expect(within(sel).getAllByRole('option').length).toBe(3))
-    expect(within(sel).getAllByRole('option').map((o) => o.textContent)).toEqual(['直连（不走代理）', 'HK-01 · socks5h', '通用 · http'])
+    await waitFor(() => expect(within(sel).getAllByRole('option').length).toBe(4))
+    expect(within(sel).getAllByRole('option').map((o) => o.textContent)).toEqual(['直连（不走代理）', 'HK-01 · socks5h', '仅局域网 · http', '通用 · http'])
   })
 
   it('刷新间隔：默认只读，勾选覆盖后按最小间隔校验并以秒提交', async () => {

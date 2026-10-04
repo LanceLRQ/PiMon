@@ -4,7 +4,7 @@ api_version: 1
 name: {zh: Ping 检测, en: Ping}
 kind: source
 runtime: builtin
-runs_on: [hub]
+runs_on: [hub, agent]
 interval: 60s
 timeout: 60s
 config_schema:

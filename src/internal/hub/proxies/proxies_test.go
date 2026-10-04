@@ -418,3 +418,27 @@ func TestListAndGetIncludeReferrers(t *testing.T) {
 		t.Fatalf("List 引用不对: %+v", list)
 	}
 }
+
+func TestLocation(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	in := input("局域网")
+	in.Location = model.ProxyLocationLAN
+	p, err := f.s.Create(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loc, err := f.s.Location(ctx, p.ID); err != nil || loc != model.ProxyLocationLAN {
+		t.Fatalf("Location = %q %v", loc, err)
+	}
+	d, err := f.s.Create(ctx, input("缺省"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loc, err := f.s.Location(ctx, d.ID); err != nil || loc != model.ProxyLocationAny {
+		t.Fatalf("缺省位置 = %q %v", loc, err)
+	}
+	if _, err := f.s.Location(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("不存在: %v", err)
+	}
+}

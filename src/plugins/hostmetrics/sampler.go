@@ -10,6 +10,8 @@ type Partition struct {
 	Mount  string
 	FSType string
 	Device string
+	// ReadOnly 表示以只读方式挂载（挂载选项含 ro），例如 macOS 的密封系统卷与磁盘映像。
+	ReadOnly bool
 }
 
 // DiskUsage 是某挂载点的容量，单位字节。
@@ -46,18 +48,24 @@ var pseudoFS = map[string]bool{
 	"cgroup": true, "cgroup2": true, "autofs": true, "devfs": true, "fusectl": true, "debugfs": true,
 	"tracefs": true, "securityfs": true, "pstore": true, "configfs": true, "mqueue": true, "hugetlbfs": true,
 	"binfmt_misc": true, "bpf": true, "ramfs": true, "nsfs": true, "efivarfs": true, "rpc_pipefs": true,
+	// 网络文件系统：容量属于远端，不代表本机存储。
+	"smbfs": true, "nfs": true, "nfs3": true, "nfs4": true, "cifs": true, "smb3": true, "afpfs": true,
+	"webdav": true, "fuse.sshfs": true, "9p": true, "iso9660": true, "udf": true,
 }
 
 // pseudoMountPrefixes 是不计入统计的挂载点前缀（系统目录与容器、快照挂载）。
 var pseudoMountPrefixes = []string{
-	"/proc", "/sys", "/dev", "/run", "/snap", "/var/lib/docker", "/var/lib/containers",
+	"/proc", "/sys", "/dev", "/run", "/snap", "/boot/efi", "/var/lib/docker", "/var/lib/containers",
 	"/private/var/vm", "/System/Volumes/VM", "/System/Volumes/Preboot", "/System/Volumes/Update",
 	"/System/Volumes/xarts", "/System/Volumes/iSCPreboot", "/System/Volumes/Hardware",
 }
 
 // realMount 判断一个挂载点是否是值得监控的真实存储。
-func realMount(p Partition) bool {
-	if p.Mount == "" || pseudoFS[strings.ToLower(p.FSType)] {
+// 只读挂载只在 darwin 上排除（密封系统卷 / 与磁盘映像）；Linux 上只读挂载的真实数据盘照常保留，
+// 只读的伪类型（squashfs、iso9660 等）仍由 pseudoFS 排除。macOS 的 /System/Volumes/Data
+// 是读写的真实数据卷，不在前缀表里，因此保留。goos 可注入，便于在任意平台测试各分支。
+func realMount(goos string, p Partition) bool {
+	if p.Mount == "" || (goos == "darwin" && p.ReadOnly) || pseudoFS[strings.ToLower(p.FSType)] {
 		return false
 	}
 	for _, pre := range pseudoMountPrefixes {

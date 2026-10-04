@@ -19,50 +19,82 @@ package httpx
 //	origin.mismatch          Origin 校验失败                       403
 //	not_found                资源不存在                            404
 //	backup.exists            同一秒内已有同原因的备份              409
+//	backup.remote_disabled   远端备份未启用，却请求了立即上传      409
+//	backup.remote_failed     远端备份失败（测试连接或上传），details.reason：connect / auth /
+//	                         not_writable / io / local_read（上传途中读本地备份出错）；
+//	                         details.message 为已脱敏的说明（不含密码与口令）  502
+//	backup.no_local          没有可上传的本地备份                  409
 //	plugin.not_found         插件不存在                            404
 //	plugin.invalid_manifest  manifest 不合法，details.problems 带行号  400（保留码：本期无路由返回，
 //	                         插件目录的加载问题经 GET /api/plugins 的 errors[] 呈现）
 //	proxy.not_found          代理不存在                            404
 //	proxy.in_use             代理被实例引用，details.instances     409
+//	proxy.location_mismatch  所选代理不能在该运行位置使用，details.field 为代理字段的键、
+//	                         location 为代理的可用位置；设备改为 VPS 角色、代理可用位置改窄
+//	                         导致已有实例违规时，改带 details.instances（违规实例的 id 与名称）  422
 //	instance.not_found       实例不存在                            404
 //	instance.in_use          实例被 screen 引用，details.screens    409
+//	instance.machine_invalid 运行位置不合法，details.reason：device_not_found /
+//	                         runs_on_mismatch / plugin_unavailable                        422
+//	device.not_found         设备不存在                            404
+//	device.offline           设备不在线，无法执行（测试运行、拉日志）  409
+//	device.incompatible      设备 agent 版本不兼容，details.reason（version_too_old /
+//	                         version_too_new）、required_min、hub_version                 409
+//	agent.disabled           agent 通道未启用（--agent-addr 为空），无法生成配对码  409
+//	agent.binary_unavailable hub 没有内嵌所请求平台的 agent 二进制（开发构建常见，或内嵌版本与 hub
+//	                         不一致）；agent 公开下载路由 /agent/download/{os}-{arch} 返回     404
 //	layout.conflict          布局版本冲突，details.latest_version 为服务端最新版本    409
 //	layout.invalid           布局不合法，details.problems 列出碰撞、越界、尺寸与结构问题  400
 //	schedule.invalid         时段计划不合法，details.problems 列出格式、主题、重叠与缺口（带区间）  400
 //	run.timeout              采集超时（或上游请求超时），details.message 可选  504
 //	run.failed               采集失败（或上游请求失败），details.message 可选  502
 //	run.busy                 该实例正在运行，等待至多插件超时仍未轮到       409
+//	pairing.failed           拨出配对失败，details.reason：unreachable / pin_mismatch / bad_code /
+//	                         code_expired / rate_limited / incompatible / timeout / unknown；
+//	                         凭据已保存（设备保留）时带 device_id，incompatible 另带
+//	                         required_min、hub_version                                  502
 //	internal                 内部错误                              500
-//	server.shutting_down     中枢正在关停，暂不接受新的 WebSocket 连接    503
+//	server.shutting_down     中枢正在关停，暂不接受新的 WebSocket 连接或拨出配对    503
 //	ws.subscribe_denied      UI WebSocket 协议级错误消息（非 HTTP 响应，连接不断开）：
 //	                         当前会话无权订阅所请求的主题，details.topics 为被拒主题
 //	ws.bad_message           UI WebSocket 协议级错误消息（同上）：消息不是合法 JSON、type 未知
 //	                         或订阅了未知主题（details.topics）
 const (
-	CodeInvalidJSON           = "request.invalid_json"
-	CodeValidationFail        = "validation.failed"
-	CodeAuthRequired          = "auth.required"
-	CodeAuthForbidden         = "auth.forbidden"
-	CodeInvalidPassword       = "auth.invalid_password"
-	CodeAuthLocked            = "auth.locked"
-	CodeSetupRequired         = "setup.required"
-	CodeSetupDone             = "setup.already_done"
-	CodeInvalidSetup          = "setup.invalid_code"
-	CodeOriginMismatch        = "origin.mismatch"
-	CodeNotFound              = "not_found"
-	CodeBackupExists          = "backup.exists"
-	CodePluginNotFound        = "plugin.not_found"
-	CodePluginInvalidManifest = "plugin.invalid_manifest"
-	CodeProxyNotFound         = "proxy.not_found"
-	CodeProxyInUse            = "proxy.in_use"
-	CodeInstanceNotFound      = "instance.not_found"
-	CodeInstanceInUse         = "instance.in_use"
-	CodeLayoutConflict        = "layout.conflict"
-	CodeLayoutInvalid         = "layout.invalid"
-	CodeScheduleInvalid       = "schedule.invalid"
-	CodeRunTimeout            = "run.timeout"
-	CodeRunFailed             = "run.failed"
-	CodeRunBusy               = "run.busy"
-	CodeInternal              = "internal"
-	CodeShuttingDown          = "server.shutting_down"
+	CodeInvalidJSON            = "request.invalid_json"
+	CodeValidationFail         = "validation.failed"
+	CodeAuthRequired           = "auth.required"
+	CodeAuthForbidden          = "auth.forbidden"
+	CodeInvalidPassword        = "auth.invalid_password"
+	CodeAuthLocked             = "auth.locked"
+	CodeSetupRequired          = "setup.required"
+	CodeSetupDone              = "setup.already_done"
+	CodeInvalidSetup           = "setup.invalid_code"
+	CodeOriginMismatch         = "origin.mismatch"
+	CodeNotFound               = "not_found"
+	CodeBackupExists           = "backup.exists"
+	CodeBackupRemoteDisabled   = "backup.remote_disabled"
+	CodeBackupRemoteFailed     = "backup.remote_failed"
+	CodeBackupNoLocal          = "backup.no_local"
+	CodePluginNotFound         = "plugin.not_found"
+	CodePluginInvalidManifest  = "plugin.invalid_manifest"
+	CodeProxyNotFound          = "proxy.not_found"
+	CodeProxyInUse             = "proxy.in_use"
+	CodeProxyLocationMismatch  = "proxy.location_mismatch"
+	CodeInstanceNotFound       = "instance.not_found"
+	CodeInstanceInUse          = "instance.in_use"
+	CodeMachineInvalid         = "instance.machine_invalid"
+	CodeDeviceNotFound         = "device.not_found"
+	CodeDeviceOffline          = "device.offline"
+	CodeDeviceIncompatible     = "device.incompatible"
+	CodeAgentDisabled          = "agent.disabled"
+	CodeAgentBinaryUnavailable = "agent.binary_unavailable"
+	CodeLayoutConflict         = "layout.conflict"
+	CodeLayoutInvalid          = "layout.invalid"
+	CodeScheduleInvalid        = "schedule.invalid"
+	CodeRunTimeout             = "run.timeout"
+	CodeRunFailed              = "run.failed"
+	CodeRunBusy                = "run.busy"
+	CodePairingFailed          = "pairing.failed"
+	CodeInternal               = "internal"
+	CodeShuttingDown           = "server.shutting_down"
 )

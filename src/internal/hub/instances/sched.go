@@ -61,10 +61,18 @@ func (s *Service) resyncOne(ctx context.Context, id string) {
 }
 
 // syncRow 让调度器里该实例的任务与其当前配置一致：
-// 暂停、配置不完整、插件消失、代理不可用的不调度；其余 Upsert（ConfigHash 不变则不动）。
+// 远程实例（运行在设备上）一律不进本机调度器与 Streamer 管理器，只通知其设备重新下发；
+// 本机实例中暂停、配置不完整、插件消失、代理不可用的不调度；其余 Upsert（ConfigHash 不变则不动）。
 // 引用的代理已被删除的照常排程，但每次运行直接记为失败，不退回直连（Ruling 49）。
 func (s *Service) syncRow(ctx context.Context, r row) {
 	s.trackHash(r.ID, r.ConfigHash)
+	if r.Machine != machineHub {
+		// 先摘掉可能残留的本机任务（实例刚从 hub 改到设备上）。
+		s.dropTask(r.ID)
+		s.setSyncIssue(r.ID, nil)
+		s.machineChanged(r.Machine)
+		return
+	}
 	s.mu.Lock()
 	sched, streams := s.sched, s.streams
 	s.mu.Unlock()
@@ -193,10 +201,15 @@ func (s *Service) scheduleHash(id string) string {
 // 失败返回的错误可用 errors.Is 判断 runtime.ErrTimeout / runtime.ErrFailed，文字已脱敏；
 // 实例无法运行（插件消失、配置不完整、代理不可用或已删除）归为 runtime.ErrFailed；
 // 调用方取消时错误原样返回，不计入状态。
+// 远程实例经 Remote.RunNow 在设备上运行（见 runRemote），另可返回 ErrDeviceOffline、ErrDeviceIncompatible。
 func (s *Service) Run(ctx context.Context, id string) (model.InstanceRunResult, error) {
 	r, err := s.getRow(ctx, id)
 	if err != nil {
 		return model.InstanceRunResult{}, err
+	}
+	if r.Machine != machineHub {
+		// 远程实例不在本机运行，经通道在设备上运行（不拿本机运行锁）。
+		return s.runRemote(ctx, r)
 	}
 	res, iss := s.resolve(r)
 	if iss != nil {

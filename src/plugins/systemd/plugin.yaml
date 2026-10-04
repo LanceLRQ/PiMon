@@ -1,0 +1,35 @@
+id: systemd
+version: 1.0.0
+api_version: 1
+name: {zh: systemd 单元, en: systemd units}
+kind: source
+runtime: builtin
+runs_on: [hub, agent]
+interval: 30s
+timeout: 20s
+config_schema:
+  - key: list
+    type: list
+    title: {zh: 单元列表, en: Units}
+    help: {zh: "每项是一个 systemd 单元名，可省略「.service」，如「ssh」「nginx.service」「backup.timer」。", en: "Each entry is a systemd unit name; the .service suffix may be omitted, e.g. ssh, nginx.service, backup.timer."}
+    required: true
+    pattern: "^[A-Za-z0-9@:._\\-]+$"
+outputs:
+  - {key: "unit[*]",          type: state,  title: {zh: 单元状态, en: Unit state}}
+  - {key: "unit_restarts[*]", type: number, title: {zh: 单元重启次数, en: Unit restarts}}
+widgets:
+  - id: units
+    name: {zh: 单元灯组, en: Unit lights}
+    sizes:
+      2x2: {template: status-grid, bind: {items: {item: "unit[*]"}}}
+      4x2: {template: status-grid, bind: {items: {item: "unit[*]"}}}
+  - id: unit-list
+    name: {zh: 单元列表, en: Unit list}
+    sizes:
+      2x2: {template: list, bind: {items: {item: "unit[*]"}}}
+      4x2: {template: list, bind: {items: {item: "unit[*]"}}}
+  - id: unit-restarts
+    name: {zh: 单元重启次数, en: Unit restarts}
+    sizes:
+      2x2: {template: list, bind: {items: {item: "unit_restarts[*]"}}}
+      4x2: {template: list, bind: {items: {item: "unit_restarts[*]"}}}

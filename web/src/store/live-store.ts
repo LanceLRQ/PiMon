@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { Instance, LayoutState, ScreenState, Settings } from '@/types/generated'
+import type { Device, Instance, LayoutState, ScreenState, Settings } from '@/types/generated'
 import type { Patch, ScreenSettings, Snapshot } from '@/types/protocol.generated'
 
 // 实时数据存储：snapshot 整体覆盖，patch 按实体增量合并。
@@ -14,6 +14,8 @@ export interface LiveState {
   settings: Settings | null
   screenSettings: ScreenSettings | null
   instances: Instance[]
+  // 全部设备（不含中枢本机）；没收到含 devices 的 snapshot 时为 null，与「没有设备」的空数组区分
+  devices: Device[] | null
   // 当前布局（原始，带版本）与屏幕当前状态；管理员会话默认订阅 layout、screen_state
   layout: LayoutState | null
   screenState: ScreenState | null
@@ -33,6 +35,7 @@ export const initialLiveState: LiveState = {
   settings: null,
   screenSettings: null,
   instances: [],
+  devices: null,
   layout: null,
   screenState: null,
   clockOffsetMs: 0,
@@ -82,6 +85,7 @@ export function createLiveStore(): LiveStore {
         settings: s.settings ?? null,
         screenSettings: s.screen_settings ?? null,
         instances: s.instances ?? [],
+        devices: s.devices ?? null,
         layout: s.layout ?? null,
         screenState: s.screen_state ?? null,
         clockOffsetMs: offset ?? state.clockOffsetMs,
@@ -103,6 +107,19 @@ export function createLiveStore(): LiveStore {
         case 'instance_removed':
           if (!p.id || !state.instances.some((x) => x.id === p.id)) break
           next.instances = state.instances.filter((x) => x.id !== p.id)
+          break
+        case 'device': {
+          const dev = p.device
+          // 还没收到含 devices 的 snapshot：补丁建不出完整列表，保持未知，等下一次 snapshot
+          if (!dev || !state.devices) return
+          const list = state.devices
+          const i = list.findIndex((x) => x.id === dev.id)
+          next.devices = i < 0 ? [...list, dev] : list.map((x, idx) => (idx === i ? dev : x))
+          break
+        }
+        case 'device_removed':
+          if (!p.id || !state.devices?.some((x) => x.id === p.id)) break
+          next.devices = state.devices.filter((x) => x.id !== p.id)
           break
         case 'settings':
           if (p.settings) next.settings = p.settings
@@ -147,6 +164,7 @@ export function serverNow(store: LiveStore = liveStore): number {
 }
 
 export const selectInstances = (s: LiveState) => s.instances
+export const selectDevices = (s: LiveState) => s.devices
 export const selectSettings = (s: LiveState) => s.settings
 export const selectBuildOutdated = (s: LiveState) => s.buildOutdated
 export const selectConnected = (s: LiveState) => s.connected

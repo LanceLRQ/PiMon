@@ -241,18 +241,26 @@ describe('侧栏', () => {
     expect(await within(screen.getByRole('complementary')).findByText('总览')).toBeInTheDocument()
   })
 
-  it('后续里程碑入口灰显并标 m2/m4；屏幕与实例有二级菜单', async () => {
+  it('设备入口可点击并在设备页高亮；后续里程碑入口灰显并标 m4；屏幕与实例有二级菜单', async () => {
     await mount({ session: admin, path: '/instances/new' })
     const side = await screen.findByRole('complementary', { name: '主导航' })
-    const devices = within(side).getByRole('button', { name: /设备/ })
-    expect(devices).toBeDisabled()
-    expect(devices).toHaveTextContent('m2')
+    expect(within(side).getByRole('link', { name: /设备/ })).toHaveAttribute('href', '/devices')
+    expect(within(side).queryByRole('button', { name: /设备/ })).not.toBeInTheDocument()
     expect(within(side).getByRole('button', { name: /告警规则/ })).toHaveTextContent('m4')
     expect(within(side).getByRole('button', { name: /通知渠道/ })).toHaveTextContent('m4')
     for (const name of ['屏幕管理', '布局编辑器', '时段计划与主题', '远程操作', '实例列表', '新建实例']) {
       expect(within(side).getByRole('link', { name: new RegExp(name) })).toBeInTheDocument()
     }
     expect(within(side).getByRole('link', { name: /新建实例/, current: 'page' })).toBeInTheDocument()
+  })
+
+  it('设备页：侧栏高亮设备，手机「更多」菜单可进入设备页', async () => {
+    await mount({ session: admin, path: '/devices' })
+    const side = await screen.findByRole('complementary', { name: '主导航' })
+    expect(within(side).getByRole('link', { name: /设备/, current: 'page' })).toBeInTheDocument()
+    const bar = await screen.findByRole('navigation', { name: '手机导航' })
+    await userEvent.click(within(bar).getByRole('button', { name: '更多' }))
+    expect(await screen.findByRole('menuitem', { name: '设备' })).toBeInTheDocument()
   })
 
   it('主题切换：切到深色后 html 带 dark 类并写入存储', async () => {

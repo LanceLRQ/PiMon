@@ -5,8 +5,11 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/LanceLRQ/PiMon/src/internal/hub/agentdist"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/auth"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/backup/remote"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/devices"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/history"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/httpx"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/instances"
@@ -36,13 +39,17 @@ type Deps struct {
 	Sessions     *auth.Sessions
 	ScreenTokens *auth.ScreenTokens
 	Backups      *backup.Service
-	Proxies      *proxies.Store
-	Plugins      *plugins.Registry
-	Instances    *instances.Service
-	History      *history.Service
-	Screens      *screens.Service
-	ScreenState  *screenstate.Service
-	System       *system.Service
+	// RemoteBackups 是远端（NAS）备份服务，挂在 /api/backups/remote*；为 nil 时不注册这些路由。
+	RemoteBackups *remote.Service
+	Proxies       *proxies.Store
+	// Devices 是设备仓库，GET /api/plugins?machine= 据此判断设备是否存在；为 nil 时任何设备都视为不存在。
+	Devices     *devices.Store
+	Plugins     *plugins.Registry
+	Instances   *instances.Service
+	History     *history.Service
+	Screens     *screens.Service
+	ScreenState *screenstate.Service
+	System      *system.Service
 	// DataDir 是数据目录，品牌标识从其 logos 子目录读取；为空时标识接口一律 404。
 	DataDir string
 	// ListenAddr 返回实际监听地址（host:port），用来拼设置码页的手机访问地址；nil 时退回请求的 Host。
@@ -51,6 +58,20 @@ type Deps struct {
 	LocalIPs func() []net.IP
 	// Web 是前端 SPA 处理器，挂在 "/" 兜底；为 nil 时不提供前端（测试用）。
 	Web http.Handler
+	// DeviceViews 提供带在线状态等运行时值的设备视图，设备 REST 接口据此读取；为 nil 时不注册设备读写接口。
+	DeviceViews DeviceViewer
+	// DeviceSessions 查询设备会话的结束信号，吊销时据此等待会话断开；为 nil 时吊销不等待。
+	DeviceSessions DeviceSessions
+	// AgentInfo 返回 agent 通道的接入信息（实际监听地址、指纹等），挂在 GET /api/agent/info 并用于生成配对命令；
+	// 为 nil 时不注册这些接口。
+	AgentInfo func() AgentChannel
+	// DialOut 是拨出配对服务，挂在 POST /api/devices/dial-out；为 nil 时不注册该路由（测试用）。
+	DialOut DialOutPairer
+	// DeviceLogs 经 agent 通道拉取设备日志，挂在 GET /api/devices/{id}/logs；为 nil 时不注册该路由。
+	DeviceLogs DeviceLogger
+	// AgentDist 是内嵌的 agent 分发数据，供 /agent/download、/agent/checksums 使用；
+	// 为 nil 时这些路由一律 404 agent.binary_unavailable。
+	AgentDist *agentdist.Dist
 	// WS 是 UI WebSocket 的握手处理器，挂在 GET /ws；为 nil 时不提供（测试用）。
 	// 它自己校验 Origin 与会话，不经 s.admin：管理员会话与屏幕会话都可以连。
 	WS http.Handler
@@ -78,12 +99,15 @@ func New(d Deps) http.Handler {
 	s.registerScreens(mux)
 	s.registerScreenCtl(mux)
 	s.registerBackup(mux)
+	s.registerBackupRemote(mux)
 	s.registerProxies(mux)
 	s.registerPlugins(mux)
 	s.registerInstances(mux)
 	s.registerHistory(mux)
 	s.registerSystem(mux)
 	s.registerLogos(mux)
+	s.registerDevices(mux)
+	s.registerAgentDist(mux)
 	if d.WS != nil {
 		mux.Handle("GET /ws", d.WS)
 	}

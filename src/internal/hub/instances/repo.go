@@ -18,7 +18,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/pkg/plugin/schema"
 )
 
-// machineHub 是本期唯一的运行位置。
+// machineHub 是中枢本机的运行位置；其余运行位置是设备 ID。
 const machineHub = "hub"
 
 // row 是 plugin_instances 的一行。Config 是普通配置（密钥已剥离）。
@@ -32,14 +32,16 @@ type row struct {
 	Paused          bool
 	ProxyID         string
 	ConfigHash      string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// Machine 是运行位置：hub 或设备 ID。
+	Machine   string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 	// Corrupt 非空表示库里的 config_json 已损坏（Config 为空表），内容是给用户看的原因；
 	// 这样的实例以 broken 呈现、不调度，但不影响其他实例的读取与调度。
 	Corrupt string
 }
 
-const rowCols = `id, plugin_id, name, config_json, secrets_enc, interval_seconds, paused, proxy_id, config_hash, created_at, updated_at`
+const rowCols = `id, plugin_id, name, config_json, secrets_enc, interval_seconds, paused, proxy_id, config_hash, machine, created_at, updated_at`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
@@ -51,7 +53,7 @@ func scanRow(sc rowScanner) (row, error) {
 		created, updatedStr string
 	)
 	if err := sc.Scan(&r.ID, &r.PluginID, &r.Name, &cfgJSON, &r.SecretsEnc, &r.IntervalSeconds, &paused,
-		&r.ProxyID, &r.ConfigHash, &created, &updatedStr); err != nil {
+		&r.ProxyID, &r.ConfigHash, &r.Machine, &created, &updatedStr); err != nil {
 		return row{}, err
 	}
 	r.Paused = paused == 1
@@ -80,7 +82,12 @@ func (s *Service) getRow(ctx context.Context, id string) (row, error) {
 
 // listRows 按名称、id 排序返回全部实例；先读完再返回，避免单连接下嵌套查询。
 func (s *Service) listRows(ctx context.Context) ([]row, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+rowCols+` FROM plugin_instances ORDER BY name, id`)
+	return s.queryRows(ctx, `SELECT `+rowCols+` FROM plugin_instances ORDER BY name, id`)
+}
+
+// queryRows 执行返回 rowCols 的查询并读完全部行。
+func (s *Service) queryRows(ctx context.Context, query string, args ...any) ([]row, error) {
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -115,10 +122,10 @@ func (s *Service) insertRow(ctx context.Context, r row) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO plugin_instances (`+rowCols+`, machine)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO plugin_instances (`+rowCols+`)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.ID, r.PluginID, r.Name, string(cfg), r.SecretsEnc, r.IntervalSeconds, boolInt(r.Paused), r.ProxyID,
-		r.ConfigHash, store.FormatTime(r.CreatedAt), store.FormatTime(r.UpdatedAt), machineHub)
+		r.ConfigHash, r.Machine, store.FormatTime(r.CreatedAt), store.FormatTime(r.UpdatedAt))
 	return err
 }
 
@@ -128,9 +135,9 @@ func (s *Service) updateRow(ctx context.Context, r row) error {
 		return err
 	}
 	res, err := s.db.ExecContext(ctx, `UPDATE plugin_instances SET name=?, config_json=?, secrets_enc=?,
-interval_seconds=?, paused=?, proxy_id=?, config_hash=?, updated_at=? WHERE id=?`,
+interval_seconds=?, paused=?, proxy_id=?, config_hash=?, machine=?, updated_at=? WHERE id=?`,
 		r.Name, string(cfg), r.SecretsEnc, r.IntervalSeconds, boolInt(r.Paused), r.ProxyID, r.ConfigHash,
-		store.FormatTime(r.UpdatedAt), r.ID)
+		r.Machine, store.FormatTime(r.UpdatedAt), r.ID)
 	if err != nil {
 		return err
 	}
@@ -155,11 +162,16 @@ func newID() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
-// contentHash 是实例内容（插件、普通配置、密钥密文）的摘要，只用来判断内容是否变化，
-// 不含明文密钥。
-func contentHash(pluginID string, plain map[string]any, secretsEnc string) string {
+// contentHash 是实例内容（运行位置、插件、普通配置、密钥密文）的摘要，只用来判断内容是否变化，
+// 不含明文密钥。运行位置为 hub 时不参与计算，与只有本机实例时的摘要一致（升级后不清空状态）；
+// 换运行位置即内容变化：旧机器的当前状态清空，旧机器迟到的结果按摘要丢弃。
+func contentHash(machine, pluginID string, plain map[string]any, secretsEnc string) string {
 	cfg, _ := json.Marshal(plain) // map 的键按字典序输出，结果稳定
 	h := sha256.New()
+	if machine != machineHub {
+		h.Write([]byte("machine:" + machine))
+		h.Write([]byte{0})
+	}
 	h.Write([]byte(pluginID))
 	h.Write([]byte{0})
 	h.Write(cfg)
@@ -262,14 +274,14 @@ func (s *Service) DetachAndPause(ctx context.Context, proxyID string) error {
 }
 
 func (s *Service) detachRowAndPause(ctx context.Context, r row) error {
-	if p, ok := s.reg.Get(r.PluginID); ok {
+	if p, ok := s.pluginFor(r.Machine, r.PluginID); ok {
 		if key := proxyKey(p.Manifest.ConfigSchema); key != "" {
 			r.Config[key] = proxy.DirectValue
 		}
 	}
 	r.ProxyID = ""
 	r.Paused = true
-	r.ConfigHash = contentHash(r.PluginID, r.Config, r.SecretsEnc)
+	r.ConfigHash = contentHash(r.Machine, r.PluginID, r.Config, r.SecretsEnc)
 	r.UpdatedAt = s.clk.Now()
 	if err := s.updateRow(ctx, r); err != nil {
 		return err

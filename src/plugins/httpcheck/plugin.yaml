@@ -4,7 +4,7 @@ api_version: 1
 name: {zh: HTTP 检测, en: HTTP check}
 kind: source
 runtime: builtin
-runs_on: [hub]
+runs_on: [hub, agent]
 interval: 60s
 timeout: 30s
 config_schema:

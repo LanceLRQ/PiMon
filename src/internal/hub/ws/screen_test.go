@@ -236,7 +236,7 @@ func TestAdminSnapshotCarriesRawLayoutAndScreenStateButNoData(t *testing.T) {
 	c := h.dial(adminToken)
 	m := read(t, c)
 
-	if got := topicSet(m); got != "instances,layout,screen_state,settings" {
+	if got := topicSet(m); got != "devices,instances,layout,screen_state,settings" {
 		t.Fatalf("管理员默认主题 = %s", got)
 	}
 	if l := asMap(t, m["layout"]); l["version"] != float64(1) || l["layout"] == nil {
