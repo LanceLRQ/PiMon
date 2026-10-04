@@ -560,7 +560,8 @@
         "connect": "Cannot reach the remote; check the address, port and network",
         "auth": "Wrong username or password",
         "not_writable": "The directory does not exist and cannot be created, or is not writable",
-        "io": "Read/write error on the remote, or no progress for too long"
+        "io": "Read/write error on the remote, or no progress for too long",
+        "local_read": "Error while reading the local backup file"
       }
     },
     "plugin": {
@@ -1406,7 +1407,15 @@
         "testFailed": "Connection failed: {{reason}}",
         "loadFailed": "Could not read the saved NAS backup settings. The NAS fields are disabled and will not be saved.",
         "loading": "Reading the NAS backup settings…",
-        "reload": "Reload"
+        "reload": "Reload",
+        "reset": "Reset NAS settings",
+        "resetTitle": "Reset NAS settings",
+        "resetBody": "This clears the saved NAS backup settings, including the NAS password and backup passphrase, and turns off off-site backup. Backups already uploaded to the NAS and the upload history are not affected. Once the passphrase is cleared, previously uploaded backups cannot be decrypted, so make sure you have kept it elsewhere.",
+        "resetConfirm": "Reset",
+        "resetting": "Resetting…",
+        "resetFailed": "Reset failed: {{reason}}",
+        "resetDone": "NAS backup settings have been reset",
+        "saveFailed": "NAS backup could not be saved"
       }
     },
     "reason": {
@@ -2345,6 +2354,7 @@
       "canceled": "Upload canceled because the hub was shutting down",
       "config": "Invalid remote configuration",
       "no_local": "Local backup missing or unreadable",
+      "local_read": "Error while reading the local backup file",
       "cleanup_failed": "Uploaded, but removing expired remote backups failed"
     }
   }

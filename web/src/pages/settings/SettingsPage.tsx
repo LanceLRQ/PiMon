@@ -26,6 +26,7 @@ import { BackupDownloadDialog } from './BackupDownloadDialog'
 import { defaultRemoteForm, dirtyKeys, normalizeForSave, normalizeRemoteForSave, remoteDirtyKeys, remoteErrorPrefix, remoteToForm, trustedProxyErrors, type SettingsKey } from './model'
 import { NasBackupRows, type NasTestState } from './NasBackupRows'
 import { PasswordDialog } from './PasswordDialog'
+import { ResetNasDialog } from './ResetNasDialog'
 import { TrustedProxies } from './TrustedProxies'
 
 const anchors = [
@@ -52,7 +53,9 @@ export function SettingsPage() {
   const [draft, setDraft] = useState<Settings | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  // 通用设置与 NAS 各自的保存失败文案，分开保存以免互相覆盖
   const [failure, setFailure] = useState<string | null>(null)
+  const [remoteFailure, setRemoteFailure] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [pwOpen, setPwOpen] = useState(false)
   const [backups, setBackups] = useState<BackupInfo[] | null>(null)
@@ -63,6 +66,10 @@ export function SettingsPage() {
   const [remoteBase, setRemoteBase] = useState<BackupRemoteInput>(defaultRemoteForm)
   const [remoteDraft, setRemoteDraft] = useState<BackupRemoteInput>(defaultRemoteForm)
   const [remoteLoadFailed, setRemoteLoadFailed] = useState(false)
+  const [remoteLoadError, setRemoteLoadError] = useState<string | null>(null)
+  const [resetOpen, setResetOpen] = useState(false)
+  const [resetting, setResetting] = useState(false)
+  const [resetError, setResetError] = useState<string | null>(null)
   // 首次读取与「重新读取」进行中：此时草稿只是默认值，不可编辑也不可保存
   const [remoteLoading, setRemoteLoading] = useState(true)
   // 保存成功且口令已更改后的持久提示，下次编辑 NAS 表单、放弃或离开页面后消失
@@ -97,12 +104,14 @@ export function SettingsPage() {
       setRemoteBase(form)
       setRemoteDraft(form)
       setRemoteLoadFailed(false)
-    } catch {
+      setRemoteLoadError(null)
+    } catch (e) {
       setRemoteLoadFailed(true)
+      setRemoteLoadError(translateErrorValue(i18n, e))
     } finally {
       setRemoteLoading(false)
     }
-  }, [])
+  }, [i18n])
 
   useEffect(() => {
     void load()
@@ -180,6 +189,7 @@ export function SettingsPage() {
 
   async function saveRemote() {
     clearErrors(true)
+    setRemoteFailure(null)
     try {
       const saved = await http.put<BackupRemote>('/api/backups/remote', normalizeRemoteForSave(remoteDraft))
       const form = remoteToForm(saved)
@@ -194,9 +204,29 @@ export function SettingsPage() {
       if (isApiError(e) && e.code === 'validation.failed') {
         setRemoteFieldErrors((e.details.fields ?? {}) as Record<string, string>)
       } else {
-        setFailure(translateErrorValue(i18n, e))
+        setRemoteFailure(translateErrorValue(i18n, e))
       }
     }
+  }
+
+  async function resetRemote() {
+    setResetting(true)
+    setResetError(null)
+    try {
+      await http.delete('/api/backups/remote')
+    } catch (e) {
+      setResetError(translateErrorValue(i18n, e))
+      setResetting(false)
+      return
+    }
+    setResetting(false)
+    setResetOpen(false)
+    setRemoteFailure(null)
+    setPassphraseNotice(false)
+    setRemoteTest({ testing: false, result: null })
+    clearErrors(true)
+    toast.show(t('settings.backup.remote.resetDone'))
+    await loadRemote()
   }
 
   // 哪边脏就提交哪边；任一边失败只保留该边的草稿与错误
@@ -204,6 +234,7 @@ export function SettingsPage() {
     if (!draft || !base || saving) return
     setSaving(true)
     setFailure(null)
+    setRemoteFailure(null)
     try {
       if (dirty.length > 0) await saveSettings(draft, base)
       if (remoteDirty.length > 0) await saveRemote()
@@ -257,6 +288,7 @@ export function SettingsPage() {
     setPassphraseNotice(false)
     setFieldErrors({})
     setFailure(null)
+    setRemoteFailure(null)
     toast.show(t('settings.discarded'))
   }
 
@@ -317,6 +349,12 @@ export function SettingsPage() {
           {failure && (
             <Note tone="crit" role="alert">
               {t('common.withDetail', { summary: t('settings.saveFailed'), detail: failure })}
+            </Note>
+          )}
+
+          {remoteFailure && (
+            <Note tone="crit" role="alert">
+              {t('common.withDetail', { summary: t('settings.backup.remote.saveFailed'), detail: remoteFailure })}
             </Note>
           )}
 
@@ -507,8 +545,13 @@ export function SettingsPage() {
               saved={remoteSaved}
               loading={remoteLoading}
               loadFailed={remoteLoadFailed}
+              loadError={remoteLoadError}
               passphraseNotice={passphraseNotice}
               onRetry={() => void loadRemote()}
+              onReset={() => {
+                setResetError(null)
+                setResetOpen(true)
+              }}
               changedKeys={remoteDirty}
               errorText={(k) => errorText(remoteErrorPrefix + k)}
               test={remoteTest}
@@ -546,6 +589,7 @@ export function SettingsPage() {
         }}
       />
       <BackupDownloadDialog backup={downloading} onClose={() => setDownloading(null)} />
+      <ResetNasDialog open={resetOpen} busy={resetting} error={resetError} onCancel={() => setResetOpen(false)} onConfirm={() => void resetRemote()} />
     </>
   )
 }

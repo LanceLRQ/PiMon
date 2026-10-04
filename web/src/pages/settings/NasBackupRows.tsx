@@ -21,9 +21,13 @@ interface Props {
   // 首次读取或重新读取进行中
   loading: boolean
   loadFailed: boolean
+  // 读取失败的原因（已翻译），显示在提示里
+  loadError?: string | null
   // 刚保存且口令已更改：在口令字段旁显示持久提示
   passphraseNotice: boolean
   onRetry(): void
+  // 读取持续失败时的自救入口：由页面弹确认框后清空 NAS 配置
+  onReset(): void
   changedKeys: (keyof BackupRemoteInput)[]
   errorText(key: string): string | null
   test: NasTestState
@@ -36,7 +40,7 @@ interface Props {
 const smbKeys = ['smb_host', 'smb_port', 'smb_share', 'smb_dir', 'smb_username', 'smb_password', 'smb_domain']
 const webdavKeys = ['webdav_url', 'webdav_dir', 'webdav_username', 'webdav_password']
 
-export function NasBackupRows({ form, saved, loading, loadFailed, passphraseNotice, onRetry, changedKeys, errorText, test, onChange, onTest }: Props) {
+export function NasBackupRows({ form, saved, loading, loadFailed, loadError, passphraseNotice, onRetry, onReset, changedKeys, errorText, test, onChange, onTest }: Props) {
   const { t } = useTranslation()
   const mark = (...keys: (keyof BackupRemoteInput)[]) => ({
     changed: keys.some((k) => changedKeys.includes(k)),
@@ -71,9 +75,13 @@ export function NasBackupRows({ form, saved, loading, loadFailed, passphraseNoti
       {loadFailed && !loading && (
         <div className="border-t border-border px-4 py-3">
           <Note tone="warn" role="status">
-            {t('settings.backup.remote.loadFailed')}{' '}
+            {loadError ? t('common.withDetail', { summary: t('settings.backup.remote.loadFailed'), detail: loadError }) : t('settings.backup.remote.loadFailed')}{' '}
             <button type="button" className="underline underline-offset-2" onClick={onRetry}>
               {t('settings.backup.remote.reload')}
+            </button>
+            {' · '}
+            <button type="button" className="underline underline-offset-2" onClick={onReset}>
+              {t('settings.backup.remote.reset')}
             </button>
           </Note>
         </div>

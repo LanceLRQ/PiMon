@@ -51,17 +51,21 @@ function upload(over: Partial<BackupUpload> = {}): BackupUpload {
 interface Opts {
   remote?: BackupRemote | Response
   uploads?: BackupUpload[]
+  // 后端给出的最近一次结果；缺省时按后端口径从 uploads 推算（跳过取消记录）
+  lastResult?: BackupUpload | null
   extra?: (req: Req) => Response | undefined | Promise<Response | undefined>
 }
 
-async function setup({ remote: r = remote(), uploads = [], extra }: Opts = {}) {
+const lastOf = (list: BackupUpload[]) => list.find((u) => !(u.reason_code === 'canceled' && !u.success)) ?? null
+
+async function setup({ remote: r = remote(), uploads = [], lastResult, extra }: Opts = {}) {
   let current = uploads
   const api = mockApi((req) => {
     const x = extra?.(req)
     if (x) return x
     if (req.method === 'GET' && req.url === '/api/backups') return json(200, [])
     if (req.method === 'GET' && req.url === '/api/backups/remote') return r instanceof Response ? r : json(200, r)
-    if (req.method === 'GET' && req.url.startsWith('/api/backups/remote/uploads')) return json(200, current)
+    if (req.method === 'GET' && req.url.startsWith('/api/backups/remote/uploads')) return json(200, { uploads: current, last_result: lastResult === undefined ? lastOf(current) : lastResult })
     return undefined
   })
   await renderWithApp(<BackupsPanel />)
@@ -69,6 +73,17 @@ async function setup({ remote: r = remote(), uploads = [], extra }: Opts = {}) {
 }
 
 describe('异地备份小节', () => {
+  it('最近结果取自响应的 last_result，而不是在当前页记录里推导', async () => {
+    const canceled = (id: number) => upload({ id, success: false, reason: 'canceled:', reason_code: 'canceled' })
+    await setup({ uploads: Array.from({ length: 10 }, (_, i) => canceled(20 - i)), lastResult: upload({ id: 5 }) })
+    expect(within(await screen.findByTestId('remote-last')).getByText(/^成功 · /)).toBeInTheDocument()
+  })
+
+  it('最近结果：last_result 为空时显示尚无上传记录', async () => {
+    await setup({ uploads: [upload({ id: 2, success: false, reason: 'canceled:', reason_code: 'canceled' })], lastResult: null })
+    expect(await screen.findByText('尚无上传记录')).toBeInTheDocument()
+  })
+
   it('最近结果跳过取消记录；全是取消记录时显示尚无结果', async () => {
     await setup({ uploads: [upload({ id: 2, success: false, reason: 'canceled:', reason_code: 'canceled' }), upload({ id: 1 })] })
     expect(within(await screen.findByTestId('remote-last')).getByText(/^成功 · /)).toBeInTheDocument()
@@ -136,6 +151,16 @@ describe('异地备份小节', () => {
     expect(rows[1]).toHaveAttribute('data-tone', 'neutral')
     expect(rows[3]).toHaveAttribute('data-tone', 'ok')
     expect(within(rows[1]).getByText('已取消')).toBeInTheDocument()
+  })
+
+  it('本地读取出错：记录与上传失败提示都给出本地原因，不说远端', async () => {
+    await setup({
+      uploads: [upload({ id: 1, success: false, reason: 'local_read:读取本地备份: boom', reason_code: 'local_read', reason_detail: '读取本地备份: boom' })],
+      extra: (r) => (r.method === 'POST' && r.url === '/api/backups/remote/upload' ? apiError(502, 'backup.remote_failed', { reason: 'local_read', message: 'boom' }) : undefined),
+    })
+    expect(await within(await screen.findByTestId('remote-uploads')).findByText('读取本地备份文件时出错')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '立即上传' }))
+    expect(await screen.findByText(/远端备份失败.*读取本地备份文件时出错/)).toBeInTheDocument()
   })
 
   it('立即上传成功后刷新记录', async () => {

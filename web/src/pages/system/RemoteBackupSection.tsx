@@ -7,7 +7,7 @@ import { translateErrorValue } from '@/i18n/errors'
 import { formatBytes } from '@/lib/format'
 import { formatDateTime, parseTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
-import type { BackupRemote, BackupUpload } from '@/types/generated'
+import type { BackupRemote, BackupUpload, BackupUploadList } from '@/types/generated'
 import { Button } from '@/ui/button'
 import { Note } from '@/ui/note'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/ui/table'
@@ -45,6 +45,8 @@ export function RemoteBackupSection() {
   const toast = useToast()
   const [remote, setRemote] = useState<BackupRemote | null>(null)
   const [uploads, setUploads] = useState<BackupUpload[]>([])
+  // 后端按 hub-self 同口径给出（跳过取消记录），不依赖当前页记录
+  const [last, setLast] = useState<BackupUpload | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // 卸载后不再刷新、不 setState、不弹提示
@@ -58,8 +60,11 @@ export function RemoteBackupSection() {
 
   const loadUploads = useCallback(async () => {
     try {
-      const list = await http.get<BackupUpload[]>('/api/backups/remote/uploads', { query: { limit: uploadsLimit } })
-      if (mounted.current) setUploads(list)
+      const res = await http.get<BackupUploadList>('/api/backups/remote/uploads', { query: { limit: uploadsLimit } })
+      if (mounted.current) {
+        setUploads(res.uploads)
+        setLast(res.last_result ?? null)
+      }
     } catch (e) {
       if (mounted.current) toast.show(translateErrorValue(i18n, e), 'warn')
     }
@@ -117,8 +122,6 @@ export function RemoteBackupSection() {
     return message ? t('common.withDetail', { summary: text, detail: message }) : text
   }
 
-  // 与 hub-self 一致：最近结果跳过取消记录；全是取消记录则视为尚无结果
-  const last = uploads.find((u) => toneOf(u) !== 'neutral')
   const resultLabel = (u: BackupUpload) => t(u.success ? 'system.backups.remote.ok' : toneOf(u) === 'neutral' ? 'system.backups.remote.canceled' : 'system.backups.remote.failed')
   const timeOf = (u: BackupUpload) => formatDateTime(parseTime(u.finished_at) ?? parseTime(u.started_at) ?? 0, i18n.language)
 

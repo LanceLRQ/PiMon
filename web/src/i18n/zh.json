@@ -560,7 +560,8 @@
         "connect": "连不上远端，请检查地址、端口与网络",
         "auth": "用户名或密码错误",
         "not_writable": "目录不存在且无法创建，或没有写入权限",
-        "io": "读写远端时出错或长时间没有进展"
+        "io": "读写远端时出错或长时间没有进展",
+        "local_read": "读取本地备份文件时出错"
       }
     },
     "plugin": {
@@ -1406,7 +1407,15 @@
         "testFailed": "连接失败：{{reason}}",
         "loadFailed": "无法读取已保存的 NAS 备份配置，NAS 部分已禁用且不会被保存。",
         "loading": "正在读取 NAS 备份配置…",
-        "reload": "重新读取"
+        "reload": "重新读取",
+        "reset": "重置 NAS 配置",
+        "resetTitle": "重置 NAS 配置",
+        "resetBody": "将清空已保存的 NAS 备份配置，包括 NAS 密码与备份口令，并关闭异地备份；已上传到 NAS 的备份与上传记录不受影响。口令清空后将无法解密此前已上传的备份，请确认已另行保存口令。",
+        "resetConfirm": "确认重置",
+        "resetting": "重置中…",
+        "resetFailed": "重置失败：{{reason}}",
+        "resetDone": "NAS 备份配置已重置",
+        "saveFailed": "NAS 备份保存失败"
       }
     },
     "reason": {
@@ -2345,6 +2354,7 @@
       "canceled": "中枢关停，上传已取消",
       "config": "远端配置不合法",
       "no_local": "本地备份缺失或不可读",
+      "local_read": "读取本地备份文件时出错",
       "cleanup_failed": "上传成功，但清理远端过期备份失败"
     }
   }

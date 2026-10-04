@@ -97,7 +97,7 @@ async function setup({ info = sysInfo(), extra }: Opts = {}) {
     if (req.method === 'GET' && req.url.startsWith('/api/plugins')) return json(200, execPlugins)
     if (req.method === 'GET' && req.url === '/api/backups') return json(200, backups)
     if (req.method === 'GET' && req.url === '/api/backups/remote') return json(200, remoteOff)
-    if (req.method === 'GET' && req.url.startsWith('/api/backups/remote/uploads')) return json(200, [])
+    if (req.method === 'GET' && req.url.startsWith('/api/backups/remote/uploads')) return json(200, { uploads: [], last_result: null })
     return undefined
   })
   await renderWithApp(<SystemPage />)

@@ -542,3 +542,76 @@ describe('NAS 备份', () => {
     expect(screen.queryByText(/无法读取已保存/)).not.toBeInTheDocument()
   })
 })
+
+describe('NAS 重置与错误分栏', () => {
+  function failingGet(then: () => Response | undefined) {
+    return (r: Req) => {
+      if (r.url === '/api/backups/remote' && r.method === 'DELETE') return then() ?? new Response(null, { status: 204 })
+      return undefined
+    }
+  }
+
+  it('读取失败时出现「重置 NAS 配置」；取消不发请求，确认后 DELETE 并重新读取', async () => {
+    let failed = true
+    const { api } = await setup({
+      extra: (r) => {
+        if (r.url === '/api/backups/remote' && r.method === 'GET') return failed ? apiError(500, 'internal') : json(200, { ...savedRemote, enabled: false, smb_host: '', smb_password: { set: false }, passphrase: { set: false } })
+        if (r.url === '/api/backups/remote' && r.method === 'DELETE') {
+          failed = false
+          return new Response(null, { status: 204 })
+        }
+        return undefined
+      },
+    })
+    expect(await screen.findByText(/无法读取已保存的 NAS 备份配置/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '重置 NAS 配置' }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: '取消' }))
+    expect(api.calls.some((c) => c.method === 'DELETE')).toBe(false)
+    await userEvent.click(screen.getByRole('button', { name: '重置 NAS 配置' }))
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: '确认重置' }))
+    await waitFor(() => expect(api.calls.some((c) => c.method === 'DELETE' && c.url === '/api/backups/remote')).toBe(true))
+    await waitFor(() => expect(screen.getByLabelText('主机')).toBeEnabled())
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByText(/无法读取已保存/)).not.toBeInTheDocument()
+  })
+
+  it('重置失败：对话框保留并显示错误，仍处于读取失败状态', async () => {
+    await setup({
+      extra: (r) => {
+        if (r.url === '/api/backups/remote' && r.method === 'GET') return apiError(500, 'internal')
+        return failingGet(() => apiError(500, 'internal'))(r)
+      },
+    })
+    await userEvent.click(await screen.findByRole('button', { name: '重置 NAS 配置' }))
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: '确认重置' }))
+    expect(await within(screen.getByRole('dialog')).findByText(/重置失败/)).toBeInTheDocument()
+    expect(screen.getByLabelText('主机')).toBeDisabled()
+  })
+
+  it('读取成功时没有重置入口', async () => {
+    await setup({ extra: nasExtra() })
+    await screen.findByLabelText('主机')
+    expect(screen.queryByRole('button', { name: '重置 NAS 配置' })).not.toBeInTheDocument()
+  })
+
+  it('读取失败的原因显示在提示里', async () => {
+    await setup({ extra: (r) => (r.url === '/api/backups/remote' && r.method === 'GET' ? apiError(500, 'internal') : undefined) })
+    expect(await screen.findByText(/无法读取已保存的 NAS 备份配置.*中枢内部错误/)).toBeInTheDocument()
+  })
+
+  it('两边保存都失败：分别显示 settings 与 NAS 的错误，互不覆盖', async () => {
+    await setup({
+      extra: (r) => {
+        if (r.url === '/api/settings' && r.method === 'PUT') return apiError(500, 'internal')
+        if (r.url === '/api/backups/remote' && r.method === 'PUT') return apiError(502, 'backup.remote_failed', { reason: 'io' })
+        return nasExtra()(r)
+      },
+    })
+    await userEvent.type(await screen.findByLabelText('域'), 'HOME')
+    await userEvent.type(screen.getByLabelText('访问地址'), 'https://x.example')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByText(/^保存失败：中枢内部错误/)).toBeInTheDocument()
+    expect(await screen.findByText(/NAS 备份保存失败：/)).toBeInTheDocument()
+  })
+})
