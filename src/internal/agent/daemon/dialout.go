@@ -153,7 +153,7 @@ func (d *Daemon) OpenPairWindow(ctx context.Context) (PairWindow, error) {
 	d.window = &pairWindow{hash: paircode.Hash(code), expires: w.ExpiresAt}
 	d.mu.Unlock()
 	w.IPs = []string{}
-	for _, ip := range netaddr.LANIPv4() {
+	for _, ip := range netaddr.FilterLAN(netaddr.LANIPv4()) {
 		w.IPs = append(w.IPs, ip.String())
 	}
 	d.log.Info("已打开拨出配对窗口", "window", w)

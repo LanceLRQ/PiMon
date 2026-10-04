@@ -95,3 +95,15 @@ func LANIPv4() []net.IP {
 	}
 	return out
 }
+
+// FilterLAN 去掉回环、链路本地（IPv4 169.254/16、IPv6 fe80::/10）、未指定与组播地址，保留局域网与公网的 IPv4/IPv6，顺序不变。
+func FilterLAN(ips []net.IP) []net.IP {
+	var out []net.IP
+	for _, ip := range ips {
+		if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+			continue
+		}
+		out = append(out, ip)
+	}
+	return out
+}

@@ -532,6 +532,29 @@ func TestNormalizeDialURL_规范为wss主机端口(t *testing.T) {
 	}
 }
 
+func TestNormalizeDialURL_裸地址补wss(t *testing.T) {
+	cases := map[string]string{
+		"1.2.3.4:31418":        "wss://1.2.3.4:31418",
+		"vps.example.com":      "wss://vps.example.com:" + DefaultPort,
+		"vps.example.com:4000": "wss://vps.example.com:4000",
+		"[2001:db8::1]:31418":  "wss://[2001:db8::1]:31418",
+		"[::1]:41418":          "wss://[::1]:41418",
+		"  1.2.3.4:31418  ":    "wss://1.2.3.4:31418",
+		"wss://1.2.3.4:31418":  "wss://1.2.3.4:31418",
+	}
+	for raw, want := range cases {
+		got, err := NormalizeDialURL(raw)
+		if err != nil || got != want {
+			t.Fatalf("%q: 得 %q（%v），期望 %q", raw, got, err, want)
+		}
+	}
+	for _, raw := range []string{"ws://1.2.3.4:31418", "http://1.2.3.4:31418", "https://1.2.3.4", "1.2.3.4:", "1.2.3.4:abc", "1.2.3.4:31418/x", "1.2.3.4:31418?a=1", "u:p@1.2.3.4:31418", ":31418", "1.2.3.4:99999"} {
+		if got, err := NormalizeDialURL(raw); !errors.Is(err, ErrDialConfig) {
+			t.Fatalf("%q 应返回 ErrDialConfig，得到 %q %v", raw, got, err)
+		}
+	}
+}
+
 // listenSamePortV6 在 [::1] 上占用与 addr 相同的端口，环境不支持时跳过。
 func listenSamePortV6(t *testing.T, addr string) net.Listener {
 	t.Helper()

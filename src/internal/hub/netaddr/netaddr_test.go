@@ -63,3 +63,19 @@ func TestAgentURLs(t *testing.T) {
 		t.Fatalf("无可用地址: %v", got)
 	}
 }
+
+func TestFilterLAN(t *testing.T) {
+	in := []net.IP{
+		net.ParseIP("127.0.0.1"), net.ParseIP("::1"), net.ParseIP("fe80::1"), net.ParseIP("169.254.3.4"),
+		net.ParseIP("0.0.0.0"), net.ParseIP("ff02::1"),
+		net.ParseIP("192.168.1.5"), net.ParseIP("203.0.113.9"), net.ParseIP("2001:db8::1"), net.ParseIP("fd00::5"),
+	}
+	var got []string
+	for _, ip := range FilterLAN(in) {
+		got = append(got, ip.String())
+	}
+	want := []string{"192.168.1.5", "203.0.113.9", "2001:db8::1", "fd00::5"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("得 %v，期望 %v", got, want)
+	}
+}

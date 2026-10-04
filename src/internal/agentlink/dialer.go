@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -178,6 +180,9 @@ func parseDialURL(raw string) (dialURL, error) {
 	if port == "" {
 		port = DefaultPort
 	}
+	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+		return dialURL{}, fmt.Errorf("%w：端口必须在 1-65535 之间", ErrDialConfig)
+	}
 	switch u.Path {
 	case "", "/", AgentPath:
 	default:
@@ -187,8 +192,16 @@ func parseDialURL(raw string) (dialURL, error) {
 }
 
 // NormalizeDialURL 按 DialerConfig.URL 的规则校验 raw，返回规范形式 wss://host:port（省略路径，拨号时补 /agent）。
+// 输入不含 "://" 时视为裸地址（host、host:port、[ipv6]:port）并先补 wss://；ws://、http:// 等其他 scheme 仍然拒绝。
 // 不合法时返回包装 ErrDialConfig 的错误。
 func NormalizeDialURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if strings.HasSuffix(raw, ":") {
+		return "", fmt.Errorf("%w：端口为空", ErrDialConfig)
+	}
+	if raw != "" && !strings.Contains(raw, "://") {
+		raw = "wss://" + raw
+	}
 	u, err := parseDialURL(raw)
 	if err != nil {
 		return "", err
