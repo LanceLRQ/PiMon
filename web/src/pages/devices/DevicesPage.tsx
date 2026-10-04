@@ -20,6 +20,7 @@ import { StatusShape } from '@/ui/status-shape'
 import { useToast } from '@/ui/toast'
 import { AddDeviceDialog } from './add/AddDeviceDialog'
 import { DeviceCards, DeviceTableView } from './DeviceTable'
+import { DeviceDrawer } from './detail/DeviceDrawer'
 import { deviceCounts, hubVersionOf, matchesFilter, matchesQuery, type DeviceFilter } from './model'
 import { deviceRow, hubRow, type DeviceRow } from './rows'
 
@@ -28,7 +29,7 @@ const selectBuild = (s: LiveState) => s.build
 const filters: DeviceFilter[] = ['all', 'online', 'bad', 'dormant', 'pending']
 
 // 设备页：汇总条 + 设备列表（中枢固定首行）。数据来自实时 store 的 devices 主题，
-// 行点击与 ?open=<id> 深链共用同一个参数，详情抽屉在后续任务接入。
+// 行点击与 ?open=<id> 深链共用同一个参数，详情抽屉随参数打开。
 export function DevicesPage() {
   const { t, i18n } = useTranslation()
   const toast = useToast()
@@ -100,6 +101,18 @@ export function DevicesPage() {
     [setParams],
   )
   const onOpen = useCallback((row: DeviceRow) => openById(row.id), [openById])
+  const closeDrawer = useCallback(
+    () => setParams((p) => { const n = new URLSearchParams(p); n.delete('open'); return n }, { replace: true }),
+    [setParams],
+  )
+
+  // ?open= 指向不存在或已吊销的设备：提示并清除参数（设备列表还没加载时先不判断）
+  const missingOpen = devices !== null && openId !== null && openId !== 'hub' && !devices.some((d) => d.id === openId)
+  useEffect(() => {
+    if (!missingOpen) return
+    toast.show(t('devices.detail.notFound'), 'warn')
+    closeDrawer()
+  }, [missingOpen, toast, t, closeDrawer])
 
   async function confirmDelete() {
     const row = deleting
@@ -237,6 +250,8 @@ export function DevicesPage() {
           </div>
         </section>
       </div>
+
+      <DeviceDrawer id={openId} hubVersion={hubVersion} onClose={closeDrawer} />
 
       <AddDeviceDialog open={addOpen} onOpenChange={setAddOpen} onViewDetail={openById} />
 

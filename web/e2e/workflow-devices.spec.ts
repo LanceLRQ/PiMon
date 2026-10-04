@@ -50,6 +50,32 @@ test('设备页列出中枢与设备，筛选搜索可用，手机宽度显示�
     await page.goto(`/devices?open=${nasId}`)
     await expect(page.locator(`tr[data-device-id="${nasId}"]`)).toHaveAttribute('aria-current', 'true')
 
+    // 详情抽屉：属性、连接、版本与升级、实例、日志；有未保存改动时关闭先确认，放弃后直接关闭
+    const drawer = page.getByRole('dialog', { name: /设备详情：飞牛 NAS/ })
+    await expect(drawer).toBeVisible()
+    await expect(drawer.getByLabel('名称')).toHaveValue('飞牛 NAS')
+    await expect(drawer.getByRole('heading', { name: '版本与升级' })).toBeVisible()
+    await expect(drawer.getByRole('heading', { name: '日志' })).toBeVisible()
+    await drawer.getByLabel('名称').fill('飞牛 NAS 改')
+    await expect(drawer.getByText('未保存改动 1')).toBeVisible()
+    await drawer.getByRole('button', { name: '取消' }).click()
+    await page.getByRole('dialog', { name: '放弃未保存的改动？' }).getByRole('button', { name: '放弃改动' }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page).toHaveURL(/\/devices$/)
+
+    // 中枢行打开只读抽屉
+    await rows.first().getByRole('button').first().click()
+    const hubDrawer = page.getByRole('dialog', { name: /中枢/ })
+    await expect(hubDrawer.getByRole('button', { name: '保存' })).toHaveCount(0)
+    await expect(hubDrawer.getByText('SHA256:')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+
+    // ?open= 指向不存在的设备：提示并清除参数
+    await page.goto('/devices?open=ghost')
+    await expect(page.getByText('设备不存在或已吊销')).toBeVisible()
+    await expect(page).toHaveURL(/\/devices$/)
+
     // 添加设备（拨入）：生成配对码与命令，命令含 --hub/--fp/--code，复制按钮可点
     await page.getByRole('button', { name: '添加设备' }).first().click()
     const dialog = page.getByRole('dialog', { name: '添加设备' })

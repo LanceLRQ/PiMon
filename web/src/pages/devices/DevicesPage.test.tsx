@@ -1,4 +1,4 @@
-import { act, screen, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeInstance } from '@/pages/instances/instances.fixtures'
@@ -29,10 +29,11 @@ async function mount(devices: Device[] | null, opts: { route?: string; mobile?: 
 }
 
 function bodyRows() {
-  return screen.getAllByRole('row').slice(1)
+  // 抽屉打开时页面其余部分被标为隐藏，行仍然在 DOM 里
+  return screen.getAllByRole('row', { hidden: true }).slice(1)
 }
 function rowOf(name: string): HTMLElement {
-  return bodyRows().find((r) => within(r).queryByRole('button', { name: new RegExp(name) })) as HTMLElement
+  return bodyRows().find((r) => within(r).queryByRole('button', { name: new RegExp(name), hidden: true })) as HTMLElement
 }
 
 describe('设备列表', () => {
@@ -197,14 +198,18 @@ describe('空状态与未加载', () => {
 })
 
 describe('深链与手机卡片', () => {
-  it('?open=<id> 高亮对应设备行；点击行写入 ?open', async () => {
+  it('?open=<id> 高亮对应设备行并打开详情抽屉；点击行写入 ?open', async () => {
     const user = userEvent.setup()
     await mount([nas, ubuntu], { route: '/devices?open=d2' })
     expect(rowOf('Ubuntu 服务器')).toHaveAttribute('aria-current', 'true')
     expect(rowOf('飞牛 NAS')).not.toHaveAttribute('aria-current')
-    await user.click(within(rowOf('飞牛 NAS')).getByRole('button', { name: /飞牛 NAS/ }))
+    expect(await screen.findByRole('dialog', { name: /设备详情：Ubuntu 服务器/ })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await user.click(within(rowOf('飞牛 NAS')).getByRole('button', { name: /飞牛 NAS/, hidden: true }))
     expect(rowOf('飞牛 NAS')).toHaveAttribute('aria-current', 'true')
     expect(rowOf('Ubuntu 服务器')).not.toHaveAttribute('aria-current')
+    expect(await screen.findByRole('dialog', { name: /设备详情：飞牛 NAS/ })).toBeInTheDocument()
   })
 
   it('手机宽度显示卡片而不是表格，卡片可点开', async () => {
