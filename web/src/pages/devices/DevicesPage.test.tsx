@@ -18,11 +18,11 @@ const ubuntu = device('d2', { name: 'Ubuntu 服务器', presence: 'offline', hos
 const vps = device('d3', { name: 'VPS 东京', role: 'vps', direction: 'dial_out', address: 'wss://203.0.113.8:31418', proxy_id: 'p1', presence: 'disconnected' })
 const mac = device('d4', { name: 'MacBook', role: 'dev', presence: 'dormant', allow_offline: true, os: 'darwin', arch: 'arm64' })
 
-async function mount(devices: Device[] | null, opts: { route?: string; mobile?: boolean; del?: boolean } = {}) {
+async function mount(devices: Device[] | null, opts: { route?: string; mobile?: boolean; del?: boolean | Promise<void> } = {}) {
   if (opts.mobile) {
     vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('max-width'), media: q, addEventListener() {}, removeEventListener() {} }))
   }
-  const api = mockApi((req) => (req.url === '/api/system' ? json(200, sys) : opts.del && req.method === 'DELETE' ? json(200, {}) : undefined))
+  const api = mockApi((req) => (req.url === '/api/system' ? json(200, sys) : opts.del && req.method === 'DELETE' ? Promise.resolve(opts.del).then(() => json(200, {})) : undefined))
   seedStore([makeInstance({ id: 'i1', runs_on: 'd1' }), makeInstance({ id: 'i2', runs_on: 'd1' }), makeInstance({ id: 'i3', runs_on: 'hub' })], devices ? { devices } : {})
   await renderWithApp(<DevicesPage />, { route: opts.route ?? '/devices' })
   return api
@@ -129,16 +129,32 @@ describe('占位设备', () => {
 })
 
 describe('删除占位时抽屉正开着', () => {
-  it('删除成功后抽屉静默关闭，不弹「设备不存在」', async () => {
+  const removed = () => act(() => liveStore.applyPatch({ type: 'patch', entity: 'device_removed', server_time: new Date().toISOString(), id: 'p3' } as never))
+  async function openDelete(del: boolean | Promise<void>) {
     const user = userEvent.setup()
     const dangling = device('p3', { name: '悬挂占位机', confirmed: false, presence: 'pending', replaces: 'gone' })
-    const api = await mount([nas, dangling], { route: '/devices?open=p3', del: true })
+    const api = await mount([nas, dangling], { route: '/devices?open=p3', del })
     await screen.findByRole('dialog', { name: /设备详情：悬挂占位机/ })
     // 抽屉是模态的，行按钮 pointer-events 被禁，直接派发点击
     fireEvent.click(within(rowOf('悬挂占位机')).getByRole('button', { name: '删除占位', hidden: true }))
     await user.click(within(await screen.findByRole('dialog', { name: '删除占位设备' })).getByRole('button', { name: '删除' }))
     await vi.waitFor(() => expect(api.calls.some((c) => c.method === 'DELETE' && c.url === '/api/devices/p3')).toBe(true))
-    act(() => liveStore.applyPatch({ type: 'patch', entity: 'device_removed', server_time: new Date().toISOString(), id: 'p3' } as never))
+  }
+
+  it('响应先到、推送后到：抽屉静默关闭，不弹「设备不存在」', async () => {
+    await openDelete(true)
+    expect(await screen.findByText('已删除占位「悬挂占位机」')).toBeInTheDocument()
+    removed()
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.queryByText('设备不存在或已吊销')).toBeNull()
+  })
+
+  it('推送先到、响应后到：同样不弹「设备不存在」', async () => {
+    let release!: () => void
+    await openDelete(new Promise<void>((r) => { release = r }))
+    removed()
+    release()
+    expect(await screen.findByText('已删除占位「悬挂占位机」')).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(screen.queryByText('设备不存在或已吊销')).toBeNull()
   })

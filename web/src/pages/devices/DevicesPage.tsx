@@ -175,8 +175,9 @@ export function DevicesPage() {
       await http.delete(`/api/devices/${row.id}`)
       toast.show(t('devices.list.deleted', { name: row.name }))
       setDeleting(null)
-      expectedGone.current.delete(row.id)
+      // 标记交给 missing effect 在设备消失时消费，这里先清会让较晚落地的推送被当成「不存在」
       if (openId === row.id) closeDrawerQuietly()
+      else expectedGone.current.delete(row.id)
     } catch (e) {
       expectedGone.current.delete(row.id)
       toast.show(translateErrorValue(i18n, e), 'warn')
