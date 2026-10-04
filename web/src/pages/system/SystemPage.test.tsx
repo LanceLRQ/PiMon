@@ -450,4 +450,12 @@ describe('agent 通道', () => {
     expect(await within(sec).findByText('未启用')).toBeInTheDocument()
     expect(within(sec).getByText('无（开发构建未内嵌）')).toBeInTheDocument()
   })
+
+  it('指纹为空串时显示未知并隐藏复制按钮', async () => {
+    await setup({ extra: (r) => (r.url === '/api/agent/info' ? json(200, { ...agentInfo, fingerprint: '' }) : undefined) })
+    const sec = await screen.findByRole('region', { name: 'agent 通道' })
+    await within(sec).findByText('31418')
+    expect(within(sec).queryByRole('button', { name: '复制指纹' })).toBeNull()
+    expect(within(sec).getByText('未知')).toBeInTheDocument()
+  })
 })

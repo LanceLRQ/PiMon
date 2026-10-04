@@ -14,19 +14,25 @@ export async function copyText(text: string): Promise<boolean> {
   } catch {
     // 权限被拒时继续走回退
   }
+  // 对话框/抽屉的焦点陷阱会把焦点从外部节点抢回去，选区随之丢失；
+  // 所以临时 textarea 挂进打开着的对话框容器，复制后把焦点还给原元素。
+  const prev = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  const host = prev?.closest('[role="dialog"]') ?? document.querySelector('[role="dialog"][data-state="open"]') ?? document.body
   const ta = document.createElement('textarea')
   ta.value = text
   ta.setAttribute('readonly', '')
   ta.style.position = 'fixed'
   ta.style.opacity = '0'
-  document.body.appendChild(ta)
+  host.appendChild(ta)
+  ta.focus()
   ta.select()
   try {
     return document.execCommand('copy')
   } catch {
     return false
   } finally {
-    document.body.removeChild(ta)
+    host.removeChild(ta)
+    prev?.focus()
   }
 }
 

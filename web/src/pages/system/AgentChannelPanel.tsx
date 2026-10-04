@@ -41,11 +41,13 @@ export function AgentChannelPanel() {
             { k: t('system.agent.port'), v: info.agent_port > 0 ? String(info.agent_port) : t('system.agent.disabled') },
             {
               k: t('system.agent.fingerprint'),
-              v: (
+              v: info.fingerprint ? (
                 <span className="inline-flex items-center justify-end gap-2">
                   <code className="break-all">{info.fingerprint}</code>
                   <CopyButton text={info.fingerprint} label={t('system.agent.fingerprintCopy')} />
                 </span>
+              ) : (
+                t('status.unknown')
               ),
             },
             { k: t('system.agent.protocol'), v: t('system.agent.protocolValue', { version: info.protocol_version, min: info.min_compatible_version }) },
