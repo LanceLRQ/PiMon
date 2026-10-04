@@ -129,8 +129,8 @@ func TestPassphraseChanged(t *testing.T) {
 	}
 }
 
-func TestSwitchTypeKeepsOtherFields(t *testing.T) {
-	r, _, _ := newRepo(t)
+func TestSwitchTypeKeepsOtherFieldsButClearsOtherSecret(t *testing.T) {
+	r, db, _ := newRepo(t)
 	ctx := context.Background()
 	if _, err := r.Put(ctx, smbInput()); err != nil {
 		t.Fatal(err)
@@ -144,8 +144,15 @@ func TestSwitchTypeKeepsOtherFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg, _ := r.Config(ctx)
-	if cfg.SMBPassword != "smb-secret-pw" || cfg.WebDAVPassword != "dav-pw" || cfg.Passphrase == "" {
-		t.Errorf("两类型密码应各自保留: %+v", cfg)
+	if cfg.SMBPassword != "" || cfg.WebDAVPassword != "dav-pw" || cfg.Passphrase == "" {
+		t.Errorf("切换类型应清除另一类型的密码、保留口令: %+v", cfg)
+	}
+	if cfg.SMBHost != "nas.lan" || cfg.SMBShare != "backup" {
+		t.Errorf("另一类型的非密钥字段应保留: %+v", cfg)
+	}
+	var enc string
+	if err := db.QueryRowContext(ctx, `SELECT smb_password_enc FROM backup_remote WHERE id = 1`).Scan(&enc); err != nil || enc != "" {
+		t.Errorf("SMB 密码密文应已清空: %q %v", enc, err)
 	}
 	wc := cfg.WebDAV()
 	if wc.URL != "http://192.168.1.2:5005/dav" || wc.Dir != "b" || wc.Password != "dav-pw" {
@@ -153,6 +160,44 @@ func TestSwitchTypeKeepsOtherFields(t *testing.T) {
 	}
 	if _, err := NewWebDAV(wc); err != nil {
 		t.Errorf("应能构造 WebDAV 目标: %v", err)
+	}
+	// 切回 SMB：此前的 SMB 密码已不在，留空即缺失。
+	in2 := smbInput()
+	in2.SMBPassword = ""
+	if _, err := r.Put(ctx, in2); err == nil || fieldErr(t, err)["smb_password"] != model.FieldRequired {
+		t.Errorf("切回 SMB 且不重填密码应报必填: %v", err)
+	}
+}
+
+func TestResetClearsConfigAndSecretsKeepsUploads(t *testing.T) {
+	r, db, clk := newRepo(t)
+	ctx := context.Background()
+	if err := r.Reset(ctx); err != nil {
+		t.Fatalf("没有保存过配置时重置也应成功: %v", err)
+	}
+	if _, err := r.Put(ctx, smbInput()); err != nil {
+		t.Fatal(err)
+	}
+	now := clk.Now()
+	if _, err := r.RecordUpload(ctx, model.BackupUpload{Name: "a.age", TargetType: "smb", StartedAt: now, FinishedAt: now, Success: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Reset(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.Get(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Enabled || got.SMBHost != "" || got.SMBPassword.Set || got.Passphrase.Set || got.UpdatedAt != nil || got.SMBPort != 445 {
+		t.Errorf("重置后应为默认值: %+v", got)
+	}
+	var n int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM backup_remote`).Scan(&n); err != nil || n != 0 {
+		t.Errorf("配置行应已删除: %d %v", n, err)
+	}
+	if ups, _ := r.Uploads(ctx, 0); len(ups) != 1 {
+		t.Errorf("上传记录应保留: %+v", ups)
 	}
 }
 

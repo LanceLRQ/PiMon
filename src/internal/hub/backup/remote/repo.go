@@ -193,6 +193,15 @@ func (r *Repo) Put(ctx context.Context, in model.BackupRemoteInput) (model.Backu
 	return out, nil
 }
 
+// Reset 删除已保存的配置（含全部密文），之后读取得到默认值、按未启用处理。上传记录保留。没有保存过配置时也成功。
+// 用于配置无法读取（如 secret.key 与数据库不匹配导致解密失败）时的自救。
+func (r *Repo) Reset(ctx context.Context) error {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM backup_remote WHERE id = 1`); err != nil {
+		return fmt.Errorf("重置远端备份配置: %w", err)
+	}
+	return nil
+}
+
 func boolInt(b bool) int {
 	if b {
 		return 1
@@ -200,7 +209,7 @@ func boolInt(b bool) int {
 	return 0
 }
 
-// merge 把请求体套到旧配置上：密钥留空保留旧值，端口 0 取默认；随后校验。
+// merge 把请求体套到旧配置上：密钥留空保留旧值，端口 0 取默认，另一类型的密码丢弃；随后校验。
 func merge(old Config, in model.BackupRemoteInput) (Config, error) {
 	c := Config{
 		Enabled: in.Enabled, Type: strings.TrimSpace(in.Type),
@@ -222,6 +231,13 @@ func merge(old Config, in model.BackupRemoteInput) (Config, error) {
 	}
 	if c.SMBPort == 0 {
 		c.SMBPort = DefaultSMBPort
+	}
+	// 只保留当前类型的密码：切换类型后另一类型的旧密文不再留存（再切回去须重新填写）。
+	switch c.Type {
+	case model.BackupRemoteSMB:
+		c.WebDAVPassword = ""
+	case model.BackupRemoteWebDAV:
+		c.SMBPassword = ""
 	}
 	if fe := validate(c, in.Passphrase); fe != nil {
 		return Config{}, fe

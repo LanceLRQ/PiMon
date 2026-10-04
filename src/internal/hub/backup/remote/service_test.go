@@ -582,3 +582,67 @@ func TestAfterDailyAfterShutdownReturnsImmediately(t *testing.T) {
 		t.Fatalf("关停后不应上传：targets=%d", f.targets.Load())
 	}
 }
+
+func TestStatusAfterResetIsDisabled(t *testing.T) {
+	f := newSvc(t)
+	f.enable(t)
+	if _, err := f.svc.UploadNow(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := f.svc.Status(context.Background()); err != nil || !st.Enabled || st.LastAttempt == nil {
+		t.Fatalf("重置前 = %+v %v", st, err)
+	}
+	if err := f.svc.Reset(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	st, err := f.svc.Status(context.Background())
+	if err != nil || st.Enabled || st.LastAttempt != nil || st.LastFailed {
+		t.Fatalf("重置后应按未启用处理: %+v %v", st, err)
+	}
+	if _, err := f.svc.UploadNow(context.Background()); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("重置后立即上传应返回 ErrDisabled：%v", err)
+	}
+}
+
+func TestServiceLastResultSkipsCanceled(t *testing.T) {
+	f := newSvc(t)
+	ctx := context.Background()
+	if got, err := f.svc.LastResult(ctx); err != nil || got != nil {
+		t.Fatalf("没有记录 = %+v %v", got, err)
+	}
+	now := time.Now()
+	for _, r := range []model.BackupUpload{
+		{Name: "a.age", TargetType: "smb", StartedAt: now, FinishedAt: now, Success: true},
+		{Name: "b.age", TargetType: "smb", StartedAt: now, FinishedAt: now, Reason: "canceled:x"},
+	} {
+		if _, err := f.repo.RecordUpload(ctx, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := f.svc.LastResult(ctx)
+	if err != nil || got == nil || got.Name != "a.age" {
+		t.Fatalf("应跳过取消记录 = %+v %v", got, err)
+	}
+}
+
+// 上传途中读本地文件出错（这里用目录代替文件：打开成功、读取报错）归 local_read，不是远端 io，也不是 no_local。
+func TestLocalReadErrorMidUploadIsLocalRead(t *testing.T) {
+	f := newSvc(t)
+	f.enable(t)
+	p := filepath.Join(f.local.dir, localNew)
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(p, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.svc.UploadNow(context.Background())
+	var re *Error
+	if !errors.As(err, &re) || re.Reason != ReasonLocalRead {
+		t.Fatalf("应为 local_read 分类错误：%v", err)
+	}
+	ups := f.uploads(t)
+	if len(ups) != 1 || ups[0].Success || ups[0].ReasonCode != model.UploadReasonLocalRead {
+		t.Fatalf("记录 = %+v", ups)
+	}
+}

@@ -100,6 +100,13 @@ type BackupUpload struct {
 	ReasonDetail string `json:"reason_detail"`
 }
 
+// BackupUploadList 是 GET /api/backups/remote/uploads 的响应：最近的上传记录（新到旧）与「最近一次结果」。
+// LastResult 与 hub-self 判定同口径：跳过因中枢关停被取消的记录，没有记录时为 null。
+type BackupUploadList struct {
+	Uploads    []BackupUpload `json:"uploads"`
+	LastResult *BackupUpload  `json:"last_result"`
+}
+
 // 上传记录的原因机器码（两端契约，不可随意改名）。前 4 个与 backup.remote_failed 的 details.reason 相同。
 const (
 	UploadReasonConnect     = "connect"
@@ -112,6 +119,8 @@ const (
 	UploadReasonConfig = "config"
 	// UploadReasonNoLocal 表示本地备份缺失或不可读。
 	UploadReasonNoLocal = "no_local"
+	// UploadReasonLocalRead 表示上传途中读取本地备份文件出错（与远端读写失败区分）；同为 backup.remote_failed 的 details.reason。
+	UploadReasonLocalRead = "local_read"
 	// UploadReasonCleanupFailed 表示上传成功（Success 仍为 true），但清理远端过期备份失败。
 	UploadReasonCleanupFailed = "cleanup_failed"
 )

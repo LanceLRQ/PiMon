@@ -63,7 +63,8 @@ func (u *Uploader) Upload(ctx context.Context, target Target, localPath, name st
 	}
 	defer func() { _ = f.Close() }()
 
-	enc, err := backup.EncryptReader(f, u.Passphrase, u.WorkFactor)
+	local := &localReader{r: f}
+	enc, err := backup.EncryptReader(local, u.Passphrase, u.WorkFactor)
 	if err != nil {
 		return Result{}, err
 	}
@@ -81,6 +82,10 @@ func (u *Uploader) Upload(ctx context.Context, target Target, localPath, name st
 	res := Result{RemoteName: remoteName, Bytes: size}
 	if err != nil {
 		removeBestEffort(target, tmpName)
+		// 本地读取出错时 target.Put 看到的只是流中断，按本地原因归类，避免误报远端读写失败。
+		if le := local.failure(); le != nil && ctx.Err() == nil {
+			return res, NewError(ReasonLocalRead, "读取本地备份: "+le.Error(), le)
+		}
 		return res, err
 	}
 	if err := target.Rename(ctx, tmpName, remoteName); err != nil {
@@ -89,6 +94,31 @@ func (u *Uploader) Upload(ctx context.Context, target Target, localPath, name st
 	}
 	res.CleanupErr = pruneOld(ctx, target, keep)
 	return res, nil
+}
+
+// localReader 记录本地备份文件读取中第一个非 EOF 的错误。
+type localReader struct {
+	r   io.Reader
+	mu  sync.Mutex
+	err error
+}
+
+func (l *localReader) Read(b []byte) (int, error) {
+	n, err := l.r.Read(b)
+	if err != nil && !errors.Is(err, io.EOF) {
+		l.mu.Lock()
+		if l.err == nil {
+			l.err = err
+		}
+		l.mu.Unlock()
+	}
+	return n, err
+}
+
+func (l *localReader) failure() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.err
 }
 
 // put 在无进展看门狗保护下上传 src，返回已读出交给目标的字节数（失败时也返回已写入的部分）。

@@ -16,6 +16,7 @@ import (
 	"golang.org/x/net/webdav"
 
 	"github.com/LanceLRQ/PiMon/src/internal/hub/backup"
+	"github.com/LanceLRQ/PiMon/src/internal/hub/backup/remote"
 	"github.com/LanceLRQ/PiMon/src/internal/hub/httpx"
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 )
@@ -93,7 +94,7 @@ func TestBackupRemoteRoutesRequireAdminAndOrigin(t *testing.T) {
 	anon := e.newClient()
 	for _, c := range []struct{ method, path string }{
 		{"GET", "/api/backups/remote"}, {"PUT", "/api/backups/remote"}, {"POST", "/api/backups/remote/test"},
-		{"POST", "/api/backups/remote/upload"}, {"GET", "/api/backups/remote/uploads"},
+		{"POST", "/api/backups/remote/upload"}, {"GET", "/api/backups/remote/uploads"}, {"DELETE", "/api/backups/remote"},
 	} {
 		resp, data := e.do(anon, c.method, c.path, map[string]any{})
 		e.expectError(resp, data, http.StatusUnauthorized, httpx.CodeAuthRequired)
@@ -104,6 +105,8 @@ func TestBackupRemoteRoutesRequireAdminAndOrigin(t *testing.T) {
 		e.expectError(resp, data, http.StatusForbidden, httpx.CodeOriginMismatch)
 	}
 	resp, data := e.do(admin, "PUT", "/api/backups/remote", map[string]any{}, withHeader("Origin", "https://evil.example"))
+	e.expectError(resp, data, http.StatusForbidden, httpx.CodeOriginMismatch)
+	resp, data = e.do(admin, "DELETE", "/api/backups/remote", nil, withHeader("Origin", "https://evil.example"))
 	e.expectError(resp, data, http.StatusForbidden, httpx.CodeOriginMismatch)
 }
 
@@ -183,9 +186,12 @@ func TestBackupRemoteTestFailureHidesSecrets(t *testing.T) {
 	}
 	assertNoDavSecrets(t, "上传失败响应", data)
 	_, data = e.do(admin, "GET", "/api/backups/remote/uploads", nil)
-	var ups []model.BackupUpload
-	if err := json.Unmarshal(data, &ups); err != nil || len(ups) != 1 || ups[0].Success || ups[0].ReasonCode != model.UploadReasonAuth {
+	var list model.BackupUploadList
+	if err := json.Unmarshal(data, &list); err != nil || len(list.Uploads) != 1 || list.Uploads[0].Success || list.Uploads[0].ReasonCode != model.UploadReasonAuth {
 		t.Fatalf("记录 = %s", data)
+	}
+	if list.LastResult == nil || list.LastResult.ID != list.Uploads[0].ID {
+		t.Fatalf("last_result = %s", data)
 	}
 	assertNoDavSecrets(t, "上传记录", data)
 	if !strings.Contains(logs(), "远端备份上传失败") {
@@ -240,8 +246,9 @@ func TestBackupRemoteEndToEndWebDAV(t *testing.T) {
 		t.Fatalf("上传记录 = %s", data)
 	}
 	_, data = e.do(admin, "GET", "/api/backups/remote/uploads", nil)
-	var ups []model.BackupUpload
-	if err := json.Unmarshal(data, &ups); err != nil || len(ups) != 1 || ups[0].ID != rec.ID {
+	var list model.BackupUploadList
+	if err := json.Unmarshal(data, &list); err != nil || len(list.Uploads) != 1 || list.Uploads[0].ID != rec.ID ||
+		list.LastResult == nil || list.LastResult.ID != rec.ID {
 		t.Fatalf("上传记录列表 = %s", data)
 	}
 
@@ -301,4 +308,69 @@ func TestBackupRemoteEndToEndWebDAV(t *testing.T) {
 	if !cfg.PassphraseChanged {
 		t.Fatalf("改口令后 passphrase_changed 应为 true：%s", data)
 	}
+}
+
+func TestBackupUploadsEmptyListShape(t *testing.T) {
+	e := newEnv(t)
+	admin := e.setup()
+	_, data := e.do(admin, "GET", "/api/backups/remote/uploads", nil)
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil || string(raw["uploads"]) != "[]" || string(raw["last_result"]) != "null" {
+		t.Fatalf("空列表应为 uploads=[] 与 last_result=null：%s", data)
+	}
+}
+
+func TestWriteRemoteErrorShuttingDownIs503(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeRemoteError(rec, httptest.NewRequest(http.MethodPost, "/api/backups/remote/upload", nil), remote.ErrShuttingDown)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("状态码 = %d", rec.Code)
+	}
+	var er struct{ Error struct{ Code string } }
+	if err := json.Unmarshal(rec.Body.Bytes(), &er); err != nil || er.Error.Code != httpx.CodeShuttingDown {
+		t.Fatalf("响应 = %s", rec.Body.String())
+	}
+}
+
+func TestWriteRemoteErrorLocalReadIsRemoteFailedWithReason(t *testing.T) {
+	rec := httptest.NewRecorder()
+	err := remote.NewError(remote.ReasonLocalRead, "读取本地备份: boom", nil)
+	writeRemoteError(rec, httptest.NewRequest(http.MethodPost, "/api/backups/remote/upload", nil), err)
+	var er struct {
+		Error struct {
+			Code    string
+			Details map[string]any
+		}
+	}
+	if rec.Code != http.StatusBadGateway || json.Unmarshal(rec.Body.Bytes(), &er) != nil ||
+		er.Error.Code != httpx.CodeBackupRemoteFailed || er.Error.Details["reason"] != "local_read" {
+		t.Fatalf("响应 = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// 重置：配置与密文清空，之后读取为默认值、立即上传报未启用，日志与响应不含密钥。
+func TestBackupRemoteReset(t *testing.T) {
+	e := newEnv(t)
+	admin := e.setup()
+	logs := captureLogs(t)
+	dav, _ := newDavServer(t)
+	if resp, data := e.do(admin, "PUT", "/api/backups/remote", davInput(dav.URL)); resp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT = %d %s", resp.StatusCode, data)
+	}
+	resp, data := e.do(admin, "DELETE", "/api/backups/remote", nil)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE = %d %s", resp.StatusCode, data)
+	}
+	_, data = e.do(admin, "GET", "/api/backups/remote", nil)
+	var cfg model.BackupRemote
+	if err := json.Unmarshal(data, &cfg); err != nil || cfg.Enabled || cfg.WebDAVURL != "" || cfg.WebDAVPassword.Set || cfg.Passphrase.Set {
+		t.Fatalf("重置后配置 = %s", data)
+	}
+	resp, data = e.do(admin, "POST", "/api/backups/remote/upload", nil)
+	e.expectError(resp, data, http.StatusConflict, httpx.CodeBackupRemoteDisabled)
+	// 重复重置也成功。
+	if resp, data := e.do(admin, "DELETE", "/api/backups/remote", nil); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("重复 DELETE = %d %s", resp.StatusCode, data)
+	}
+	assertNoDavSecrets(t, "日志", []byte(logs()))
 }

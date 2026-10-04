@@ -24,6 +24,8 @@ const (
 	ReasonNotWritable Reason = "not_writable"
 	// ReasonIO 其余读写失败，包括无进展超时。
 	ReasonIO Reason = "io"
+	// ReasonLocalRead 上传途中读取本地备份文件出错（打开失败仍记 no_local）。
+	ReasonLocalRead Reason = "local_read"
 )
 
 // 时间限制。连接超时由各目标实现在拨号时使用；上传没有总时长限制，只有无进展超时。

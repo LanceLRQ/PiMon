@@ -410,3 +410,11 @@ func (s *Service) Put(ctx context.Context, in model.BackupRemoteInput) (model.Ba
 func (s *Service) Uploads(ctx context.Context, limit int) ([]model.BackupUpload, error) {
 	return s.cfg.Repo.Uploads(ctx, limit)
 }
+
+// Reset 清空远端备份配置与密文（上传记录保留），之后按未启用处理。
+func (s *Service) Reset(ctx context.Context) error { return s.cfg.Repo.Reset(ctx) }
+
+// LastResult 返回最近一条有结果的上传记录（跳过因关停被取消的），没有时返回 nil。
+func (s *Service) LastResult(ctx context.Context) (*model.BackupUpload, error) {
+	return s.cfg.Repo.LastResult(ctx)
+}

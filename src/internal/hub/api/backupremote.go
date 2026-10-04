@@ -11,7 +11,7 @@ import (
 	"github.com/LanceLRQ/PiMon/src/pkg/model"
 )
 
-// registerBackupRemote 注册远端备份的 4 组路由（管理员）。字面量路径 /api/backups/remote 比 /api/backups/{name} 更具体，
+// registerBackupRemote 注册远端备份的路由（管理员）。字面量路径 /api/backups/remote 比 /api/backups/{name} 更具体，
 // 不会冲突，合法的本地备份名也不可能叫 remote。
 func (s *server) registerBackupRemote(mux *http.ServeMux) {
 	if s.RemoteBackups == nil {
@@ -19,6 +19,7 @@ func (s *server) registerBackupRemote(mux *http.ServeMux) {
 	}
 	mux.HandleFunc("GET /api/backups/remote", s.admin(s.getBackupRemote))
 	mux.HandleFunc("PUT /api/backups/remote", s.admin(s.putBackupRemote))
+	mux.HandleFunc("DELETE /api/backups/remote", s.admin(s.resetBackupRemote))
 	mux.HandleFunc("POST /api/backups/remote/test", s.admin(s.testBackupRemote))
 	mux.HandleFunc("POST /api/backups/remote/upload", s.admin(s.uploadBackupRemote))
 	mux.HandleFunc("GET /api/backups/remote/uploads", s.admin(s.listBackupUploads))
@@ -46,6 +47,16 @@ func (s *server) putBackupRemote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, cfg)
+}
+
+// resetBackupRemote 清空远端备份配置与全部密文（上传记录保留），之后按未启用处理。
+// 配置无法读取（如 secret.key 与数据库不匹配）时的自救入口；幂等。
+func (s *server) resetBackupRemote(w http.ResponseWriter, r *http.Request) {
+	if err := s.RemoteBackups.Reset(r.Context()); err != nil {
+		internalError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // testBackupRemote 用请求体中的配置测试连接（未保存也可测，密钥留空用已保存的值）。
@@ -92,7 +103,12 @@ func (s *server) listBackupUploads(w http.ResponseWriter, r *http.Request) {
 		internalError(w, r, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, list)
+	last, err := s.RemoteBackups.LastResult(r.Context())
+	if err != nil {
+		internalError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, model.BackupUploadList{Uploads: list, LastResult: last})
 }
 
 // writeRemoteError 把远端备份服务的错误映射为 API 错误码。*remote.Error 的消息已脱敏，不含密码与口令。
