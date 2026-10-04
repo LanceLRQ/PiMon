@@ -8,6 +8,8 @@ type placement struct {
 	plugin    string
 	widget    string
 	aggregate bool
+	// dataSource 仅聚合小组件：非空表示按数据源自动汇总（hosts：主机灯组），不绑实例引用。
+	dataSource string
 	// generic 表示通用小组件：把 refPlugin 实例的 refItem 数据项套上 template 模板，标题取 titleZh/titleEn。
 	generic          bool
 	template         string
@@ -26,6 +28,10 @@ func reach(w, h, col, row int) placement {
 	return placement{id: "reach", aggregate: true, template: "status-grid", w: w, h: h, col: col, row: row}
 }
 
+func hosts(w, h, col, row int) placement {
+	return placement{id: "hosts", aggregate: true, dataSource: model.AggregateSourceHosts, template: "status-grid", w: w, h: h, col: col, row: row}
+}
+
 func chart(id, refPlugin, refItem, titleZh, titleEn string, w, h, col, row int) placement {
 	return placement{id: id, generic: true, template: "chart", refPlugin: refPlugin, refItem: refItem, titleZh: titleZh, titleEn: titleEn, w: w, h: h, col: col, row: row}
 }
@@ -34,24 +40,24 @@ func gaugeOf(id, refPlugin, refItem, titleZh, titleEn string, w, h, col, row int
 	return placement{id: id, generic: true, template: "gauge", refPlugin: refPlugin, refItem: refItem, titleZh: titleZh, titleEn: titleEn, w: w, h: h, col: col, row: row}
 }
 
-// placements 是三份种子布局：时钟、天气、树莓派主机指标与网络连通总览。
-// 所用尺寸都是 manifest 或通用、聚合目录已声明的。
+// placements 是三份种子布局：时钟、天气、树莓派主机指标、网络连通总览与主机灯组（灯组都在第 3 行右侧 2x2）。
+// 所用尺寸都是 manifest 或通用、聚合目录已声明的。只影响新安装：已有布局不随种子改动。
 var placements = map[model.Grid][]placement{
 	{Cols: 6, Rows: 4}: {
 		plugin("clock", pluginCore, "clock", 4, 2, 0, 0),
 		plugin("weather", pluginWeather, "weather", 2, 2, 4, 0),
 		plugin("overview", pluginHost, "overview", 2, 2, 0, 2),
 		reach(2, 2, 2, 2),
-		plugin("cpu", pluginHost, "cpu", 1, 1, 4, 2),
-		plugin("memory", pluginHost, "memory", 1, 1, 5, 2),
-		plugin("temperature", pluginHost, "temperature", 1, 1, 4, 3),
+		// CPU、内存、温度已在主机总览里，6x4 不再单列，腾出位置给灯组。
+		hosts(2, 2, 4, 2),
 	},
 	{Cols: 8, Rows: 5}: {
 		plugin("clock", pluginCore, "clock", 4, 2, 0, 0),
 		plugin("weather", pluginWeather, "weather", 4, 2, 4, 0),
 		plugin("overview", pluginHost, "overview", 2, 2, 0, 2),
 		plugin("disks", pluginHost, "disks", 2, 2, 2, 2),
-		reach(4, 2, 4, 2),
+		reach(2, 2, 4, 2),
+		hosts(2, 2, 6, 2),
 		plugin("cpu", pluginHost, "cpu", 1, 1, 0, 4),
 		plugin("memory", pluginHost, "memory", 1, 1, 1, 4),
 		plugin("temperature", pluginHost, "temperature", 1, 1, 2, 4),
@@ -65,7 +71,8 @@ var placements = map[model.Grid][]placement{
 		plugin("memory", pluginHost, "memory", 1, 1, 9, 1),
 		plugin("overview", pluginHost, "overview", 2, 2, 0, 2),
 		plugin("disks", pluginHost, "disks", 2, 2, 2, 2),
-		reach(6, 2, 4, 2),
+		reach(4, 2, 4, 2),
+		hosts(2, 2, 8, 2),
 		// 第 5–6 行：CPU 与内存历史曲线各 4x2，温度仪表 2x2，与上方四行一起铺满 10x6。
 		chart("cpu-history", pluginHost, "cpu", "CPU 使用率", "CPU usage", 4, 2, 0, 4),
 		chart("memory-history", pluginHost, "mem", "内存使用率", "Memory usage", 4, 2, 4, 4),

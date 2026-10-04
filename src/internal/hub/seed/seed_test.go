@@ -55,6 +55,10 @@ type registry map[string]plugins.Plugin
 
 func (r registry) Get(id string) (plugins.Plugin, bool) { p, ok := r[id]; return p, ok }
 
+func (r registry) MachinePlugin(string, string) (plugins.Plugin, bool) {
+	return plugins.Plugin{}, false
+}
+
 func newFixture(t *testing.T, existing ...model.Instance) *fixture {
 	t.Helper()
 	db, err := store.Open(filepath.Join(t.TempDir(), "pimon.db"))
@@ -214,12 +218,14 @@ func TestAllSeedLayoutsPassValidation(t *testing.T) {
 				kinds["weather"] = true
 			case w.PluginID == "host-metrics":
 				kinds["host"] = true
+			case w.Source == model.WidgetSourceAggregate && w.Binding.DataSource == model.AggregateSourceHosts:
+				kinds["hosts"] = true
 			case w.Source == model.WidgetSourceAggregate && w.Template == "status-grid":
 				kinds["reach"] = true
 			}
 		}
-		if len(kinds) != 4 {
-			t.Errorf("网格 %+v 应含时钟、天气、主机指标与网络连通总览: %v", g, kinds)
+		if len(kinds) != 5 {
+			t.Errorf("网格 %+v 应含时钟、天气、主机指标、网络连通总览与主机灯组: %v", g, kinds)
 		}
 	}
 	if _, ok := f.seeder.Layout(model.Grid{Cols: 7, Rows: 3}); ok {
@@ -234,8 +240,8 @@ func TestSeedLayoutOmitsReachWhenInstanceMissing(t *testing.T) {
 		t.Fatal("应能生成")
 	}
 	for _, w := range l.Screens[0].Widgets {
-		if w.Source == model.WidgetSourceAggregate {
-			t.Fatalf("没有 net-reach 实例时不应放聚合小组件: %+v", w)
+		if w.Source == model.WidgetSourceAggregate && w.Binding.DataSource == "" {
+			t.Fatalf("没有 net-reach 实例时不应放按引用绑定的聚合小组件: %+v", w)
 		}
 	}
 }
@@ -364,5 +370,68 @@ func TestGenericWidgetsKeepPlaceWhenInstanceMissing(t *testing.T) {
 	cur, _ := f.layout.Current(context.Background())
 	if _, err := f.layout.Save(context.Background(), cur.Version, l, screens.SaveOptions{Source: model.LayoutSourceAuto}); err != nil {
 		t.Fatalf("缺实例的种子布局仍应能保存: %v", err)
+	}
+}
+
+// 主机灯组的位置与尺寸（Ruling 3）：三份种子都有一块 2x2 灯组，网络连通总览相应缩小；
+// 6x4 去掉主机总览里已有的 CPU、内存、温度三个 1x1。灯组不依赖任何实例，没有实例时也在。
+func TestSeedLayoutsPlaceHostsGrid(t *testing.T) {
+	type spot struct{ w, h, col, row int }
+	cases := []struct {
+		grid    model.Grid
+		hosts   spot
+		reach   spot
+		missing []string
+	}{
+		{model.Grid{Cols: 6, Rows: 4}, spot{2, 2, 4, 2}, spot{2, 2, 2, 2}, []string{"cpu", "memory", "temperature"}},
+		{model.Grid{Cols: 8, Rows: 5}, spot{2, 2, 6, 2}, spot{2, 2, 4, 2}, nil},
+		{model.Grid{Cols: 10, Rows: 6}, spot{2, 2, 8, 2}, spot{4, 2, 4, 2}, nil},
+	}
+	for _, withInstances := range []bool{true, false} {
+		f := newFixture(t)
+		if withInstances {
+			if err := f.seeder.Run(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, c := range cases {
+			l, ok := f.seeder.Layout(c.grid)
+			if !ok {
+				t.Fatalf("%+v 应有种子", c.grid)
+			}
+			byID := map[string]model.LayoutWidget{}
+			for _, w := range l.Screens[0].Widgets {
+				byID[w.ID] = w
+			}
+			h, ok := byID["hosts"]
+			if !ok {
+				t.Fatalf("%+v（有实例=%v）缺主机灯组", c.grid, withInstances)
+			}
+			if h.Source != model.WidgetSourceAggregate || h.Template != "status-grid" || h.Binding.DataSource != model.AggregateSourceHosts || len(h.Binding.Refs) != 0 {
+				t.Errorf("%+v 灯组绑定 = %+v", c.grid, h)
+			}
+			if got := (spot{h.Size.Cols, h.Size.Rows, h.Col, h.Row}); got != c.hosts {
+				t.Errorf("%+v 灯组位置 = %+v，期望 %+v", c.grid, got, c.hosts)
+			}
+			if h.Options["title"] != "主机" {
+				t.Errorf("%+v 灯组标题 = %v", c.grid, h.Options["title"])
+			}
+			if r, ok := byID["reach"]; withInstances && (!ok || (spot{r.Size.Cols, r.Size.Rows, r.Col, r.Row}) != c.reach) {
+				t.Errorf("%+v 网络连通总览 = %+v，期望 %+v", c.grid, r, c.reach)
+			}
+			for _, id := range c.missing {
+				if _, ok := byID[id]; ok {
+					t.Errorf("%+v 不应再有 %s", c.grid, id)
+				}
+			}
+		}
+	}
+	f := newFixture(t)
+	f.lang = "en"
+	l, _ := f.seeder.Layout(model.Grid{Cols: 8, Rows: 5})
+	for _, w := range l.Screens[0].Widgets {
+		if w.ID == "hosts" && w.Options["title"] != "Hosts" {
+			t.Errorf("英文灯组标题 = %v", w.Options["title"])
+		}
 	}
 }

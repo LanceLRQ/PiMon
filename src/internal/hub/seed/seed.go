@@ -135,7 +135,8 @@ func (s *Seeder) lang() string {
 }
 
 // Layout 按网格返回种子布局，实例引用取调用时各插件最早创建的实例；该网格没有种子时 ok 为 false。
-// 对应实例已被删除时，插件小组件退回占位绑定，通用小组件不绑引用（解析为未配置占位），聚合小组件整个省略，保证布局始终可保存。
+// 对应实例已被删除时，插件小组件退回占位绑定，通用小组件不绑引用（解析为未配置占位），按引用绑定的聚合小组件整个省略
+// （主机灯组不依赖实例，始终保留），保证布局始终可保存。
 // 它同时是 screens.SeedFunc，装配时经 UseSeedLayouts 注入。
 func (s *Seeder) Layout(grid model.Grid) (model.Layout, bool) {
 	place, ok := placements[grid]
@@ -149,9 +150,9 @@ func (s *Seeder) Layout(grid model.Grid) (model.Layout, bool) {
 		slog.Warn("读取实例列表失败，本次不提供种子布局", "grid", fmt.Sprintf("%dx%d", grid.Cols, grid.Rows), "err", err)
 		return model.Layout{}, false
 	}
-	home, reachTitle := "首页", "网络连通总览"
+	home, reachTitle, hostsTitle := "首页", "网络连通总览", "主机"
 	if s.lang() == "en" {
-		home, reachTitle = "Home", "Network overview"
+		home, reachTitle, hostsTitle = "Home", "Network overview", "Hosts"
 	}
 	widgets := make([]model.LayoutWidget, 0, len(place))
 	for _, p := range place {
@@ -170,6 +171,11 @@ func (s *Seeder) Layout(grid model.Grid) (model.Layout, bool) {
 			if s.lang() == "en" {
 				w.Options["title"] = p.titleEn
 			}
+		case p.aggregate && p.dataSource != "":
+			// 主机灯组自动包含中枢与全部已确认设备，不依赖任何实例。
+			w.Source, w.Template = model.WidgetSourceAggregate, p.template
+			w.Binding.DataSource = p.dataSource
+			w.Options["title"] = hostsTitle
 		case p.aggregate:
 			id, ok := ids[pluginReach]
 			if !ok {
