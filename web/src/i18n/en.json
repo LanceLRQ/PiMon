@@ -181,7 +181,7 @@
       "neverSeen": "Never connected",
       "hubUptime": "Up {{uptime}}",
       "placeholder": {
-        "pending": "Waiting to connect",
+        "pending": "Not connected yet. Run the install command before the pairing code expires.",
         "repairing": "Re-pairing (replaces {{name}})",
         "dangling": "Dangling placeholder",
         "needsUpgrade": "Upgrade required before it can connect"

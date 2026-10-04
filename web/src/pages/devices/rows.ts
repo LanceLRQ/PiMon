@@ -46,7 +46,7 @@ export interface HubFacts {
   version: string
   platform: string
   uptimeText: string | null
-  instances: number
+  instances: number | null
 }
 
 export function hubRow(t: TFunction, facts: HubFacts): DeviceRow {
@@ -79,7 +79,7 @@ export function hubRow(t: TFunction, facts: HubFacts): DeviceRow {
 export function deviceRow(
   t: TFunction,
   d: Device,
-  ctx: { devices: readonly Device[]; hubVersion: string | null; now: number; proxies: readonly Proxy[]; instanceCounts: ReadonlyMap<string, number> },
+  ctx: { devices: readonly Device[]; hubVersion: string | null; now: number; proxies: readonly Proxy[]; instanceCounts: ReadonlyMap<string, number> | null },
 ): DeviceRow {
   const placeholder = placeholderKind(d, ctx.devices)
   const presence = presenceView(d)
@@ -106,7 +106,7 @@ export function deviceRow(
     replacesName: ctx.devices.find((x) => x.id === d.replaces)?.name ?? d.replaces,
     upgrade: needsUpgrade(d, ctx.hubVersion),
     upgradeReason: d.incompatible?.reason ?? null,
-    instances: d.confirmed ? (ctx.instanceCounts.get(d.id) ?? 0) : null,
+    instances: d.confirmed && ctx.instanceCounts ? (ctx.instanceCounts.get(d.id) ?? 0) : null,
     allowOffline: d.allow_offline,
     maintenance: d.maintenance,
     needsRepair: presence.needsRepair,

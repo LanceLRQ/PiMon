@@ -22,6 +22,7 @@ import { DeviceCards, DeviceTableView } from './DeviceTable'
 import { deviceCounts, hubVersionOf, matchesFilter, matchesQuery, type DeviceFilter } from './model'
 import { deviceRow, hubRow, type DeviceRow } from './rows'
 
+const selectSynced = (s: LiveState) => s.synced
 const selectBuild = (s: LiveState) => s.build
 const filters: DeviceFilter[] = ['all', 'online', 'bad', 'dormant', 'pending']
 
@@ -35,6 +36,7 @@ export function DevicesPage() {
   const devices = useLiveStore(selectDevices)
   const instances = useLiveStore(selectInstances)
   const build = useLiveStore(selectBuild)
+  const synced = useLiveStore(selectSynced)
   const { info } = useSystemInfo()
   const uptime = useUptimeSeconds(info?.uptime_seconds)
   const [params, setParams] = useSearchParams()
@@ -59,11 +61,13 @@ export function DevicesPage() {
     }
   }, [needProxies])
 
+  // 实例还没同步时数量未知，不当作 0
   const instanceCounts = useMemo(() => {
+    if (!synced) return null
     const m = new Map<string, number>()
     for (const i of instances) m.set(i.runs_on, (m.get(i.runs_on) ?? 0) + 1)
     return m
-  }, [instances])
+  }, [instances, synced])
 
   const hub = useMemo(
     () =>
@@ -71,7 +75,7 @@ export function DevicesPage() {
         version: info?.version ?? '—',
         platform: info ? `${info.os}/${info.arch}` : '—',
         uptimeText: uptime !== null ? formatUptime(t, uptime) : null,
-        instances: instanceCounts.get('hub') ?? 0,
+        instances: instanceCounts ? (instanceCounts.get('hub') ?? 0) : null,
       }),
     [t, info, uptime, instanceCounts],
   )
@@ -157,7 +161,7 @@ export function DevicesPage() {
         no="07"
         title={t('pages.devices')}
         sub={devices ? t('devices.list.sub', { count: total, in: dialIn, out: dialOut }) : undefined}
-        actions={<span className="mobile:hidden">{addButton}</span>}
+        actions={addButton}
       />
       <div className="flex flex-col gap-4 p-6 mobile:p-3.5">
         <section aria-label={t('devices.list.stripLabel')} className="overflow-hidden rounded-[2px] border border-line-strong bg-card">

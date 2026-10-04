@@ -181,7 +181,7 @@
       "neverSeen": "从未连接",
       "hubUptime": "已运行 {{uptime}}",
       "placeholder": {
-        "pending": "等待连接",
+        "pending": "尚未连接，请在配对码有效期内执行安装命令",
         "repairing": "重新配对中（替换 {{name}}）",
         "dangling": "悬挂占位",
         "needsUpgrade": "需要升级后才能接入"

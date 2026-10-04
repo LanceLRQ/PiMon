@@ -115,7 +115,8 @@ describe('占位设备', () => {
     const dangling = device('p3', { name: '悬挂占位机', confirmed: false, presence: 'pending', replaces: 'gone' })
     const upgrade = device('p4', { name: '升级占位', confirmed: false, presence: 'pending', incompatible: { reason: 'version_too_old' } as never })
     const api = await mount([nas, wait, repair, dangling, upgrade])
-    expect(within(rowOf('待连接')).getAllByText('等待连接').length).toBeGreaterThan(0)
+    expect(within(rowOf('待连接')).getAllByText('等待连接')).toHaveLength(1)
+    expect(within(rowOf('待连接')).getByText('尚未连接，请在配对码有效期内执行安装命令')).toBeInTheDocument()
     expect(within(rowOf('重配占位')).getByText('重新配对中（替换 飞牛 NAS）')).toBeInTheDocument()
     expect(within(rowOf('悬挂占位机')).getByText('悬挂占位')).toBeInTheDocument()
     expect(within(rowOf('升级占位')).getByText('需要升级后才能接入')).toBeInTheDocument()
@@ -168,6 +169,23 @@ describe('空状态与未加载', () => {
     expect(screen.queryByText('还没有添加设备')).toBeNull()
     expect(screen.getByText('设备列表加载中')).toBeInTheDocument()
     expect(bodyRows()[0]).toHaveAttribute('data-device-id', 'hub')
+  })
+
+  it('实例未同步时中枢的实例数显示「—」而不是 0', async () => {
+    mockApi((req) => (req.url === '/api/system' ? json(200, sys) : undefined))
+    await renderWithApp(<DevicesPage />)
+    const hubRow = bodyRows()[0]
+    expect(within(hubRow).queryByText('0')).toBeNull()
+    expect(within(hubRow).getAllByText('—').length).toBeGreaterThan(0)
+  })
+
+  it('手机宽度下页头的「添加设备」按钮仍可见可点', async () => {
+    const user = userEvent.setup()
+    await mount([nas], { mobile: true })
+    const btn = screen.getAllByRole('button', { name: '添加设备' })[0]
+    expect(btn.closest('.mobile\\:hidden')).toBeNull()
+    await user.click(btn)
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
   })
 
   it('「添加设备」按钮打开占位对话框', async () => {
