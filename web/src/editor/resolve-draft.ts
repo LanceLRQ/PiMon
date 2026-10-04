@@ -1,8 +1,10 @@
 import type {
+  Device,
   Instance,
   LayoutScreen,
   LayoutWidget,
   PluginInfo,
+  ResolvedHost,
   ResolvedRef,
   ResolvedScreen,
   ResolvedWidget,
@@ -31,6 +33,44 @@ function worst(states: string[]): string {
 export interface ResolveContext {
   plugins: readonly PluginInfo[]
   instances: readonly Instance[]
+  /** 设备列表（不含中枢）；还没收到时为 null，灯组只有中枢一格 */
+  devices?: readonly Device[] | null
+}
+
+const hostMetricsPlugin = 'host-metrics'
+const hostCpuItem = 'cpu'
+
+/** 实例比较：创建更早者优先，同时刻按 id 升序（与服务端 earlier 一致） */
+function earlier(a: Instance, b: Instance): boolean {
+  return a.created_at !== b.created_at ? a.created_at < b.created_at : a.id < b.id
+}
+
+/** 设备那一格的状态：维护优先；未在线且不兼容为 incompatible；其余取在线状态（空值按 pending），与服务端 hostState 一致 */
+function hostState(d: Device): string {
+  if (d.maintenance) return 'maintenance'
+  if (d.incompatible && d.presence !== 'online') return 'incompatible'
+  return d.presence || 'pending'
+}
+
+/**
+ * 主机灯组各格，复刻服务端 hostCells：中枢固定第一、状态恒为 online；其后按设备列表顺序，只收已确认设备；
+ * 每台机器的 CPU 来源取 runs_on 等于它、创建最早的 host-metrics 实例（暂停的也算，runs_on 为空按中枢）。
+ */
+export function hostCells(instances: readonly Instance[], devices: readonly Device[] | null | undefined): ResolvedHost[] {
+  const cpu = new Map<string, Instance>()
+  for (const i of instances) {
+    if (i.plugin_id !== hostMetricsPlugin) continue
+    const m = i.runs_on || 'hub'
+    const cur = cpu.get(m)
+    if (!cur || earlier(i, cur)) cpu.set(m, i)
+  }
+  const cell = (id: string, name: string, state: string): ResolvedHost => {
+    const c = cpu.get(id)
+    return { id, name, state, ...(c ? { instance_id: c.id } : {}) }
+  }
+  const out = [cell('hub', '', 'online')]
+  for (const d of devices ?? []) if (d.confirmed) out.push(cell(d.id, d.name, hostState(d)))
+  return out
 }
 
 function refTitle(plugins: readonly PluginInfo[], instances: readonly Instance[], instanceId: string, item: string): string | undefined {
@@ -77,6 +117,14 @@ export function resolveWidget(w: LayoutWidget, ctx: ResolveContext): ResolvedWid
       slots,
       display_state: display,
     }
+  }
+
+  if (w.source === 'aggregate' && w.binding.data_source === 'hosts') {
+    const hosts = hostCells(ctx.instances, ctx.devices)
+    const items: ResolvedRef[] = hosts
+      .filter((h) => h.instance_id)
+      .map((h) => ({ instance_id: h.instance_id!, item: hostCpuItem, title: refTitle(ctx.plugins, ctx.instances, h.instance_id!, hostCpuItem) }))
+    return { ...common, template: w.template ?? '', title, slots: { items }, display_state: 'ok', hosts }
   }
 
   const refs = w.binding.refs ?? []

@@ -1344,6 +1344,9 @@
       "online": "在线",
       "offline": "离线"
     },
+    "dataSource": {
+      "hosts": "主机灯组"
+    },
     "template": {
       "value": "通用 · 数值",
       "gauge": "通用 · 仪表",
@@ -1444,6 +1447,8 @@
       "iconNone": "不显示图标",
       "text": "正文",
       "threshold": "手动阈值配色",
+      "hostsAuto": "自动包含中枢与全部已确认的设备，无需逐项绑定。每格显示设备名与在线状态，以及该设备上第一个 host-metrics 实例的 CPU。",
+      "hostsThreshold": "主机灯组的阈值作用于各机器的 CPU 读数。",
       "thresholdOff": "关闭时按数据项自身的状态着色，数值项保持中性色。",
       "direction": "触发方向",
       "above": "高于",

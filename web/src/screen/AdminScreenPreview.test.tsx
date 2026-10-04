@@ -75,7 +75,7 @@ describe('管理员 /screen 预览', () => {
     await waitFor(() => expect(FakeSocket.last).not.toBeNull())
     const sock = FakeSocket.last!
     act(() => sock.onopen?.())
-    expect(sock.sent.find((m) => m.type === 'subscribe')?.topics).toEqual(['instances', 'settings', 'layout', 'screen_state', 'screen_data'])
+    expect(sock.sent.find((m) => m.type === 'subscribe')?.topics).toEqual(['instances', 'devices', 'settings', 'layout', 'screen_state', 'screen_data'])
     act(() =>
       sock.receive({
         type: 'snapshot', build: 'b', server_time: new Date().toISOString(), role: 'admin', topics: [], instances: [], settings,

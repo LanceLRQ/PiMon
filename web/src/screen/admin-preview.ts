@@ -7,8 +7,8 @@ import type { ScreenStore } from './screen-store'
 // 这里把它适配成屏幕端 store 认识的形状。布局解析结果走 GET /api/screens/resolved，
 // 实例数据订阅 screen_data（管理员会话可订阅）。预览端不上报 viewport，也不是屏幕会话，不影响显示器在线状态。
 
-/** 预览订阅的主题：在管理员默认主题之外额外订阅 screen_data；instances 用来感知实例增删与状态变化（解析布局随之变） */
-export const previewTopics = ['instances', 'settings', 'layout', 'screen_state', 'screen_data']
+/** 预览订阅的主题：在管理员默认主题之外额外订阅 screen_data；instances、devices 用来感知实例与设备的增删和状态变化（解析布局随之变） */
+export const previewTopics = ['instances', 'devices', 'settings', 'layout', 'screen_state', 'screen_data']
 
 /** 完整设置里屏幕端用到的子集 */
 export function toScreenSettings(s: Settings): ScreenSettings {
@@ -54,7 +54,9 @@ export class PreviewSink implements SocketSink {
         return
       case 'instance_state':
       case 'instance_removed':
-        // 实例增删与展示状态变化会让解析布局变化（真实屏幕会收到新布局）：合并一小段时间内的多次变化再重取
+      case 'device':
+      case 'device_removed':
+        // 实例与设备（主机灯组）增删及状态变化会让解析布局变化（真实屏幕会收到新布局）：合并一小段时间内的多次变化再重取
         this.pendingTime = p.server_time
         if (!this.timer) {
           this.timer = setTimeout(() => {

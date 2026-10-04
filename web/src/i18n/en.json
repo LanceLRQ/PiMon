@@ -1344,6 +1344,9 @@
       "online": "online",
       "offline": "offline"
     },
+    "dataSource": {
+      "hosts": "Host lights"
+    },
     "template": {
       "value": "Generic · Value",
       "gauge": "Generic · Gauge",
@@ -1444,6 +1447,8 @@
       "iconNone": "No icon",
       "text": "Body text",
       "threshold": "Manual threshold colouring",
+      "hostsAuto": "Automatically includes the hub and every confirmed device, no per-item binding. Each cell shows the device name, its online state and the CPU of the first host-metrics instance on it.",
+      "hostsThreshold": "For host lights the threshold applies to each machine's CPU reading.",
       "thresholdOff": "When off, the widget follows the data item's own state; numeric items stay neutral.",
       "direction": "Trigger direction",
       "above": "Above",

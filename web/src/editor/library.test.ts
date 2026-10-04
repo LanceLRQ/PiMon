@@ -44,14 +44,27 @@ describe('小组件库', () => {
     expect(filterLibrary(lib, 'generic', 'cpu')).toHaveLength(0)
     expect(filterLibrary(lib, 'aggregate', '')).toHaveLength(1)
   })
-  it('按数据源汇总的目录条目暂不列入，库内键不重复', () => {
+  it('按数据源汇总的条目带数据源，键与同模板条目不重复，创建时不带引用', () => {
     const withHosts: WidgetCatalog = {
       ...catalog,
-      aggregate: [...catalog.aggregate, { template: 'status-grid', data_source: 'hosts', sizes: [{ cols: 2, rows: 2 }] }],
+      aggregate: [...catalog.aggregate, { template: 'status-grid', data_source: 'hosts', sizes: [{ cols: 2, rows: 2 }, { cols: 4, rows: 2 }] }],
     }
-    const keys = buildLibrary(plugins, withHosts, title).map((e) => e.key)
+    const entries = buildLibrary(plugins, withHosts, (tpl, ds) => (ds ? `H:${ds}` : title(tpl)))
+    const keys = entries.map((e) => e.key)
     expect(new Set(keys).size).toBe(keys.length)
-    expect(keys.filter((k) => k.startsWith('aggregate:'))).toEqual(['aggregate:status-grid'])
+    expect(keys.filter((k) => k.startsWith('aggregate:'))).toEqual(['aggregate:status-grid', 'aggregate:status-grid:hosts'])
+    const hosts = entries.find((e) => e.key === 'aggregate:status-grid:hosts')!
+    expect(hosts.title).toBe('H:hosts')
+    expect(hosts.dataSource).toBe('hosts')
+    const w = createWidget(hosts, { cols: 2, rows: 2 }, { col: 0, row: 0 }, 'x', [])
+    expect(w.source).toBe('aggregate')
+    expect(w.template).toBe('status-grid')
+    expect(w.binding).toEqual({ data_source: 'hosts' })
+    // 允许尺寸按数据源取目录条目，不与同模板的逐项聚合混淆
+    expect(allowedSizesOf(w, [], withHosts)).toEqual([{ cols: 2, rows: 2 }, { cols: 4, rows: 2 }])
+    const plain = createWidget(entries.find((e) => e.key === 'aggregate:status-grid')!, { cols: 2, rows: 2 }, { col: 0, row: 0 }, 'y', [])
+    expect(plain.binding).toEqual({ refs: [] })
+    expect(allowedSizesOf(plain, [], withHosts)).toEqual([{ cols: 2, rows: 2 }])
   })
 })
 
