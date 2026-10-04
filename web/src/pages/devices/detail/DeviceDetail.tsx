@@ -76,7 +76,7 @@ export function DeviceDetail({ device: live, hubVersion, onClose, onRevoke, onRe
   const allInstances = useLiveStore(selectInstances)
   // 保存成功后实时推送可能还没到：取更新时间较新的一份
   const [saved, setSaved] = useState<Device | null>(null)
-  const dev = saved && saved.updated_at > live.updated_at ? saved : live
+  const dev = saved && Date.parse(saved.updated_at) > Date.parse(live.updated_at) ? saved : live
   const [draft, setDraft] = useState<Partial<Fields>>({})
   const [busy, setBusy] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})

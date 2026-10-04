@@ -79,7 +79,7 @@ describe('暂停的远程实例不能测试', () => {
     await user.click(within(rowOf('暂停的远程')).getByRole('button', { name: /更多操作/ }))
     const item = await screen.findByRole('menuitem', { name: /立即采集/ })
     expect(item).toHaveAttribute('aria-disabled', 'true')
-    expect(item).toHaveAttribute('title', '已暂停的设备实例不能测试，请先恢复')
+    expect(item).toHaveAttribute('title', '已暂停的设备实例不能采集，请先恢复')
   })
 
   it('中枢上已暂停的实例仍可立即采集', async () => {
@@ -97,7 +97,7 @@ describe('暂停的远程实例不能测试', () => {
     await user.click(screen.getByRole('button', { name: '暂停的远程' }))
     const btn = await screen.findByRole('button', { name: /立即采集/ })
     expect(btn).toBeDisabled()
-    expect(await screen.findByText('已暂停的设备实例不能测试，请先恢复')).toBeInTheDocument()
+    expect(await screen.findByText('已暂停的设备实例不能采集，请先恢复')).toBeInTheDocument()
   })
 
   it('批量采集跳过已暂停的设备实例，不发请求', async () => {

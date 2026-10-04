@@ -469,7 +469,7 @@ export function RowMenu({ inst, actions, onOpen }: RowMenuProps) {
         </DropdownMenuItem>
         <DropdownMenuItem
           disabled={running || blocked}
-          title={blocked ? t('instances.runBlockedPaused') : undefined}
+          title={blocked ? t('instances.runBlockedCollect') : undefined}
           onSelect={() => void actions.run(inst)}
         >
           <RefreshCw /> {t('instances.menu.run')}

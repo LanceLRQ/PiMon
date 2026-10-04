@@ -120,7 +120,7 @@ export function InstanceDetailDrawer({ id, instance, synced, now, outputs, plugi
           }
           footer={
             <>
-              <Button variant="outline" size="sm" className="rounded-[2px]" disabled={running || blocked} title={blocked ? t('instances.runBlockedPaused') : undefined} onClick={() => void actions.run(inst)}>
+              <Button variant="outline" size="sm" className="rounded-[2px]" disabled={running || blocked} title={blocked ? t('instances.runBlockedCollect') : undefined} onClick={() => void actions.run(inst)}>
                 <RefreshCw className={running ? 'animate-spin' : undefined} /> {t('instances.menu.run')}
               </Button>
               <Button variant="outline" size="sm" className="rounded-[2px]" onClick={() => void actions.setPaused(inst, !inst.paused)}>
@@ -144,7 +144,7 @@ export function InstanceDetailDrawer({ id, instance, synced, now, outputs, plugi
               {blocked && (
                 <div className="mb-2">
                   <Note tone="info" role="status">
-                    {t('instances.runBlockedPaused')}
+                    {t('instances.runBlockedCollect')}
                   </Note>
                 </div>
               )}

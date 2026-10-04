@@ -169,11 +169,16 @@ export function DevicesPage() {
   async function confirmDelete() {
     const row = deleting
     if (!row) return
+    // 抽屉正开着该占位时，随后的设备消失不是「不存在」
+    expectedGone.current.set(row.id, 'revoke')
     try {
       await http.delete(`/api/devices/${row.id}`)
       toast.show(t('devices.list.deleted', { name: row.name }))
       setDeleting(null)
+      expectedGone.current.delete(row.id)
+      if (openId === row.id) closeDrawerQuietly()
     } catch (e) {
+      expectedGone.current.delete(row.id)
       toast.show(translateErrorValue(i18n, e), 'warn')
     }
   }
@@ -329,7 +334,6 @@ export function DevicesPage() {
           title={t('devices.list.deleteTitle')}
           tag="!"
           tagTone="crit"
-          description={t('devices.list.deleteBody', { name: deleting?.name ?? '' })}
           footer={
             <>
               <DialogClose asChild><Button variant="outline" size="sm" className="rounded-[2px]">{t('common.cancel')}</Button></DialogClose>

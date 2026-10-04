@@ -42,7 +42,10 @@ const hostCpuItem = 'cpu'
 
 /** 实例比较：创建更早者优先，同时刻按 id 升序（与服务端 earlier 一致） */
 function earlier(a: Instance, b: Instance): boolean {
-  return a.created_at !== b.created_at ? a.created_at < b.created_at : a.id < b.id
+  // Go 输出的 RFC3339 小数位不定长，字符串比较会排错，按时间戳比较
+  const ta = Date.parse(a.created_at)
+  const tb = Date.parse(b.created_at)
+  return ta !== tb ? ta < tb : a.id < b.id
 }
 
 /** 设备那一格的状态：维护优先；未在线且不兼容为 incompatible；其余取在线状态（空值按 pending），与服务端 hostState 一致 */

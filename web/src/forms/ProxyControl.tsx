@@ -5,7 +5,6 @@ import { useFormContext } from './context'
 import type { ControlProps } from './model'
 import { proxyUsableAt } from './proxy-location'
 
-
 // proxy 字段：下拉「直连」加全局代理列表，空值表示直连
 export function ProxyControl({ value, onChange, id, invalid, describedBy }: ControlProps<string>) {
   const { t } = useTranslation()

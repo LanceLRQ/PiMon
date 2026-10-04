@@ -136,7 +136,7 @@ export interface BackupUpload {
  */
 export interface BackupUploadList {
   uploads: BackupUpload[];
-  last_result?: BackupUpload;
+  last_result: BackupUpload | null;
 }
 /**
  * 上传记录的原因机器码（两端契约，不可随意改名）。前 4 个与 backup.remote_failed 的 details.reason 相同。

@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeInstance } from '@/pages/instances/instances.fixtures'
@@ -18,11 +18,11 @@ const ubuntu = device('d2', { name: 'Ubuntu 服务器', presence: 'offline', hos
 const vps = device('d3', { name: 'VPS 东京', role: 'vps', direction: 'dial_out', address: 'wss://203.0.113.8:31418', proxy_id: 'p1', presence: 'disconnected' })
 const mac = device('d4', { name: 'MacBook', role: 'dev', presence: 'dormant', allow_offline: true, os: 'darwin', arch: 'arm64' })
 
-async function mount(devices: Device[] | null, opts: { route?: string; mobile?: boolean } = {}) {
+async function mount(devices: Device[] | null, opts: { route?: string; mobile?: boolean; del?: boolean } = {}) {
   if (opts.mobile) {
     vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('max-width'), media: q, addEventListener() {}, removeEventListener() {} }))
   }
-  const api = mockApi((req) => (req.url === '/api/system' ? json(200, sys) : undefined))
+  const api = mockApi((req) => (req.url === '/api/system' ? json(200, sys) : opts.del && req.method === 'DELETE' ? json(200, {}) : undefined))
   seedStore([makeInstance({ id: 'i1', runs_on: 'd1' }), makeInstance({ id: 'i2', runs_on: 'd1' }), makeInstance({ id: 'i3', runs_on: 'hub' })], devices ? { devices } : {})
   await renderWithApp(<DevicesPage />, { route: opts.route ?? '/devices' })
   return api
@@ -125,6 +125,22 @@ describe('占位设备', () => {
     await user.click(within(rowOf('悬挂占位机')).getByRole('button', { name: '删除占位' }))
     await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: '删除' }))
     await vi.waitFor(() => expect(api.calls.some((c) => c.method === 'DELETE' && c.url === '/api/devices/p3')).toBe(true))
+  })
+})
+
+describe('删除占位时抽屉正开着', () => {
+  it('删除成功后抽屉静默关闭，不弹「设备不存在」', async () => {
+    const user = userEvent.setup()
+    const dangling = device('p3', { name: '悬挂占位机', confirmed: false, presence: 'pending', replaces: 'gone' })
+    const api = await mount([nas, dangling], { route: '/devices?open=p3', del: true })
+    await screen.findByRole('dialog', { name: /设备详情：悬挂占位机/ })
+    // 抽屉是模态的，行按钮 pointer-events 被禁，直接派发点击
+    fireEvent.click(within(rowOf('悬挂占位机')).getByRole('button', { name: '删除占位', hidden: true }))
+    await user.click(within(await screen.findByRole('dialog', { name: '删除占位设备' })).getByRole('button', { name: '删除' }))
+    await vi.waitFor(() => expect(api.calls.some((c) => c.method === 'DELETE' && c.url === '/api/devices/p3')).toBe(true))
+    act(() => liveStore.applyPatch({ type: 'patch', entity: 'device_removed', server_time: new Date().toISOString(), id: 'p3' } as never))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.queryByText('设备不存在或已吊销')).toBeNull()
   })
 })
 

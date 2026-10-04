@@ -42,6 +42,15 @@ describe('草稿解析：主机灯组', () => {
     expect(r.hosts?.[1].name).toBe('a')
   })
 
+  it('创建时间小数位不定长时按时间先后取最早实例，不按字符串比较', () => {
+    const two = [
+      inst('x-frac', 'host-metrics', 'hub', '2026-01-01T00:00:05.5Z'),
+      inst('x-whole', 'host-metrics', 'hub', '2026-01-01T00:00:05Z'),
+    ]
+    const r = resolveWidget(w, { plugins, instances: two, devices: null })
+    expect(r.hosts?.[0].instance_id).toBe('x-whole')
+  })
+
   it('每格状态：维护优先，未在线且不兼容为 incompatible，在线忽略残留记录，空值为 pending', () => {
     const r = resolveWidget(w, { plugins, instances, devices })
     expect(r.hosts?.map((h) => h.state)).toEqual(['online', 'online', 'incompatible', 'maintenance', 'online', 'pending'])

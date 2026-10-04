@@ -41,7 +41,9 @@ export function TestResult({ outcome, outputs }: TestResultProps) {
   const source = outcome.phase === 'failed' ? outcome.machine : outcome.instance.runs_on
   const sourceRow = source ? (
     <p className="px-4 pb-2 font-mono text-[11.5px] text-muted-foreground">
-      {t('editor.result.source', { name: loc.text(source, t('instances.hubLocal')) })}
+      {source === 'hub'
+        ? t('editor.result.sourceHub', { name: t('instances.hubLocal') })
+        : t('editor.result.source', { name: loc.text(source, t('instances.hubLocal')) })}
     </p>
   ) : null
   if (outcome.phase === 'failed') {

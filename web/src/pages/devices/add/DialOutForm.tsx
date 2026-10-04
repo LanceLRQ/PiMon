@@ -49,7 +49,13 @@ export function DialOutForm({ mode, initial, submit, onViewDetail }: DialOutForm
   useEffect(() => {
     let live = true
     http.get<Proxy[]>('/api/proxies').then(
-      (list) => live && setProxies(hubUsableProxies(list)),
+      (list) => {
+        if (!live) return
+        const usable = hubUsableProxies(list)
+        setProxies(usable)
+        // 预填的代理已被删除或不可用时回到直连，让下拉框显示与提交一致
+        setProxyId((cur) => (cur === '' || usable.some((p) => p.id === cur) ? cur : ''))
+      },
       () => {},
     )
     return () => {

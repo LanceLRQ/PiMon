@@ -72,6 +72,21 @@ describe('设备详情抽屉：属性编辑与保存', () => {
     expect(within(dlg).getByLabelText('名称')).toHaveValue('新名字')
   })
 
+  it('保存响应比实时数据只新几百毫秒（小数位不同）时仍采用保存的那份', async () => {
+    const user = userEvent.setup()
+    const live = { ...nas, updated_at: '2026-10-05T00:00:00Z' }
+    await mount([live, vps], '/devices?open=d1', (req) => {
+      if (req.method === 'PUT' && req.url === '/api/devices/d1') return json(200, { ...live, name: '新名字', updated_at: '2026-10-05T00:00:00.5Z' })
+    })
+    const dlg = await drawer()
+    const name = within(dlg).getByLabelText('名称')
+    await user.clear(name)
+    await user.type(name, '新名字')
+    await user.click(within(dlg).getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(within(dlg).queryByText(/未保存改动/)).toBeNull())
+    expect(within(dlg).getByLabelText('名称')).toHaveValue('新名字')
+  })
+
   it('改回原值时不算改动；名称为空时禁止保存', async () => {
     const user = userEvent.setup()
     await mount([nas], '/devices?open=d1')

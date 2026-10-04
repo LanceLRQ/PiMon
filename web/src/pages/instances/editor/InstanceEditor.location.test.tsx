@@ -300,6 +300,20 @@ describe('暂停的远程实例与测试结果来源', () => {
     expect(await screen.findByText('来源设备：NAS-1')).toBeInTheDocument()
   })
 
+  it('中枢上测试成功时来源显示「来源：hub 本机」，不叫设备', async () => {
+    seedDevices()
+    const user = userEvent.setup()
+    const detail = makeDetail({ plugin_id: 'kitchen', runs_on: 'hub' })
+    await mountEdit(detail, (req) => {
+      if (req.method === 'PUT') return json(200, detail)
+      if (req.method === 'POST' && req.url === `/api/instances/${detail.id}/run`) return json(200, okRun('hub'))
+    })
+    await screen.findByLabelText(/^地址/)
+    await user.click(screen.getByRole('button', { name: /保存并测试/ }))
+    expect(await screen.findByText('来源：hub 本机')).toBeInTheDocument()
+    expect(screen.queryByText(/来源设备：hub/)).toBeNull()
+  })
+
   it('测试失败时同样显示来源设备，不兼容按原因出文案', async () => {
     seedDevices()
     const user = userEvent.setup()
