@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { Instance, Settings } from '@/types/generated'
 import type { Patch, Snapshot } from '@/types/protocol.generated'
-import { createLiveStore, serverNow, type LiveStore } from './live-store'
+import { device } from '@/pages/devices/test-utils'
+import { createLiveStore, selectDevices, serverNow, type LiveStore } from './live-store'
 
 function inst(id: string, extra: Partial<Instance> = {}): Instance {
   return {
@@ -126,5 +127,38 @@ describe('实时 store', () => {
     // 没带载荷的 patch 不覆盖已有数据
     store.applyPatch(patch({ entity: 'layout' }))
     expect(store.getState().layout?.version).toBe(4)
+  })
+
+  it('devices 在没收到含 devices 的 snapshot 时为 null，与空列表区分', () => {
+    expect(store.getState().devices).toBeNull()
+    store.applySnapshot(snapshot([]))
+    expect(selectDevices(store.getState())).toBeNull()
+    store.applySnapshot(snapshot([], { devices: [] }))
+    expect(store.getState().devices).toEqual([])
+    store.applySnapshot(snapshot([]))
+    expect(store.getState().devices).toBeNull()
+  })
+
+  it('device patch 按 id 覆盖，不存在则追加；device_removed 删除', () => {
+    store.applySnapshot(snapshot([], { devices: [device('d1'), device('d2')] }))
+    store.applyPatch(patch({ entity: 'device', device: device('d1', { presence: 'offline' }) }))
+    expect(store.getState().devices?.map((d) => [d.id, d.presence])).toEqual([
+      ['d1', 'offline'],
+      ['d2', 'online'],
+    ])
+    store.applyPatch(patch({ entity: 'device', device: device('d3') }))
+    expect(store.getState().devices?.map((d) => d.id)).toEqual(['d1', 'd2', 'd3'])
+    store.applyPatch(patch({ entity: 'device_removed', id: 'd2' }))
+    expect(store.getState().devices?.map((d) => d.id)).toEqual(['d1', 'd3'])
+    const before = store.getState().devices
+    store.applyPatch(patch({ entity: 'device_removed', id: 'zzz' }))
+    expect(store.getState().devices).toBe(before)
+  })
+
+  it('尚无设备列表时收到 device patch 从该设备起建表；device_removed 不凭空造表', () => {
+    store.applyPatch(patch({ entity: 'device_removed', id: 'x' }))
+    expect(store.getState().devices).toBeNull()
+    store.applyPatch(patch({ entity: 'device', device: device('d1') }))
+    expect(store.getState().devices?.map((d) => d.id)).toEqual(['d1'])
   })
 })

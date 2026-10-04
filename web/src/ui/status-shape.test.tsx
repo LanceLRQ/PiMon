@@ -11,10 +11,10 @@ async function withI18n(node: React.ReactNode, lng: 'zh' | 'en' = 'zh') {
 }
 
 describe('状态形状', () => {
-  it('9 种形状两两不同（SVG 内容互不相同）', () => {
-    expect(shapeStates).toHaveLength(9)
+  it('11 种形状两两不同（SVG 内容互不相同）', () => {
+    expect(shapeStates).toHaveLength(11)
     const markup = shapeStates.map((s) => renderToStaticMarkup(<svg>{shapeGeometry[s]}</svg>))
-    expect(new Set(markup).size).toBe(9)
+    expect(new Set(markup).size).toBe(11)
   })
 
   it('渲染出的 DOM 里每种状态的形状内容也互不相同', async () => {
@@ -27,8 +27,8 @@ describe('状态形状', () => {
     )
     const { container } = render(ui)
     const svgs = Array.from(container.querySelectorAll('svg'))
-    expect(svgs).toHaveLength(9)
-    expect(new Set(svgs.map((s) => s.innerHTML)).size).toBe(9)
+    expect(svgs).toHaveLength(11)
+    expect(new Set(svgs.map((s) => s.innerHTML)).size).toBe(11)
   })
 
   it('带可访问名称，随语言变化', async () => {
@@ -39,7 +39,7 @@ describe('状态形状', () => {
     expect(screen.getByRole('img', { name: 'Critical' })).toBeInTheDocument()
   })
 
-  it('严重状态加粗描边；未知取值回落为「未知」形状；维护中沿用离线形状', async () => {
+  it('严重状态加粗描边；未知取值回落为「未知」形状；维护中是独立的扳手形状', async () => {
     const { container } = render(
       await withI18n(
         <>
@@ -52,22 +52,23 @@ describe('状态形状', () => {
     const [crit, weird, maint] = Array.from(container.querySelectorAll('svg'))
     expect(crit.getAttribute('data-weight')).toBe('strong')
     expect(weird.getAttribute('data-shape')).toBe('unknown')
-    expect(maint.getAttribute('data-shape')).toBe('offline')
-    expect(resolveShape('maintenance')).toBe('offline')
+    expect(maint.getAttribute('data-shape')).toBe('maintenance')
+    expect(resolveShape('maintenance')).toBe('maintenance')
   })
 
-  it('休眠沿用离线形状并按「休眠」标注，同样属于弱化态', async () => {
+  it('休眠是独立的月牙形状并按「休眠」标注，同样属于弱化态', async () => {
     const { container } = render(await withI18n(<StatusShape state="dormant" />))
     const svg = container.querySelector('svg')!
-    expect(svg.getAttribute('data-shape')).toBe('offline')
+    expect(svg.getAttribute('data-shape')).toBe('dormant')
     expect(svg.getAttribute('aria-label')).toBe('休眠')
-    expect(resolveShape('dormant')).toBe('offline')
+    expect(resolveShape('dormant')).toBe('dormant')
     expect(isDimmedState('dormant')).toBe(true)
   })
 
   it('过期与离线属于弱化态', () => {
     expect(isDimmedState('stale')).toBe(true)
     expect(isDimmedState('offline')).toBe(true)
+    expect(isDimmedState('maintenance')).toBe(true)
     expect(isDimmedState('ok')).toBe(false)
   })
 

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 
-// 9 种状态形状（设计 10.3，互不相同）。键与后端 display_state 取值一致。
+// 11 种状态形状（设计 10.3，互不相同）。键与后端 display_state 取值一致。
 export const shapeStates = [
   'ok',
   'warning',
@@ -11,6 +11,8 @@ export const shapeStates = [
   'error',
   'stale',
   'offline',
+  'dormant',
+  'maintenance',
   'unconfigured',
   'broken',
 ] as const
@@ -43,6 +45,12 @@ export const shapeGeometry: Record<ShapeState, ReactNode> = {
       <path d="m12 6 6 6 2.3-2.3a2.4 2.4 0 0 0 0-3.4l-2.6-2.6a2.4 2.4 0 0 0-3.4 0Z" />
     </>
   ),
+  // 月牙：休眠（允许离线的设备离线）
+  dormant: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />,
+  // 扳手：维护中
+  maintenance: (
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+  ),
   unconfigured: <rect x="4" y="4" width="16" height="16" rx="1" strokeDasharray="3.2 2.6" />,
   broken: <path d="M9 17H7A5 5 0 0 1 7 7M15 7h2a5 5 0 0 1 4 8M8 12h4M2 2l20 20" />,
 }
@@ -55,20 +63,21 @@ const colorClass: Record<ShapeState, string> = {
   error: 'text-status-crit',
   stale: 'text-status-unknown',
   offline: 'text-status-unknown',
+  dormant: 'text-status-unknown',
+  maintenance: 'text-status-unknown',
   unconfigured: 'text-status-unknown',
   broken: 'text-status-unknown',
 }
 
-// 把后端 display_state 归到某个形状：维护中、休眠沿用离线的形状（三套主题的完整映射在 M2f），未知取值回落「未知」
+// 把后端 display_state 归到某个形状，未知取值回落「未知」
 export function resolveShape(state: string): ShapeState {
-  if (state === 'maintenance' || state === 'dormant') return 'offline'
   return (shapeStates as readonly string[]).includes(state) ? (state as ShapeState) : 'unknown'
 }
 
-// 过期、离线等弱化态：整行灰显
+// 过期、离线、休眠、维护中等弱化态：整行灰显
 export function isDimmedState(state: string): boolean {
   const s = resolveShape(state)
-  return s === 'stale' || s === 'offline'
+  return s === 'stale' || s === 'offline' || s === 'dormant' || s === 'maintenance'
 }
 
 interface StatusShapeProps {
@@ -85,7 +94,7 @@ export function StatusShape({ state, size = 14, className }: StatusShapeProps) {
   return (
     <svg
       role="img"
-      aria-label={t(`status.${state === 'maintenance' || state === 'dormant' ? state : shape}`)}
+      aria-label={t(`status.${shape}`)}
       data-shape={shape}
       data-weight={strong ? 'strong' : 'normal'}
       width={size}
@@ -110,7 +119,7 @@ export function StatusLabel({ state, className }: { state: string; className?: s
   return (
     <span className={cn('inline-flex items-center gap-1.5 text-[13px]', shape === 'critical' && 'font-semibold', className)}>
       <StatusShape state={state} />
-      <span aria-hidden="true">{t(`status.${state === 'maintenance' || state === 'dormant' ? state : shape}`)}</span>
+      <span aria-hidden="true">{t(`status.${shape}`)}</span>
     </span>
   )
 }

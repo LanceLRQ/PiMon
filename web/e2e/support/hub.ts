@@ -108,7 +108,7 @@ export async function startHub(): Promise<RunningHub> {
     const bin = ensureBinary(workDir)
     const port = await freePort()
     const addr = `127.0.0.1:${port}`
-    child = spawn(bin, ['serve', '--addr', addr, '--data-dir', dataDir], {
+    child = spawn(bin, ['serve', '--addr', addr, '--agent-addr', '127.0.0.1:0', '--data-dir', dataDir], {
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
       env: hubEnv(),

@@ -104,6 +104,22 @@
     "unconfigured": "Not configured",
     "broken": "Broken reference"
   },
+  "devices": {
+    "hub": "Hub",
+    "presence": {
+      "online": "Online",
+      "disconnected": "Connection lost, waiting to reconnect",
+      "offline": "Offline",
+      "dormant": "Dormant",
+      "pending": "Waiting to connect"
+    },
+    "upgrade": {
+      "agent": "Agent upgrade required",
+      "hub": "Hub upgrade required",
+      "differs": "Version differs"
+    },
+    "needsRepair": "Credential is no longer valid. Re-pair the device."
+  },
   "errors": {
     "request": {
       "invalid_json": "The request body is malformed",
@@ -161,7 +177,11 @@
     "device": {
       "not_found": "Device not found",
       "offline": "The device is offline; the action cannot be performed",
-      "incompatible": "The agent on this device is not compatible with the hub. Upgrade the agent."
+      "incompatible": "The agent on this device is not compatible with the hub. Upgrade the agent.",
+      "incompatible_reason": {
+        "version_too_old": "The agent on this device is too old. Upgrade the agent.",
+        "version_too_new": "The agent on this device is newer than the hub. Upgrade the hub."
+      }
     },
     "agent": {
       "disabled": "The agent channel is disabled, so devices cannot be paired. Set a listen address with --agent-addr.",

@@ -104,6 +104,22 @@
     "unconfigured": "未配置",
     "broken": "引用失效"
   },
+  "devices": {
+    "hub": "中枢",
+    "presence": {
+      "online": "在线",
+      "disconnected": "连接中断，等待重连",
+      "offline": "离线",
+      "dormant": "休眠",
+      "pending": "等待连接"
+    },
+    "upgrade": {
+      "agent": "需要升级 agent",
+      "hub": "需要升级中枢",
+      "differs": "版本不同"
+    },
+    "needsRepair": "凭据已失效，需要重新配对"
+  },
   "errors": {
     "request": {
       "invalid_json": "请求内容格式不正确",
@@ -161,7 +177,11 @@
     "device": {
       "not_found": "设备不存在",
       "offline": "设备不在线，无法执行该操作",
-      "incompatible": "设备上的 agent 版本与中枢不兼容，请升级 agent"
+      "incompatible": "设备上的 agent 版本与中枢不兼容，请升级 agent",
+      "incompatible_reason": {
+        "version_too_old": "设备上的 agent 版本过旧，请升级 agent",
+        "version_too_new": "设备上的 agent 比中枢新，请升级中枢"
+      }
     },
     "agent": {
       "disabled": "agent 通道未启用，无法配对设备。请在启动参数 --agent-addr 中指定监听地址。",
