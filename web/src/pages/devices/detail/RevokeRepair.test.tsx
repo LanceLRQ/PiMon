@@ -230,6 +230,46 @@ describe('吊销设备', () => {
   })
 })
 
+describe('吊销的边角', () => {
+  it('吊销请求进行中按 Esc 不关闭对话框', async () => {
+    const user = userEvent.setup()
+    let release: () => void = () => {}
+    const gate = new Promise<void>((r) => { release = r })
+    await mount([nas], '/devices?open=d1', async (req) => {
+      if (req.url === '/api/devices/d1/impact') return json(200, emptyImpact)
+      if (req.method === 'DELETE') {
+        await gate
+        return new Response(null, { status: 204 })
+      }
+    })
+    await user.click(within(await drawer()).getByRole('button', { name: /吊销设备/ }))
+    const dlg = await revokeDialog()
+    await within(dlg).findByText('没有实例')
+    await user.type(within(dlg).getByLabelText('输入设备名确认'), '飞牛 NAS')
+    await user.click(within(dlg).getByRole('button', { name: '吊销设备' }))
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    release()
+    expect(await screen.findByText('已吊销设备「飞牛 NAS」')).toBeInTheDocument()
+  })
+})
+
+describe('重新配对：占位与 repin', () => {
+  it('占位设备在抽屉里不提供生成新配对码', async () => {
+    const ph = device('d8', { name: '书房', presence: 'pending', confirmed: false })
+    await mount([ph], '/devices?open=d8')
+    const section = within(await drawer()).getByRole('region', { name: '重新配对' })
+    expect(within(section).getByText(/不能重新配对/)).toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: '生成新配对码' })).toBeNull()
+  })
+
+  it('repin 命令填入中枢真实指纹', async () => {
+    await mount([nas], '/devices?open=d1')
+    const section = within(await drawer()).getByRole('region', { name: '重新配对' })
+    expect(await within(section).findByText(/repin --fp SHA256:hubfp/)).toBeInTheDocument()
+  })
+})
+
 describe('重新配对：拨入设备', () => {
   it('说明适用场景与 repin；生成新配对码调用 repair 并显示命令、配对码与指纹', async () => {
     const user = userEvent.setup()
@@ -314,11 +354,14 @@ describe('重新配对：拨出设备', () => {
     expect((api.calls.find((c) => c.url === '/api/devices/d3/repair')?.body as Record<string, unknown>).proxy_id).toBe('direct')
     await screen.findByText(/重新配对完成/)
     expect(screen.queryByText('设备不存在或已吊销')).toBeNull()
+    expect(screen.queryByText('重新配对完成，旧设备已被新设备接替')).toBeNull()
     // 之后设备推送到达，抽屉显示它
     await act(async () => {
       liveStore.applyPatch({ type: 'patch', entity: 'device', device: next, server_time: new Date().toISOString() } as unknown as Parameters<typeof liveStore.applyPatch>[0])
     })
-    expect(await screen.findByRole('dialog', { name: /设备详情：VPS 东京/ })).toBeInTheDocument()
+    const nd = await screen.findByRole('dialog', { name: /设备详情：VPS 东京/ })
+    expect(within(within(nd).getByRole('region', { name: '属性' })).getByLabelText('代理')).toHaveValue('')
+    expect(within(nd).queryByText(/direct/)).toBeNull()
   })
 
   it('配对失败按原因给出指引，指引里的端口来自 agentListenPort', async () => {

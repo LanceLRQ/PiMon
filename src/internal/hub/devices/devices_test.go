@@ -570,6 +570,13 @@ func TestUpdate校验与拨出专属字段(t *testing.T) {
 	if d.Address != addr || d.ProxyID != proxy {
 		t.Fatalf("d=%+v", d)
 	}
+	// "direct" 与空串都是直连，存库为空串。
+	direct := "direct"
+	d, err = f.s.Update(ctx, vd.ID, model.DeviceInput{Name: "v", Role: model.DeviceRoleVPS, ProxyID: &direct})
+	must(t, err)
+	if d.ProxyID != "" {
+		t.Fatalf("改回直连后 proxy_id 应为空: %+v", d)
+	}
 	_ = b
 }
 

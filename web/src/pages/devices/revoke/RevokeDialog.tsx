@@ -24,16 +24,18 @@ interface RevokeDialogProps {
 }
 
 export function RevokeDialog({ target, onCancel, onRevoked }: RevokeDialogProps) {
+  // 吊销请求进行中不允许关闭（Esc、遮罩、关闭按钮都不行）
+  const [busy, setBusy] = useState(false)
   return (
-    <Dialog open={target !== null} onOpenChange={(o) => !o && onCancel()}>
-      {target && <RevokeBody key={target.id} target={target} onCancel={onCancel} onRevoked={onRevoked} />}
+    <Dialog open={target !== null} onOpenChange={(o) => !o && !busy && onCancel()}>
+      {target && <RevokeBody key={target.id} target={target} onCancel={onCancel} onRevoked={onRevoked} onBusy={setBusy} />}
     </Dialog>
   )
 }
 
 type Impact = { state: 'loading' } | { state: 'error'; detail: string } | { state: 'ok'; impact: DeviceImpact }
 
-function RevokeBody({ target, onCancel, onRevoked }: { target: RevokeTarget; onCancel(): void; onRevoked(t: RevokeTarget): void }) {
+function RevokeBody({ target, onCancel, onRevoked, onBusy }: { target: RevokeTarget; onCancel(): void; onRevoked(t: RevokeTarget): void; onBusy(b: boolean): void }) {
   const { t, i18n } = useTranslation()
   const [impact, setImpact] = useState<Impact>({ state: 'loading' })
   const [typed, setTyped] = useState('')
@@ -63,13 +65,16 @@ function RevokeBody({ target, onCancel, onRevoked }: { target: RevokeTarget; onC
   async function revoke() {
     if (!canRevoke) return
     setBusy(true)
+    onBusy(true)
     setError(null)
     try {
       await http.delete(`/api/devices/${target.id}`)
+      onBusy(false)
       onRevoked(target)
     } catch (e) {
       setError(translateErrorValue(i18n, e))
       setBusy(false)
+      onBusy(false)
     }
   }
 

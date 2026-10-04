@@ -570,6 +570,9 @@ func (s *Store) Update(ctx context.Context, id string, in model.DeviceInput) (mo
 		}
 		if in.ProxyID != nil {
 			proxyID = *in.ProxyID
+			if proxyID == "direct" {
+				proxyID = ""
+			}
 		}
 	}
 	_, err = s.db.ExecContext(ctx,

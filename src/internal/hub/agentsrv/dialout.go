@@ -566,6 +566,10 @@ func validateDialOut(req model.DialOutRequest) (dialOutInput, error) {
 		proxyID: strings.TrimSpace(req.ProxyID), allowOffline: req.AllowOffline,
 		autoHostMetrics: req.AutoHostMetrics == nil || *req.AutoHostMetrics,
 	}
+	// "direct" 与空串都表示直连，存库统一为空串
+	if in.proxyID == "direct" {
+		in.proxyID = ""
+	}
 	fe := model.FieldErrors{}
 	if addr := strings.TrimSpace(req.Address); addr == "" {
 		fe["address"] = model.FieldRequired

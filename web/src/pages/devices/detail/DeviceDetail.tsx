@@ -60,7 +60,7 @@ interface DeviceDetailProps {
   onClose(): void
   onRevoke(device: Device): void
   // 发起重新配对前通知页面（旧设备被接替消失时不当作「不存在」）
-  onRepairStart(deviceId: string): void
+  onRepairStart(deviceId: string, direction: 'dial_in' | 'dial_out'): void
   // 拨出重新配对成功，参数为接替它的新设备
   onRepaired(device: Device): void
   onViewDetail(id: string): void

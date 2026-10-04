@@ -53,7 +53,7 @@ export function DevicesPage() {
   const [proxies, setProxies] = useState<Proxy[]>([])
   const [revoking, setRevoking] = useState<RevokeTarget | null>(null)
   // 正在吊销或重新配对的设备 id：它从列表消失是预期内的，不提示「不存在」
-  const expectedGone = useRef(new Map<string, 'revoke' | 'repair'>())
+  const expectedGone = useRef(new Map<string, 'revoke' | 'repair-in' | 'repair-out'>())
   // 拨出重新配对成功后新设备的 id：REST 响应可能先于 WS 推送到达，出现之前不判「不存在」
   const [awaitingOpen, setAwaitingOpen] = useState<string | null>(null)
 
@@ -117,7 +117,10 @@ export function DevicesPage() {
   )
   const onOpen = useCallback((row: DeviceRow) => openById(row.id), [openById])
   const closeDrawer = useCallback(
-    () => setParams((p) => { const n = new URLSearchParams(p); n.delete('open'); n.delete('repair'); return n }, { replace: true }),
+    () => {
+      setAwaitingOpen(null)
+      setParams((p) => { const n = new URLSearchParams(p); n.delete('open'); n.delete('repair'); return n }, { replace: true })
+    },
     [setParams],
   )
   // 吊销、接替之后的关闭不是用户放弃编辑：绕开抽屉的未保存离开保护
@@ -138,10 +141,10 @@ export function DevicesPage() {
     if (!missingOpen || openId === null) return
     const why = expectedGone.current.get(openId)
     expectedGone.current.delete(openId)
-    if (why === 'repair' && !awaitingOpen) toast.show(t('devices.repair.replaced'))
+    if (why === 'repair-in') toast.show(t('devices.repair.replaced'))
     else if (!why) toast.show(t('devices.detail.notFound'), 'warn')
     closeDrawerQuietly()
-  }, [missingOpen, openId, awaitingOpen, toast, t, closeDrawerQuietly])
+  }, [missingOpen, openId, toast, t, closeDrawerQuietly])
 
   const requestRevoke = (d: { id: string; name: string }) => {
     expectedGone.current.set(d.id, 'revoke')
@@ -152,6 +155,7 @@ export function DevicesPage() {
     setRevoking(null)
   }
   const onRevoked = (target: RevokeTarget) => {
+    expectedGone.current.delete(target.id)
     toast.show(t('devices.revoke.done', { name: target.name }))
     setRevoking(null)
     if (openId === target.id) closeDrawerQuietly()
@@ -310,7 +314,7 @@ export function DevicesPage() {
         hubVersion={hubVersion}
         onClose={closeDrawer}
         onRevoke={requestRevoke}
-        onRepairStart={(id) => expectedGone.current.set(id, 'repair')}
+        onRepairStart={(id, dir) => expectedGone.current.set(id, dir === 'dial_in' ? 'repair-in' : 'repair-out')}
         onRepaired={onRepaired}
         onViewDetail={openById}
         focusRepair={focusRepair}

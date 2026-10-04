@@ -10,7 +10,7 @@ interface DeviceDrawerProps {
   hubVersion: string | null
   onClose(): void
   onRevoke(device: Device): void
-  onRepairStart(deviceId: string): void
+  onRepairStart(deviceId: string, direction: 'dial_in' | 'dial_out'): void
   onRepaired(device: Device): void
   onViewDetail(id: string): void
   focusRepair?: boolean

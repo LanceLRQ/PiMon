@@ -523,7 +523,9 @@
       "issuedFor": "New pairing code for \"{{name}}\"",
       "submit": "Re-pair",
       "done": "Re-pairing finished: device \"{{name}}\" replaced the old one",
-      "replaced": "Re-pairing finished: the old device was replaced by the new one"
+      "replaced": "Re-pairing finished: the old device was replaced by the new one",
+      "placeholder": "This placeholder has not connected yet, so it cannot be re-paired. Re-pair it after it connects, or revoke it if it is no longer needed.",
+      "repinNoFp": "(The hub fingerprint could not be read; replace SHA256:… with the one shown on the System page.)"
     }
   },
   "errors": {
