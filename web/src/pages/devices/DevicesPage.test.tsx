@@ -217,3 +217,13 @@ describe('深链与手机卡片', () => {
     expect(cards[2]).toHaveAttribute('aria-current', 'true')
   })
 })
+
+describe('添加设备入口', () => {
+  it('页头与空状态的添加设备都打开对话框，默认在拨入标签', async () => {
+    await mount([])
+    await userEvent.click(screen.getAllByRole('button', { name: '添加设备' })[0])
+    const dialog = await screen.findByRole('dialog', { name: '添加设备' })
+    expect(within(dialog).getByRole('tab', { name: /拨入/ })).toHaveAttribute('aria-selected', 'true')
+    expect(within(dialog).getByRole('tab', { name: /拨出/ })).toHaveAttribute('aria-selected', 'false')
+  })
+})

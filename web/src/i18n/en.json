@@ -126,7 +126,6 @@
       "sub": "{{count}} devices · dial-in {{in}} · dial-out {{out}} · plus the hub itself",
       "add": "Add device",
       "addTitle": "Add device",
-      "addPending": "The add-device dialog arrives in a later task.",
       "listTitle": "Device list",
       "stripLabel": "Device status summary",
       "strip": {
@@ -211,6 +210,175 @@
         "pending": "Waiting to connect: pairing code not used yet",
         "upgrade": "Upgrade required: agent or hub is too old"
       }
+    },
+    "add": {
+      "description": "Add a device: dial-in has the device connect to the hub, dial-out has the hub connect to the device",
+      "tabsLabel": "Connection direction",
+      "tabIn": "Dial-in · agent connects to hub",
+      "tabOut": "Dial-out · hub connects to agent",
+      "close": "Close",
+      "back": "Edit",
+      "copyCommand": "Copy command",
+      "roleOption": "{{label}} · {{key}}",
+      "in": {
+        "intro": "For machines on the LAN (NAS, servers, dev machines). Run one command on the device and the agent connects to the hub with a pairing code. All settings are managed here; no secrets are stored on the device.",
+        "name": "Name",
+        "nameHelp": "Up to 64 characters. Leave empty to use the hostname reported by the agent.",
+        "namePlaceholder": "Empty uses the agent's hostname",
+        "role": "Role",
+        "roleHelp": "The role only groups devices and picks icons; it does not change behavior. Dev machines default to Allow offline.",
+        "allowOffline": "Allow offline",
+        "allowOfflineOn": "Shown as Dormant when offline, no alert",
+        "allowOfflineOff": "Shown as Offline with an alert",
+        "allowOfflineHelp": "For laptops that are often powered off: when on, offline shows as a gray Dormant state without alerts.",
+        "autoMetrics": "Create a host metrics instance",
+        "autoMetricsHint": "Creates a host-metrics instance on the device after it connects",
+        "generate": "Generate pairing code and command",
+        "generating": "Generating…",
+        "summary": "{{name}} · {{role}} · {{offline}} · {{auto}}",
+        "nameFallback": "(hostname)",
+        "offlineOn": "Allow offline",
+        "offlineOff": "No offline",
+        "autoOn": "Host metrics instance",
+        "autoOff": "No instance",
+        "hubSection": "Hub address",
+        "hubMeta": "The agent must be able to reach this address",
+        "hubLabel": "Hub address",
+        "hubHelp": "A device that cannot resolve the address will fail to connect; across subnets pick the one that routes.",
+        "runSection": "Run on the device",
+        "modeLabel": "Command style",
+        "modeOne": "One line",
+        "modeSteps": "Step by step",
+        "oneTitle": "One line · detects OS and architecture, verifies SHA-256, then installs",
+        "oneNoteDev": "Dev machines (macOS) use user mode and the script drops sudo; on a Linux dev machine append --user to the command.",
+        "oneNote": "Linux system mode needs root and the script will ask for sudo; macOS automatically uses user mode.",
+        "step1": "1 · Detect platform",
+        "step2": "2 · Download from the hub",
+        "step3": "3 · Verify SHA-256 (sha256sum on Linux, shasum -a 256 on macOS)",
+        "step4": "4 · Install (sudo on Linux, user mode on macOS)",
+        "step4Dev": "4 · Install (user mode, no sudo)",
+        "stepsNote": "The checksum and binary come from the same HTTP address, which only guards against corruption; use the HTTPS access address if that is not enough.",
+        "sudoersHint": "For disk SMART and other storage health data, add {{flag}} at the end of the command.",
+        "noEmbed": "This hub has no embedded agent, so the one-line and download commands will not work. Get the agent from GitHub Releases and install it by hand; the commands are shown as usual.",
+        "code": "Pairing code",
+        "codeKey": "--code · single use",
+        "codeHelp": "Valid for 15 minutes and single use; after it expires choose Edit to generate a new one.",
+        "fingerprint": "Hub SPKI fingerprint",
+        "fingerprintHelp": "The agent trusts only this public key fingerprint (pinning), not a CA. It is already in the one-line command; for step-by-step installs compare it with the terminal output.",
+        "optional": "Optional flags",
+        "optionalHelp": "To monitor Docker or storage health, append --docker-group or --sudoers to the command (curl | sh is non-interactive, so they must be explicit).",
+        "waiting": "Waiting for the agent to connect…",
+        "remaining": "Pairing code expires in {{time}}",
+        "expired": "Pairing code expired",
+        "expiredHint": "Choose Edit to generate a new pairing code.",
+        "connected": "Connected",
+        "connectedBody": "{{name}} joined · {{address}} · {{version}}",
+        "view": "View device details",
+        "expiresIn": "{{time}}",
+        "copyCode": "Copy pairing code",
+        "copyFingerprint": "Copy fingerprint"
+      },
+      "out": {
+        "step1": "Install on the VPS and open the pairing window",
+        "step1Meta": "Do this first",
+        "step1Body": "A VPS is not on your LAN, so the hub connects out to it: install the agent on the VPS in listening mode, then run pimon-agent pair to open a 15-minute pairing window; it prints the SPKI fingerprint and pairing code.",
+        "platform": "VPS platform",
+        "downloadTitle": "Download from GitHub Releases and verify SHA-256",
+        "installTitle": "Install in listening mode, then open the pairing window",
+        "noRelease": "This is a development build with no matching GitHub Release, so the download command is hidden. Put the agent binary on the VPS yourself, then run install --listen and pair.",
+        "tipFirewall": "Open TCP {{port}} (the --listen port) in the security group and firewall, allowing only the hub's egress IP; if the hub dials through a proxy, use the proxy's egress IP.",
+        "tipWindow": "Each pairing window lasts 15 minutes and closes after one successful pairing; after it expires run sudo pimon-agent pair again.",
+        "step2": "Enter what pair printed",
+        "address": "Address",
+        "addressPlaceholder": "203.0.113.5:31418",
+        "addressHelp": "Format host:port; wss:// is added automatically. Use the VPS public address, not the LAN IP printed by pair.",
+        "fingerprint": "SPKI fingerprint",
+        "fingerprintHelp": "Format SHA256:<base64>; compare it character by character with the SPKI fingerprint printed by pair.",
+        "code": "Pairing code",
+        "codeHelp": "Case-insensitive; separators are optional.",
+        "proxy": "Proxy",
+        "proxyDirect": "Direct",
+        "proxyHelp": "Which global proxy the hub uses to reach the VPS; manage them on the Proxies page.",
+        "name": "Name",
+        "namePlaceholder": "Empty uses the agent's hostname",
+        "role": "Role",
+        "autoMetrics": "Create a host metrics instance",
+        "autoMetricsHint": "Creates a host-metrics instance on the device after pairing",
+        "submit": "Pair and add",
+        "submitting": "Pairing…",
+        "progress": "Pairing, waiting up to 20 seconds",
+        "progressSteps": "Connecting to the VPS (through the proxy if selected); checking the SPKI fingerprint; submitting the pairing code and waiting for the agent",
+        "success": "Paired",
+        "successBody": "{{name}} is connected",
+        "view": "View device details"
+      },
+      "fail": {
+        "title": "Pairing failed",
+        "detail": "{{reason}} ({{code}})",
+        "view": "View the saved device",
+        "unreachable": {
+          "tip1": "Open TCP 31418 in the cloud security group and the system firewall, allowing the hub's (or proxy's) egress IP.",
+          "tip2": "Use the VPS public address, with the same port as --listen (host:port).",
+          "tip3": "On the VPS run sudo pimon-agent status to confirm the agent is running in listening mode.",
+          "tip4": "If you picked a proxy, test on the Proxies page that it can reach this address."
+        },
+        "pin_mismatch": {
+          "tip1": "Compare the SPKI fingerprint printed by pimon-agent pair character by character, including the SHA256: prefix.",
+          "tip2": "Reinstalling the VPS or regenerating its certificate changes the fingerprint; once you are sure it is your machine, enter the new one.",
+          "tip3": "If it never matches, someone may be impersonating the VPS; try another network path."
+        },
+        "code_expired": {
+          "tip1": "Run sudo pimon-agent pair on the VPS again to get a new fingerprint and pairing code.",
+          "tip2": "Enter the new code in the form above and choose Pair and add again."
+        },
+        "bad_code": {
+          "tip1": "Check the pairing code character by character; separators are optional and case is ignored.",
+          "tip2": "A code works only once; if it was already used, run sudo pimon-agent pair on the VPS again."
+        },
+        "rate_limited": {
+          "tip1": "The agent caps failed attempts per source and has locked this one for a while; try again in about fifteen minutes.",
+          "tip2": "Check the address, fingerprint and code first so you do not trigger the lock again."
+        },
+        "incompatible": {
+          "tip1": "The device is kept in the device list and joins automatically once the agent is upgraded.",
+          "tip2": "Upgrade command: sudo pimon-agent upgrade --release <version>."
+        },
+        "timeout": {
+          "tip1": "Check the network from the hub to the VPS, and the proxy if one is used.",
+          "tip2": "Make sure the agent is running on the VPS; run sudo pimon-agent pair again if needed and retry."
+        },
+        "unknown": {
+          "tip1": "Open the System page and look in the hub log for why this pairing failed.",
+          "tip2": "Check the address, fingerprint and code, then retry."
+        }
+      },
+      "fieldError": {
+        "required": "Required",
+        "invalid": "Invalid value",
+        "out_of_range": "Out of range",
+        "address": {
+          "required": "Enter the address",
+          "invalid": "Bad address format: use host:port or wss://host:port (write IPv6 as [address]:port)"
+        },
+        "fingerprint": {
+          "required": "Enter the fingerprint",
+          "invalid": "The fingerprint must look like SHA256:<base64>; compare it with the pair output"
+        },
+        "code": {
+          "required": "Enter the pairing code",
+          "invalid": "Bad pairing code format; compare it with the pair output"
+        },
+        "name": {
+          "out_of_range": "The name can be at most 64 characters"
+        },
+        "role": {
+          "invalid": "This role is not supported"
+        },
+        "proxy_id": {
+          "invalid": "The selected proxy does not exist; choose again"
+        }
+      },
+      "agentInfoFailed": "Could not read the hub's connection info"
     }
   },
   "errors": {

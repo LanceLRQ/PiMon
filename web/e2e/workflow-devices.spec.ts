@@ -50,6 +50,21 @@ test('设备页列出中枢与设备，筛选搜索可用，手机宽度显示�
     await page.goto(`/devices?open=${nasId}`)
     await expect(page.locator(`tr[data-device-id="${nasId}"]`)).toHaveAttribute('aria-current', 'true')
 
+    // 添加设备（拨入）：生成配对码与命令，命令含 --hub/--fp/--code，复制按钮可点
+    await page.getByRole('button', { name: '添加设备' }).first().click()
+    const dialog = page.getByRole('dialog', { name: '添加设备' })
+    await expect(dialog.getByRole('tab', { name: /拨入/ })).toHaveAttribute('aria-selected', 'true')
+    await dialog.getByRole('button', { name: '生成配对码与命令' }).click()
+    const oneLine = dialog.locator('pre', { hasText: '/agent/install.sh' })
+    await expect(oneLine).toContainText('--hub wss://')
+    await expect(oneLine).toContainText('--fp SHA256:')
+    await expect(oneLine).toContainText('--code ')
+    await expect(dialog.getByText('等待 agent 连接…')).toBeVisible()
+    await dialog.getByRole('button', { name: '复制命令' }).first().click()
+    await expect(page.getByText(/已复制|复制失败/)).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+
     // 手机宽度：卡片列表，没有表格，页面不横向滚动
     await page.setViewportSize({ width: 390, height: 844 })
     await expect(page.getByRole('table')).toHaveCount(0)

@@ -126,7 +126,6 @@
       "sub": "{{count}} 台设备 · 拨入 {{in}} · 拨出 {{out}} · 另有中枢本机",
       "add": "添加设备",
       "addTitle": "添加设备",
-      "addPending": "添加设备对话框将在后续任务中提供。",
       "listTitle": "设备列表",
       "stripLabel": "设备状态汇总",
       "strip": {
@@ -211,6 +210,175 @@
         "pending": "等待连接，配对码未用",
         "upgrade": "需要升级，agent 或中枢版本过旧"
       }
+    },
+    "add": {
+      "description": "添加设备：拨入由设备主动连中枢，拨出由中枢主动连设备",
+      "tabsLabel": "连接方向",
+      "tabIn": "拨入 · agent 主动连中枢",
+      "tabOut": "拨出 · 中枢主动连 agent",
+      "close": "关闭",
+      "back": "返回修改",
+      "copyCommand": "复制命令",
+      "roleOption": "{{label}} · {{key}}",
+      "in": {
+        "intro": "适用于局域网里的机器（NAS、服务器、开发机）。在设备上执行一行命令，agent 会带着配对码主动连到中枢，配置全部在这里管理，设备上不落盘密钥。",
+        "name": "名称",
+        "nameHelp": "最多 64 个字符，留空则用 agent 上报的主机名。",
+        "namePlaceholder": "留空则用 agent 上报的主机名",
+        "role": "角色",
+        "roleHelp": "角色只用于分组与图标，不改变行为。开发机默认开启「允许离线」。",
+        "allowOffline": "允许离线",
+        "allowOfflineOn": "离线时显示「休眠」，不告警",
+        "allowOfflineOff": "离线时显示「离线」并告警",
+        "allowOfflineHelp": "笔记本等经常关机的设备开启后，离线显示为灰色「休眠」，不告警。",
+        "autoMetrics": "自动创建主机指标实例",
+        "autoMetricsHint": "连接成功后在该设备上建一个 host-metrics 实例",
+        "generate": "生成配对码与命令",
+        "generating": "生成中…",
+        "summary": "{{name}} · {{role}} · {{offline}} · {{auto}}",
+        "nameFallback": "（用主机名）",
+        "offlineOn": "允许离线",
+        "offlineOff": "不允许离线",
+        "autoOn": "自动创建主机指标",
+        "autoOff": "不建实例",
+        "hubSection": "中枢地址",
+        "hubMeta": "agent 要能访问到这个地址",
+        "hubLabel": "hub 地址",
+        "hubHelp": "设备解析不了的地址会连不上；跨网段时选能路由到的那个。",
+        "runSection": "在设备上执行",
+        "modeLabel": "命令形式",
+        "modeOne": "一行命令",
+        "modeSteps": "分步命令",
+        "oneTitle": "一行命令 · 自动识别系统与架构，校验 SHA-256 后安装",
+        "oneNoteDev": "开发机（macOS）走用户模式，脚本会自动去掉 sudo；Linux 开发机在命令末尾追加 --user。",
+        "oneNote": "Linux 系统模式需要 root，脚本会提示 sudo；macOS 自动走用户模式。",
+        "step1": "1 · 识别平台",
+        "step2": "2 · 从中枢下载",
+        "step3": "3 · 校验 SHA-256（Linux 用 sha256sum，macOS 用 shasum -a 256）",
+        "step4": "4 · 安装（Linux 用 sudo，macOS 用户模式）",
+        "step4Dev": "4 · 安装（用户模式，不用 sudo）",
+        "stepsNote": "分步安装的校验和与二进制来自同一个 HTTP 地址，只防得住传输损坏；不放心就改走 HTTPS 访问地址。",
+        "sudoersHint": "需要硬盘 SMART 等存储健康数据时，在命令末尾加 {{flag}}。",
+        "noEmbed": "当前中枢没有内嵌 agent，一行命令和分步下载命令不可用，请从 GitHub Releases 获取 agent 后手工安装；命令仍照常显示。",
+        "code": "配对码",
+        "codeKey": "--code · 一次性",
+        "codeHelp": "15 分钟内有效，使用一次即作废；过期后点「返回修改」重新生成。",
+        "fingerprint": "中枢 SPKI 指纹",
+        "fingerprintHelp": "agent 只信任这个公钥指纹（钉扎），不依赖 CA。一行命令里已带上，分步安装时可与终端输出核对。",
+        "optional": "可选参数",
+        "optionalHelp": "要监控 Docker 或存储健康，在命令末尾追加 --docker-group、--sudoers（经 curl | sh 运行时为非交互，需显式给出）。",
+        "waiting": "等待 agent 连接…",
+        "remaining": "配对码剩余 {{time}}",
+        "expired": "配对码已过期",
+        "expiredHint": "点「返回修改」重新生成配对码。",
+        "connected": "已连接",
+        "connectedBody": "{{name}} 已接入 · {{address}} · {{version}}",
+        "view": "查看设备详情",
+        "expiresIn": "{{time}}",
+        "copyCode": "复制配对码",
+        "copyFingerprint": "复制指纹"
+      },
+      "out": {
+        "step1": "在 VPS 上安装并开启配对窗口",
+        "step1Meta": "先做这一步",
+        "step1Body": "VPS 不在局域网，由中枢主动连过去：先在 VPS 上以「监听」模式安装 agent，再执行 pimon-agent pair 打开 15 分钟配对窗口，它会打印 SPKI 指纹与配对码。",
+        "platform": "VPS 平台",
+        "downloadTitle": "从 GitHub Releases 下载并校验 SHA-256",
+        "installTitle": "安装为监听模式，再开启配对窗口",
+        "noRelease": "这是开发构建，没有对应的 GitHub Release，下载命令已隐藏。请自行把 agent 二进制放到 VPS 后，再执行 install --listen 与 pair。",
+        "tipFirewall": "安全组 / 防火墙放行 TCP {{port}}（即 --listen 的端口），来源只填中枢的出口 IP；中枢经代理拨出时，填代理的出口 IP。",
+        "tipWindow": "每次配对窗口 15 分钟，配对成功一次即关闭；过期后重新执行 sudo pimon-agent pair。",
+        "step2": "填写 pair 输出的内容",
+        "address": "地址",
+        "addressPlaceholder": "203.0.113.5:31418",
+        "addressHelp": "格式 host:port，自动补 wss://；填 VPS 的公网地址，不是 pair 输出里的本机局域网 IP。",
+        "fingerprint": "SPKI 指纹",
+        "fingerprintHelp": "格式 SHA256:<base64>，逐字核对 pair 输出的「SPKI 指纹」。",
+        "code": "配对码",
+        "codeHelp": "不区分大小写，分隔符可有可无。",
+        "proxy": "代理",
+        "proxyDirect": "直连",
+        "proxyHelp": "中枢到 VPS 这一跳走哪个全局代理，在「代理」页维护。",
+        "name": "名称",
+        "namePlaceholder": "留空则用 agent 上报的主机名",
+        "role": "角色",
+        "autoMetrics": "自动创建主机指标实例",
+        "autoMetricsHint": "配对成功后在该设备上建一个 host-metrics 实例",
+        "submit": "配对并添加",
+        "submitting": "配对中…",
+        "progress": "正在配对，最长等待 20 秒",
+        "progressSteps": "连接 VPS（经代理时先过代理）；核对 SPKI 指纹；提交配对码，等待 agent 确认",
+        "success": "配对成功",
+        "successBody": "{{name}} 已连接",
+        "view": "查看设备详情"
+      },
+      "fail": {
+        "title": "配对失败",
+        "detail": "{{reason}}（{{code}}）",
+        "view": "查看已保留的设备",
+        "unreachable": {
+          "tip1": "云厂商安全组与系统防火墙放行 TCP 31418，来源为中枢（或代理）的出口 IP。",
+          "tip2": "地址写的是 VPS 公网地址，端口与 --listen 一致（host:port）。",
+          "tip3": "在 VPS 上执行 sudo pimon-agent status，确认 agent 在运行且处于监听模式。",
+          "tip4": "选了代理时，到「代理」页测试它能否访问该地址。"
+        },
+        "pin_mismatch": {
+          "tip1": "逐字核对 pimon-agent pair 输出的「SPKI 指纹」，注意不要漏掉 SHA256: 前缀。",
+          "tip2": "VPS 重装过或证书重建过，指纹会变；确认是自己的机器后再填新指纹。",
+          "tip3": "指纹始终对不上，可能有人在中途冒充 VPS，换一条网络路径再试。"
+        },
+        "code_expired": {
+          "tip1": "在 VPS 上重新执行 sudo pimon-agent pair，会得到新的指纹与配对码。",
+          "tip2": "把新配对码填回上面的表单后再次点「配对并添加」。"
+        },
+        "bad_code": {
+          "tip1": "逐字核对配对码，可以带分隔符也可以不带，不区分大小写。",
+          "tip2": "配对码只能用一次；已经用过就在 VPS 上重新执行 sudo pimon-agent pair。"
+        },
+        "rate_limited": {
+          "tip1": "agent 对同一来源的失败次数有上限，暂时被锁定，等十几分钟后再试。",
+          "tip2": "先核对地址、指纹与配对码都对，再重试，避免再次触发锁定。"
+        },
+        "incompatible": {
+          "tip1": "设备已保留在设备列表里，在 VPS 上升级 agent 后会自动接入。",
+          "tip2": "升级命令：sudo pimon-agent upgrade --release <版本号>。"
+        },
+        "timeout": {
+          "tip1": "检查中枢到 VPS 的网络，经代理时检查代理是否可用。",
+          "tip2": "确认 VPS 上的 agent 在运行，必要时重新执行 sudo pimon-agent pair 后重试。"
+        },
+        "unknown": {
+          "tip1": "到「系统」页查看中枢日志，找到这次配对的失败原因。",
+          "tip2": "核对地址、指纹与配对码后重试。"
+        }
+      },
+      "fieldError": {
+        "required": "必填",
+        "invalid": "取值不合法",
+        "out_of_range": "超出允许范围",
+        "address": {
+          "required": "请填写地址",
+          "invalid": "地址格式不对：可写 host:port 或 wss://host:port（IPv6 写成 [地址]:端口）"
+        },
+        "fingerprint": {
+          "required": "请填写指纹",
+          "invalid": "指纹须形如 SHA256:<base64>，请逐字核对 pair 输出"
+        },
+        "code": {
+          "required": "请填写配对码",
+          "invalid": "配对码格式不对，请逐字核对 pair 输出"
+        },
+        "name": {
+          "out_of_range": "名称最多 64 个字符"
+        },
+        "role": {
+          "invalid": "不支持这个角色"
+        },
+        "proxy_id": {
+          "invalid": "所选代理不存在，请重新选择"
+        }
+      },
+      "agentInfoFailed": "读取中枢接入信息失败"
     }
   },
   "errors": {

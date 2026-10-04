@@ -18,6 +18,7 @@ import { NumberTag } from '@/ui/numbered-label'
 import { PageHeader } from '@/ui/page-header'
 import { StatusShape } from '@/ui/status-shape'
 import { useToast } from '@/ui/toast'
+import { AddDeviceDialog } from './add/AddDeviceDialog'
 import { DeviceCards, DeviceTableView } from './DeviceTable'
 import { deviceCounts, hubVersionOf, matchesFilter, matchesQuery, type DeviceFilter } from './model'
 import { deviceRow, hubRow, type DeviceRow } from './rows'
@@ -94,10 +95,11 @@ export function DevicesPage() {
   const dialIn = devices?.filter((d) => d.direction === 'dial_in').length ?? 0
   const dialOut = devices?.filter((d) => d.direction === 'dial_out').length ?? 0
 
-  const onOpen = useCallback(
-    (row: DeviceRow) => setParams((p) => { const n = new URLSearchParams(p); n.set('open', row.id); return n }, { replace: true }),
+  const openById = useCallback(
+    (id: string) => setParams((p) => { const n = new URLSearchParams(p); n.set('open', id); return n }, { replace: true }),
     [setParams],
   )
+  const onOpen = useCallback((row: DeviceRow) => openById(row.id), [openById])
 
   async function confirmDelete() {
     const row = deleting
@@ -236,16 +238,7 @@ export function DevicesPage() {
         </section>
       </div>
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent
-          title={t('devices.list.addTitle')}
-          tag="07.2"
-          description={t('devices.list.addPending')}
-          footer={<DialogClose asChild><Button variant="outline" size="sm" className="rounded-[2px]">{t('common.close')}</Button></DialogClose>}
-        >
-          {t('devices.list.addPending')}
-        </DialogContent>
-      </Dialog>
+      <AddDeviceDialog open={addOpen} onOpenChange={setAddOpen} onViewDetail={openById} />
 
       <Dialog open={deleting !== null} onOpenChange={(o) => !o && setDeleting(null)}>
         <DialogContent
