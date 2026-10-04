@@ -110,8 +110,9 @@ export function createLiveStore(): LiveStore {
           break
         case 'device': {
           const dev = p.device
-          if (!dev) return
-          const list = state.devices ?? []
+          // 还没收到含 devices 的 snapshot：补丁建不出完整列表，保持未知，等下一次 snapshot
+          if (!dev || !state.devices) return
+          const list = state.devices
           const i = list.findIndex((x) => x.id === dev.id)
           next.devices = i < 0 ? [...list, dev] : list.map((x, idx) => (idx === i ? dev : x))
           break

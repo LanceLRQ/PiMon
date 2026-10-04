@@ -71,6 +71,17 @@ const remoteOff: BackupRemote = {
   passphrase_changed: false,
 }
 
+const agentInfo = {
+  agent_port: 31418,
+  fingerprint: 'SHA256:abcDEF123',
+  hub_version: 'v0.1.0-test',
+  protocol_version: 1,
+  min_compatible_version: 1,
+  platforms: ['linux-amd64', 'linux-arm64'],
+  release_url_template: '',
+  release_checksums: {},
+}
+
 interface Opts {
   info?: SystemInfo
   extra?: (req: Req) => Response | undefined | Promise<Response | undefined>
@@ -80,6 +91,7 @@ async function setup({ info = sysInfo(), extra }: Opts = {}) {
   const api = mockApi((req) => {
     const r = extra?.(req)
     if (r) return r
+    if (req.method === 'GET' && req.url === '/api/agent/info') return json(200, agentInfo)
     if (req.method === 'GET' && req.url === '/api/system') return json(200, info)
     if (req.method === 'GET' && req.url.startsWith('/api/system/logs')) return json(200, logsFor(req.url))
     if (req.method === 'GET' && req.url.startsWith('/api/plugins')) return json(200, execPlugins)
@@ -404,5 +416,38 @@ describe('插件与备份', () => {
     await userEvent.click(await screen.findByRole('button', { name: '立即备份' }))
     expect(await screen.findByText(/已生成备份/)).toBeInTheDocument()
     expect(api.calls.filter((c) => c.method === 'GET' && c.url === '/api/backups').length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('agent 通道', () => {
+  it('显示端口、指纹与可下载平台，复制指纹走回退路径', async () => {
+    // 非安全上下文：navigator.clipboard 不存在，退回 execCommand
+    vi.stubGlobal('navigator', { ...navigator, clipboard: undefined })
+    const exec = vi.fn(() => true)
+    ;(document as unknown as { execCommand: unknown }).execCommand = exec
+    await setup()
+    const sec = await screen.findByRole('region', { name: 'agent 通道' })
+    expect(await within(sec).findByText('31418')).toBeInTheDocument()
+    expect(within(sec).getByText('SHA256:abcDEF123')).toBeInTheDocument()
+    expect(within(sec).getByText('linux-amd64、linux-arm64')).toBeInTheDocument()
+    await userEvent.click(within(sec).getByRole('button', { name: '复制指纹' }))
+    expect(exec).toHaveBeenCalledWith('copy')
+  })
+
+  it('剪贴板可用时写入指纹', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    await setup()
+    const sec = await screen.findByRole('region', { name: 'agent 通道' })
+    await within(sec).findByText('31418')
+    await userEvent.click(within(sec).getByRole('button', { name: '复制指纹' }))
+    expect(writeText).toHaveBeenCalledWith('SHA256:abcDEF123')
+  })
+
+  it('通道未启用显示「未启用」，没有内嵌平台给出说明', async () => {
+    await setup({ extra: (r) => (r.url === '/api/agent/info' ? json(200, { ...agentInfo, agent_port: 0, platforms: [] }) : undefined) })
+    const sec = await screen.findByRole('region', { name: 'agent 通道' })
+    expect(await within(sec).findByText('未启用')).toBeInTheDocument()
+    expect(within(sec).getByText('无（开发构建未内嵌）')).toBeInTheDocument()
   })
 })

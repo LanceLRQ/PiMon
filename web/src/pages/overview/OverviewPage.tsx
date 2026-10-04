@@ -5,10 +5,11 @@ import { Link } from 'react-router'
 import { http } from '@/api/client'
 import { formatAgo, formatDateTime, parseTime, useNow } from '@/lib/time'
 import { cn } from '@/lib/utils'
-import { selectConnected, selectInstances, useLiveStore, type LiveState } from '@/store/live-store'
+import { selectConnected, selectDevices, selectInstances, useLiveStore, type LiveState } from '@/store/live-store'
 import { formatUptime } from '@/lib/format'
 import { useUptimeSeconds } from '@/lib/use-uptime'
-import type { BackupInfo, Instance, SystemInfo } from '@/types/generated'
+import type { BackupInfo, Device, Instance, SystemInfo } from '@/types/generated'
+import { agentCounts, deviceAttention, incompatibleText, needsUpgrade } from '@/pages/devices/model'
 import { useInstanceManager } from '@/pages/instances/actions'
 import { InstanceDetailDrawer } from '@/pages/instances/InstanceDetailDrawer'
 import { InstanceTable } from '@/pages/instances/InstanceTable'
@@ -23,6 +24,7 @@ import { ScreenCard } from './ScreenCard'
 const selectSynced = (s: LiveState) => s.synced
 const selectBuild = (s: LiveState) => s.build
 const selectSettings = (s: LiveState) => s.settings
+const hubVersionOf = (build: string | null) => (build && build !== '__PIMON_BUILD__' ? build : null)
 
 // 分布条每格的底色（色通道），形状通道由图例与 title 给出
 const segColor: Record<string, string> = {
@@ -167,6 +169,8 @@ function HubSummary({ instanceCount }: { instanceCount: number | null }) {
   const build = useLiveStore(selectBuild)
   const connected = useLiveStore(selectConnected)
   const settings = useLiveStore(selectSettings)
+  const devices = useLiveStore(selectDevices)
+  const agents = devices ? agentCounts(devices) : null
   // undefined 表示还没取到；null 表示取到了但没有备份
   const [lastBackup, setLastBackup] = useState<number | null | undefined>(undefined)
   // 中枢已运行秒数（取自接口）；取不到时为 undefined，显示未知
@@ -217,7 +221,15 @@ function HubSummary({ instanceCount }: { instanceCount: number | null }) {
     },
     { k: t('overview.hub.timezone'), v: settings?.timezone || unknown },
     { k: t('overview.hub.instances'), v: instanceCount === null ? unknown : String(instanceCount) },
-    { k: t('overview.hub.agents'), v: <span className="text-muted-foreground">{t('overview.hub.agentsLater')}</span> },
+    {
+      k: t('overview.hub.agents'),
+      // 设备列表没加载时显示未知，不显示 0
+      v: agents === null ? unknown : (
+        <Link to="/devices" className="underline-offset-2 hover:underline">
+          {agents.online}/{agents.total}
+        </Link>
+      ),
+    },
   ]
   return (
     <dl className="grid grid-cols-2 gap-px bg-border">
@@ -232,7 +244,67 @@ function HubSummary({ instanceCount }: { instanceCount: number | null }) {
   )
 }
 
-function Attention({ instances, now, onOpen, onRetry, synced }: { instances: Instance[]; now: number; onOpen(i: Instance): void; onRetry(i: Instance): void; synced: boolean }) {
+// 需要处理的设备：离线与需要升级，已确认设备才算；设备列表未加载时为空（该部分未知，不当作没有）
+export function attentionDevices(devices: Device[] | null, hubVersion: string | null): { device: Device; kind: 'offline' | 'upgrade' }[] {
+  if (!devices) return []
+  return devices
+    .flatMap((device) => {
+      const kind = deviceAttention(device, hubVersion)
+      return kind ? [{ device, kind }] : []
+    })
+    .sort((a, b) => a.device.name.localeCompare(b.device.name))
+}
+
+function DeviceRows({ rows, now }: { rows: ReturnType<typeof attentionDevices>; now: number }) {
+  const { t, i18n } = useTranslation()
+  return (
+    <>
+      {rows.map(({ device: d, kind }) => {
+        const upgrade = kind === 'upgrade' ? needsUpgrade(d, null) : null
+        return (
+          <li
+            key={d.id}
+            data-device-row={kind}
+            className="grid grid-cols-[auto_1fr_auto] items-center gap-3 border-t border-border px-4 py-2.5 first:border-t-0"
+          >
+            <span className="inline-flex w-[72px] items-center gap-1.5 text-[12.5px]">
+              <StatusShape state={kind === 'offline' ? 'offline' : 'error'} />
+              <span>{kind === 'offline' ? t('devices.presence.offline') : t(`devices.upgrade.${upgrade?.target ?? 'agent'}`)}</span>
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-[13px]">
+                <code className="font-mono text-[12px]">{d.name}</code>
+                {kind === 'upgrade' && <span className="ml-1.5 text-ink-2">{incompatibleText(i18n, d.incompatible?.reason)}</span>}
+              </div>
+              <div className="truncate text-[12px] text-muted-foreground">
+                {t('overview.attention.lastSeen', { ago: formatAgo(t, now, parseTime(d.last_seen_at)) })}
+              </div>
+            </div>
+            <Button asChild variant="outline" size="sm" className="rounded-[2px]">
+              <Link to={`/devices?open=${encodeURIComponent(d.id)}`}>{t('overview.attention.viewDevice')}</Link>
+            </Button>
+          </li>
+        )
+      })}
+    </>
+  )
+}
+
+function Attention({
+  instances,
+  devices,
+  now,
+  onOpen,
+  onRetry,
+  synced,
+}: {
+  instances: Instance[]
+  devices: { device: Device; kind: 'offline' | 'upgrade' }[]
+  now: number
+  onOpen(i: Instance): void
+  onRetry(i: Instance): void
+  synced: boolean
+}) {
   const { t } = useTranslation()
   const list = useMemo(
     () =>
@@ -242,7 +314,7 @@ function Attention({ instances, now, onOpen, onRetry, synced }: { instances: Ins
     [instances],
   )
   if (!synced) return <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">{t('shell.loading')}</p>
-  if (list.length === 0) {
+  if (list.length === 0 && devices.length === 0) {
     return (
       <p className="flex items-center justify-center gap-2 px-4 py-8 text-[13px] text-muted-foreground">
         <StatusShape state="ok" size={14} />
@@ -252,6 +324,7 @@ function Attention({ instances, now, onOpen, onRetry, synced }: { instances: Ins
   }
   return (
     <ul className="m-0 max-h-[340px] list-none overflow-y-auto p-0">
+      <DeviceRows rows={devices} now={now} />
       {list.map((i) => (
         <li
           key={i.id}
@@ -314,7 +387,10 @@ export function OverviewPage() {
   const closeDrawer = useCallback(() => setOpenId(null), [])
   const opened = openId ? instances.find((i) => i.id === openId) : undefined
   const openedPlugin = opened ? plugins.list?.plugins.find((p) => p.id === opened.plugin_id) : undefined
-  const attentionCount = instances.filter((i) => isAttention(i)).length
+  const devices = useLiveStore(selectDevices)
+  const hubVersion = hubVersionOf(useLiveStore(selectBuild))
+  const deviceRows = useMemo(() => attentionDevices(devices, hubVersion), [devices, hubVersion])
+  const attentionCount = instances.filter((i) => isAttention(i)).length + deviceRows.length
 
   return (
     <>
@@ -328,7 +404,7 @@ export function OverviewPage() {
             <HubSummary instanceCount={synced ? instances.length : null} />
           </Cell>
           <Cell no="01.3" title={t('overview.attention.title')} meta={synced ? t('overview.attention.meta', { count: attentionCount }) : undefined}>
-            <Attention instances={instances} now={now} synced={synced} onOpen={(i) => setOpenId(i.id)} onRetry={(i) => void manager.actions.run(i)} />
+            <Attention instances={instances} devices={deviceRows} now={now} synced={synced} onOpen={(i) => setOpenId(i.id)} onRetry={(i) => void manager.actions.run(i)} />
           </Cell>
           <Cell no="01.4" title={t('overview.screen.title')}>
             <ScreenCard />

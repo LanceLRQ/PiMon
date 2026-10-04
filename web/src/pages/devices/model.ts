@@ -71,3 +71,23 @@ export function incompatibleText(i18n: I18n, reason: string | null | undefined):
   const key = `errors.device.incompatible_reason.${reason ?? ''}`
   return reason && i18n.exists(key) ? i18n.t(key) : i18n.t('errors.device.incompatible')
 }
+
+// 总览口径：只算已确认设备（占位不算），不含中枢。
+export function confirmedDevices(devices: readonly Device[]): Device[] {
+  return devices.filter((d) => d.confirmed)
+}
+
+// 在线 agent：N = presence 为 online 的已确认设备，M = 已确认设备总数。
+export function agentCounts(devices: readonly Device[]): { online: number; total: number } {
+  const list = confirmedDevices(devices)
+  return { online: list.filter((d) => d.presence === 'online').length, total: list.length }
+}
+
+export type DeviceAttentionKind = 'offline' | 'upgrade'
+
+// 需要处理的设备：离线（休眠不算，设计 3.6），或协议不兼容、必须升级；两者同时成立时以升级为准。
+export function deviceAttention(d: Device, hubVersion: string | null | undefined): DeviceAttentionKind | null {
+  if (!d.confirmed) return null
+  if (needsUpgrade(d, hubVersion)?.level === 'required') return 'upgrade'
+  return d.presence === 'offline' ? 'offline' : null
+}

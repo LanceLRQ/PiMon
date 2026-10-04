@@ -8,6 +8,7 @@ import type { SystemInfo } from '@/types/generated'
 import { Note } from '@/ui/note'
 import { PageHeader } from '@/ui/page-header'
 import { Section } from '@/ui/section'
+import { AgentChannelPanel } from './AgentChannelPanel'
 import { BackupsPanel } from './BackupsPanel'
 import { KV } from './KV'
 import { LogPanel } from './LogPanel'
@@ -84,6 +85,7 @@ export function SystemPage() {
 
         <LogPanel />
         <BackupsPanel />
+        <AgentChannelPanel />
       </div>
     </>
   )

@@ -155,10 +155,10 @@ describe('实时 store', () => {
     expect(store.getState().devices).toBe(before)
   })
 
-  it('尚无设备列表时收到 device patch 从该设备起建表；device_removed 不凭空造表', () => {
+  it('尚无设备列表时 device patch 与 device_removed 都不凭空造表（保持未知，等 snapshot）', () => {
     store.applyPatch(patch({ entity: 'device_removed', id: 'x' }))
     expect(store.getState().devices).toBeNull()
     store.applyPatch(patch({ entity: 'device', device: device('d1') }))
-    expect(store.getState().devices?.map((d) => d.id)).toEqual(['d1'])
+    expect(store.getState().devices).toBeNull()
   })
 })

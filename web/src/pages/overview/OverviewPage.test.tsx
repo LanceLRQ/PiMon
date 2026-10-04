@@ -5,6 +5,7 @@ import { fixtureNow, makeInstance, prototypeInstances } from '@/pages/instances/
 import { apiError, json, mockApi, patchInstance, renderWithApp, seedStore } from '@/pages/instances/test-utils'
 import type { LayoutState, ScreenStatus } from '@/types/generated'
 import { liveStore } from '@/store/live-store'
+import { device } from '@/pages/devices/test-utils'
 import { OverviewPage } from './OverviewPage'
 
 beforeEach(() => {
@@ -382,5 +383,48 @@ describe('总览页', () => {
     seedStore(prototypeInstances)
     await renderWithApp(<OverviewPage />)
     expect(within(cell('实例一览')).getByText('12 秒前')).toBeInTheDocument()
+  })
+})
+
+describe('总览页：agent 与设备', () => {
+  it('在线 agent 显示 N/M（只算已确认设备），点击跳到设备页，数字随 WS 更新', async () => {
+    mockApi()
+    seedStore([], { devices: [device('a'), device('b', { presence: 'offline' }), device('p', { confirmed: false, presence: 'pending' })] })
+    await renderWithApp(<OverviewPage />)
+    const link = within(cell('hub 概况')).getByRole('link', { name: '1/2' })
+    expect(link).toHaveAttribute('href', '/devices')
+    act(() => liveStore.applyPatch({ type: 'patch', entity: 'device', server_time: new Date().toISOString(), device: device('b') } as never))
+    expect(within(cell('hub 概况')).getByRole('link', { name: '2/2' })).toBeInTheDocument()
+  })
+
+  it('设备列表未加载时显示未知，不显示 0', async () => {
+    mockApi()
+    seedStore([])
+    await renderWithApp(<OverviewPage />)
+    const agents = within(cell('hub 概况')).getByText('在线 agent').nextElementSibling!
+    expect(agents).toHaveTextContent('未知')
+    expect(within(cell('hub 概况')).queryByRole('link', { name: /\d+\/\d+/ })).not.toBeInTheDocument()
+  })
+
+  it('需要处理区包含离线与需要升级的设备，休眠与占位不算', async () => {
+    mockApi()
+    seedStore([], {
+      devices: [
+        device('off', { name: 'nas-off', presence: 'offline' }),
+        device('old', { name: 'vps-old', incompatible: { reason: 'version_too_old' } as never }),
+        device('sleep', { name: 'mac-sleep', presence: 'dormant' }),
+        device('ph', { name: 'placeholder', confirmed: false, presence: 'offline' }),
+      ],
+    })
+    await renderWithApp(<OverviewPage />)
+    const att = cell('需要处理')
+    expect(within(att).getByText('nas-off')).toBeInTheDocument()
+    expect(within(att).getByText('vps-old')).toBeInTheDocument()
+    expect(within(att).getByText('需要升级 agent')).toBeInTheDocument()
+    expect(within(att).queryByText('mac-sleep')).not.toBeInTheDocument()
+    expect(within(att).queryByText('placeholder')).not.toBeInTheDocument()
+    const links = within(att).getAllByRole('link', { name: '查看设备' })
+    expect(links.map((l) => l.getAttribute('href')).sort()).toEqual(['/devices?open=off', '/devices?open=old'])
+    expect(within(att).queryByText('没有需要处理的项')).not.toBeInTheDocument()
   })
 })

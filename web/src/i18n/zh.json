@@ -247,7 +247,10 @@
     "colon": "：",
     "loadFailed": "加载失败",
     "stay": "留下",
-    "leave": "离开"
+    "leave": "离开",
+    "copy": "复制",
+    "copied": "已复制",
+    "copyFailed": "复制失败，请手动选中复制"
   },
   "login": {
     "title": "登录管理界面",
@@ -566,7 +569,6 @@
       "timezone": "时区",
       "instances": "实例数",
       "agents": "在线 agent",
-      "agentsLater": "M2 提供",
       "uptime": "运行时长"
     },
     "attention": {
@@ -575,7 +577,10 @@
       "none": "没有需要处理的项",
       "view": "查看实例",
       "retry": "立即重试",
-      "lastSuccess": "上次成功 {{ago}}"
+      "lastSuccess": "上次成功 {{ago}}",
+      "viewDevice": "查看设备",
+      "deviceOffline": "设备离线",
+      "lastSeen": "上次在线 {{ago}}"
     },
     "screen": {
       "title": "屏幕",
@@ -1253,6 +1258,19 @@
           "result": "结果"
         }
       }
+    },
+    "agent": {
+      "title": "agent 通道",
+      "meta": "设备连接",
+      "loadFailed": "无法加载 agent 通道信息",
+      "disabled": "未启用",
+      "port": "通道端口",
+      "fingerprint": "证书指纹",
+      "fingerprintCopy": "复制指纹",
+      "platforms": "可下载平台",
+      "noPlatforms": "无（开发构建未内嵌）",
+      "protocol": "协议版本",
+      "protocolValue": "{{version}}（最低兼容 {{min}}）"
     }
   },
   "screenThemes": {

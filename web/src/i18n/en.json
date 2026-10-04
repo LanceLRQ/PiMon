@@ -247,7 +247,10 @@
     "colon": ": ",
     "loadFailed": "Failed to load",
     "stay": "Stay",
-    "leave": "Leave"
+    "leave": "Leave",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyFailed": "Copy failed, please select and copy manually"
   },
   "login": {
     "title": "Sign in to the admin console",
@@ -566,7 +569,6 @@
       "timezone": "Time zone",
       "instances": "Instances",
       "agents": "Agents online",
-      "agentsLater": "Coming in M2",
       "uptime": "Uptime"
     },
     "attention": {
@@ -575,7 +577,10 @@
       "none": "Nothing needs attention",
       "view": "View instance",
       "retry": "Retry now",
-      "lastSuccess": "last success {{ago}}"
+      "lastSuccess": "last success {{ago}}",
+      "viewDevice": "View device",
+      "deviceOffline": "Device offline",
+      "lastSeen": "last seen {{ago}}"
     },
     "screen": {
       "title": "Screen",
@@ -1253,6 +1258,19 @@
           "result": "Result"
         }
       }
+    },
+    "agent": {
+      "title": "Agent channel",
+      "meta": "device connections",
+      "loadFailed": "Cannot load agent channel info",
+      "disabled": "Disabled",
+      "port": "Channel port",
+      "fingerprint": "Certificate fingerprint",
+      "fingerprintCopy": "Copy fingerprint",
+      "platforms": "Downloadable platforms",
+      "noPlatforms": "None (not embedded in dev builds)",
+      "protocol": "Protocol version",
+      "protocolValue": "{{version}} (min compatible {{min}})"
     }
   },
   "screenThemes": {
