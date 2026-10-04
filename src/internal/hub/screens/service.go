@@ -21,6 +21,14 @@ const MaxVersions = 20
 // PluginSource 是校验与解析依赖的插件注册表；生产环境为 *plugins.Registry。
 type PluginSource interface {
 	Get(id string) (plugins.Plugin, bool)
+	// MachinePlugin 按 id 取 machine 上可用的插件（设备取其上报的 manifest）；hub 等同 Get。
+	// 设备缓存未命中时会读库，不得在 DB 事务内调用。
+	MachinePlugin(machine, id string) (plugins.Plugin, bool)
+}
+
+// DeviceSource 是主机灯组依赖的设备列表（按创建顺序，带在线状态）；生产环境为 *devices.Viewer。
+type DeviceSource interface {
+	List(ctx context.Context) ([]model.Device, error)
 }
 
 // InstanceSource 是校验与解析依赖的实例列表；生产环境为 *instances.Service。
@@ -56,6 +64,8 @@ type Service struct {
 
 	// seeds 按网格取种子布局，供首次 viewport 自动选网格使用；为空则不自动选。
 	seeds SeedFunc
+	// devs 是主机灯组的设备来源；为空时灯组只有中枢一格。
+	devs DeviceSource
 
 	cbMu     sync.RWMutex
 	onChange func(model.LayoutState)
@@ -79,6 +89,11 @@ func New(c Config) *Service {
 type noPlugins struct{}
 
 func (noPlugins) Get(string) (plugins.Plugin, bool) { return plugins.Plugin{}, false }
+
+func (noPlugins) MachinePlugin(string, string) (plugins.Plugin, bool) { return plugins.Plugin{}, false }
+
+// UseDevices 注入主机灯组的设备来源（设备视图在布局服务之后才建好）；须在对外服务前调用。
+func (s *Service) UseDevices(d DeviceSource) { s.devs = d }
 
 type noInstances struct{}
 

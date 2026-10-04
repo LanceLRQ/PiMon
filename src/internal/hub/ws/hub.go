@@ -457,8 +457,9 @@ func (h *Hub) flush() {
 	if settingsChanged {
 		msgs = appendMsg(msgs, h.settingsMsgLocked())
 	}
-	// 实例变化可能影响屏幕引用的数据与解析后布局的展示状态；设置变化可能改变语言。
-	if len(ids) > 0 || settingsChanged {
+	// 实例变化可能影响屏幕引用的数据与解析后布局的展示状态；设备变化（增删、改名、上下线）
+	// 影响主机灯组的各格；设置变化可能改变语言。
+	if len(ids) > 0 || len(devIDs) > 0 || settingsChanged {
 		msgs = append(msgs, h.screenRefreshLocked(ctx)...)
 	}
 	h.deliverLocked(ctx, msgs)

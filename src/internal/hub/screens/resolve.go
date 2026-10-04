@@ -34,6 +34,11 @@ func (s *Service) Resolve(ctx context.Context, lang string) (model.ResolvedLayou
 	if err != nil {
 		return model.ResolvedLayout{}, err
 	}
+	if hasHostsWidget(st.Layout) {
+		if sn.hosts, err = s.hostCells(ctx, sn); err != nil {
+			return model.ResolvedLayout{}, err
+		}
+	}
 	brokenSet := map[string]bool{}
 	for _, b := range st.Broken {
 		brokenSet[b.Screen+"/"+b.Widget] = true
@@ -74,6 +79,10 @@ func (s *Service) resolveWidget(w model.LayoutWidget, lang string, sn *snapshot,
 			}
 		}
 	case model.WidgetSourceAggregate:
+		if w.Binding.DataSource == model.AggregateSourceHosts {
+			s.resolveHosts(&rw, lang, sn, broken)
+			break
+		}
 		rw.DisplayState = refsState(w.Binding.Refs, sn, broken)
 		if !broken && len(w.Binding.Refs) > 0 {
 			rw.Slots["items"] = s.resolveRefs(w.Binding.Refs, lang, sn)
@@ -87,10 +96,10 @@ func (s *Service) resolveWidget(w model.LayoutWidget, lang string, sn *snapshot,
 }
 
 func (s *Service) resolvePlugin(rw *model.ResolvedWidget, w model.LayoutWidget, lang string, sn *snapshot, broken bool, title *string) {
-	p, pluginOK := s.reg.Get(w.PluginID)
+	p, pluginOK := s.widgetPlugin(&w, sn)
 	var mw manifest.Widget
 	widgetOK := false
-	if pluginOK && p.Manifest != nil {
+	if pluginOK {
 		mw, widgetOK = findWidget(p.Manifest, w.WidgetID)
 	}
 	if widgetOK && *title == "" {
@@ -147,8 +156,8 @@ func (s *Service) refTitle(r model.WidgetRef, lang string, sn *snapshot) string 
 	if !ok {
 		return ""
 	}
-	p, ok := s.reg.Get(in.PluginID)
-	if !ok || p.Manifest == nil {
+	p, ok := s.pluginAt(machineOf(in), in.PluginID)
+	if !ok {
 		return ""
 	}
 	for _, o := range p.Manifest.Outputs {
@@ -173,8 +182,8 @@ func (s *Service) itemTitle(r model.WidgetRef, lang string, sn *snapshot) string
 	if !ok {
 		return ""
 	}
-	p, ok := s.reg.Get(in.PluginID)
-	if !ok || p.Manifest == nil {
+	p, ok := s.pluginAt(machineOf(in), in.PluginID)
+	if !ok {
 		return ""
 	}
 	for _, o := range p.Manifest.Outputs {

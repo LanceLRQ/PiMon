@@ -43,6 +43,15 @@ type fakePlugins map[string]plugins.Plugin
 
 func (f fakePlugins) Get(id string) (plugins.Plugin, bool) { p, ok := f[id]; return p, ok }
 
+// MachinePlugin 取设备上报的插件：键为「设备 id/插件 id」；hub 等同 Get。
+func (f fakePlugins) MachinePlugin(machine, id string) (plugins.Plugin, bool) {
+	if machine == plugins.MachineHub {
+		return f.Get(id)
+	}
+	p, ok := f[machine+"/"+id]
+	return p, ok
+}
+
 type fakeInstances struct{ list []model.Instance }
 
 func (f *fakeInstances) List(context.Context) ([]model.Instance, error) {

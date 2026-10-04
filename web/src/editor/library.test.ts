@@ -44,6 +44,15 @@ describe('小组件库', () => {
     expect(filterLibrary(lib, 'generic', 'cpu')).toHaveLength(0)
     expect(filterLibrary(lib, 'aggregate', '')).toHaveLength(1)
   })
+  it('按数据源汇总的目录条目暂不列入，库内键不重复', () => {
+    const withHosts: WidgetCatalog = {
+      ...catalog,
+      aggregate: [...catalog.aggregate, { template: 'status-grid', data_source: 'hosts', sizes: [{ cols: 2, rows: 2 }] }],
+    }
+    const keys = buildLibrary(plugins, withHosts, title).map((e) => e.key)
+    expect(new Set(keys).size).toBe(keys.length)
+    expect(keys.filter((k) => k.startsWith('aggregate:'))).toEqual(['aggregate:status-grid'])
+  })
 })
 
 describe('允许尺寸与模板', () => {

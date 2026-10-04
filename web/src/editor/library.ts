@@ -50,6 +50,8 @@ export function buildLibrary(
     ['aggregate', catalog?.aggregate ?? []],
   ] as const) {
     for (const e of entries) {
+      // 按数据源自动汇总的条目（主机灯组）待编辑器支持后再列入库，避免与同模板条目重键
+      if (e.data_source) continue
       out.push({
         key: `${group}:${e.template}`,
         group,

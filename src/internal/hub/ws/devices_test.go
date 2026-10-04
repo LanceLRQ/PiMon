@@ -233,3 +233,48 @@ func TestDevices通知不被进行中的读取阻塞(t *testing.T) {
 		t.Fatalf("放开读取后应收到 patch: %v", p)
 	}
 }
+
+// 设备变化（例如没有任何实例的设备上线）会改变主机灯组的解析结果：屏幕会话在合并窗口内就收到新的解析布局，
+// 不必等 15 秒对账。
+func TestDevices设备变化在合并窗口内刷新屏幕布局(t *testing.T) {
+	fd := newFakeDevices(dev("d1", "nas", model.PresencePending))
+	layouts := &fakeLayouts{}
+	layouts.set(1, "ok")
+	setHosts := func(state string) {
+		layouts.mu.Lock()
+		defer layouts.mu.Unlock()
+		layouts.resolved.Screens[0].Widgets = []model.ResolvedWidget{{
+			ID: "hosts", Source: model.WidgetSourceAggregate, Template: "status-grid",
+			Size: model.WidgetSize{Cols: 2, Rows: 2}, DisplayState: "ok", Slots: map[string][]model.ResolvedRef{},
+			Hosts: []model.ResolvedHost{{ID: "hub", State: model.PresenceOnline}, {ID: "d1", Name: "nas", State: state}},
+		}}
+	}
+	setHosts(model.PresencePending)
+	h := newHarnessFull(t, 0, nil, func(c *Config) {
+		c.Devices, c.Layouts = fd, layouts
+		c.ScreenState = &fakeScreenState{st: model.ScreenState{Mode: model.ScreenModeOn, ThemeID: model.ThemeAmbient, Reason: model.ScreenReasonSchedule}}
+		c.Sink = &fakeSink{}
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	h.hub.Start(ctx)
+	screen := h.dial(screenToken)
+	read(t, screen)
+
+	fd.set(dev("d1", "nas", model.PresenceOnline))
+	setHosts(model.PresenceOnline)
+	h.hub.NotifyDevice("d1")
+	ping(t, screen) // 窗口未到
+
+	h.clk.Advance(time.Second)
+	p := read(t, screen)
+	if p["entity"] != ui.EntityLayout {
+		t.Fatalf("设备变化应重推解析后布局: %v", p)
+	}
+	rl := p["resolved_layout"].(map[string]any)
+	w := rl["screens"].([]any)[0].(map[string]any)["widgets"].([]any)[0].(map[string]any)
+	if got := w["hosts"].([]any)[1].(map[string]any)["state"]; got != model.PresenceOnline {
+		t.Fatalf("灯组里 d1 的状态 = %v", got)
+	}
+	ping(t, screen)
+}

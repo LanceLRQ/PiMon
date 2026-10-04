@@ -657,6 +657,21 @@ export const WidgetSourceGeneric = "generic";
  */
 export const WidgetSourceAggregate = "aggregate";
 /**
+ * 聚合小组件的数据源（WidgetBinding.DataSource）。为空表示按 Refs 逐项绑定。
+ */
+/**
+ * AggregateSourceHosts 是主机灯组：自动包含中枢与全部已确认设备，不使用 Refs，模板固定 status-grid。
+ */
+export const AggregateSourceHosts = "hosts";
+/**
+ * HostStateMaintenance 表示设备处于维护模式，优先于在线状态。
+ */
+export const HostStateMaintenance = "maintenance";
+/**
+ * HostStateIncompatible 表示设备未在线且与中枢协议不兼容，需要升级。
+ */
+export const HostStateIncompatible = "incompatible";
+/**
  * IndexScreenID 是首页 screen 的固定 id，布局里必须存在且不可删除。
  */
 export const IndexScreenID = "index";
@@ -754,10 +769,13 @@ export interface ResolvedRef {
  *   - plugin 来源：InstanceID 指定实例，数据项由 manifest 声明的槽决定；为空表示占位，
  *     解析布局时绑定到该插件最早创建的实例。
  *   - generic 来源：Refs 至多一项；aggregate 来源：Refs 为参与汇总的数据项。
+ *   - aggregate 来源且 DataSource 非空：数据由服务端按数据源自动汇总，Refs 必须为空
+ *     （目前只有 hosts，即主机灯组）。
  */
 export interface WidgetBinding {
   instance_id?: string;
   refs?: WidgetRef[];
+  data_source?: string;
 }
 /**
  * LayoutWidget 是 screen 上的一个小组件放置记录。
@@ -902,9 +920,11 @@ export interface LayoutRollbackRequest {
 }
 /**
  * CatalogEntry 是通用或聚合目录里的一个模板及其允许的尺寸。
+ * DataSource 仅聚合目录：非空表示按数据源自动汇总的条目（如主机灯组 hosts），与 Template 一起区分条目。
  */
 export interface CatalogEntry {
   template: string;
+  data_source?: string;
   sizes: WidgetSize[];
 }
 /**
@@ -948,10 +968,37 @@ export interface ResolvedWidget {
   slots: { [key: string]: ResolvedRef[]};
   /**
    * DisplayState 是统一展示状态：无绑定为 unconfigured，引用失效为 broken，
-   * 否则为被绑定实例的展示状态（聚合取其中最严重的）。
+   * 否则为被绑定实例的展示状态（聚合取其中最严重的）；主机灯组固定为 ok，各格自己表达状态。
    */
   display_state: string;
   options: { [key: string]: any};
+  /**
+   * Hosts 仅主机灯组（data_source 为 hosts）：中枢固定第一，其后按设备创建顺序，只含已确认设备。
+   */
+  hosts?: ResolvedHost[];
+}
+/**
+ * ResolvedHost 是主机灯组里的一格。
+ */
+export interface ResolvedHost {
+  /**
+   * ID 为 hub 或设备 id。
+   */
+  id: string;
+  /**
+   * Name 是设备名；中枢为空串，由前端按语言显示「中枢」。
+   */
+  name: string;
+  /**
+   * State 是 online | disconnected | offline | dormant | pending | maintenance | incompatible；
+   * 中枢固定为 online。维护模式优先；设备未在线且协议不兼容时为 incompatible。
+   */
+  state: string;
+  /**
+   * InstanceID 是该机器上 CPU 读数的来源实例（最早创建的 host-metrics 实例），没有时为空；
+   * 读数引用同时放在 Slots["items"]（数据项 cpu）。
+   */
+  instance_id?: string;
 }
 /**
  * ResolvedScreen 是解析后的 screen。

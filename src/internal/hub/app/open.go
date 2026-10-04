@@ -264,6 +264,8 @@ func (a *App) assemble(ctx context.Context, dbExisted bool) error {
 	a.deviceViews = devices.NewViewer(devices.ViewerConfig{
 		Store: a.devices, Presence: a.presence, ConnError: a.dialout.ConnError, ClockSkew: a.agents.ClockSkew,
 	})
+	// 主机灯组按设备视图生成各格（中枢固定第一，其后为已确认设备）。
+	a.screens.UseDevices(a.deviceViews)
 	// hub-self 的统计来源在 instances 与 history 就绪后才能绑定，先于 Load 以便首次采集就有数据。
 	hubself.Bind(hubStats{
 		inst: a.instances, hist: a.history, started: o.clk.Now(), dataDir: a.cfg.DataDir,
