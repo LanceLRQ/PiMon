@@ -180,9 +180,14 @@ func parseDialURL(raw string) (dialURL, error) {
 	if port == "" {
 		port = DefaultPort
 	}
-	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+	if strings.Contains(host, "%") {
+		return dialURL{}, fmt.Errorf("%w：地址不能带网卡范围（zone）", ErrDialConfig)
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil || n < 1 || n > 65535 {
 		return dialURL{}, fmt.Errorf("%w：端口必须在 1-65535 之间", ErrDialConfig)
 	}
+	port = strconv.Itoa(n) // 去掉前导零等非规范写法
 	switch u.Path {
 	case "", "/", AgentPath:
 	default:
@@ -200,6 +205,9 @@ func NormalizeDialURL(raw string) (string, error) {
 		return "", fmt.Errorf("%w：端口为空", ErrDialConfig)
 	}
 	if raw != "" && !strings.Contains(raw, "://") {
+		if strings.Count(raw, ":") >= 2 && !strings.HasPrefix(raw, "[") {
+			return "", fmt.Errorf("%w：IPv6 地址需写成 [地址]:端口", ErrDialConfig)
+		}
 		raw = "wss://" + raw
 	}
 	u, err := parseDialURL(raw)

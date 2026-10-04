@@ -555,6 +555,26 @@ func TestNormalizeDialURL_裸地址补wss(t *testing.T) {
 	}
 }
 
+func TestNormalizeDialURL_IPv6区域端口与幂等(t *testing.T) {
+	for _, raw := range []string{"2001:db8::1", "2001:db8::1:31418", "::1", "[fe80::1%25en0]", "[fe80::1%25en0]:31418"} {
+		if got, err := NormalizeDialURL(raw); !errors.Is(err, ErrDialConfig) {
+			t.Fatalf("%q 应返回 ErrDialConfig，得到 %q %v", raw, got, err)
+		}
+	}
+	if got, err := NormalizeDialURL("host:031418"); err != nil || got != "wss://host:31418" {
+		t.Fatalf("前导零端口：得 %q（%v）", got, err)
+	}
+	for _, raw := range []string{"1.2.3.4", "1.2.3.4:031418", "vps.example.com:4000", "[::1]", "[2001:db8::1]:31418", "wss://h:0443/agent", "wss://[::1]/", " h:1 "} {
+		a, err := NormalizeDialURL(raw)
+		if err != nil {
+			t.Fatalf("%q 应被接受：%v", raw, err)
+		}
+		if b, err := NormalizeDialURL(a); err != nil || b != a {
+			t.Fatalf("%q 规范化不幂等：%q -> %q（%v）", raw, a, b, err)
+		}
+	}
+}
+
 // listenSamePortV6 在 [::1] 上占用与 addr 相同的端口，环境不支持时跳过。
 func listenSamePortV6(t *testing.T, addr string) net.Listener {
 	t.Helper()
