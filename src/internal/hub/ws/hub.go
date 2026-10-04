@@ -660,23 +660,23 @@ func (h *Hub) recheck(c *client) {
 	}
 }
 
-// defaultTopics 是会话建立时的默认订阅：kiosk 只看设置与屏幕状态；管理员看实例、设置、原始布局与屏幕状态；
+// defaultTopics 是会话建立时的默认订阅：kiosk 只看设置与屏幕状态；管理员看实例、设备、设置、原始布局与屏幕状态；
 // 屏幕会话只看设置、解析后布局、屏幕状态与布局引用实例的数据。
 func defaultTopics(kind auth.SessionKind) []string {
 	if kind == kindKiosk {
 		return []string{ui.TopicSettings, ui.TopicScreenState}
 	}
 	if kind == auth.KindAdmin {
-		return []string{ui.TopicInstances, ui.TopicSettings, ui.TopicLayout, ui.TopicScreenState}
+		return []string{ui.TopicInstances, ui.TopicDevices, ui.TopicSettings, ui.TopicLayout, ui.TopicScreenState}
 	}
 	return []string{ui.TopicSettings, ui.TopicLayout, ui.TopicScreenState, ui.TopicScreenData}
 }
 
-// allowedTopics 是会话可订阅的主题：管理员在默认之外可订阅 screen_data 做预览、devices 看设备；
+// allowedTopics 是会话可订阅的主题：管理员在默认之外可订阅 screen_data 做预览；
 // 屏幕会话不能订阅 instances 与 devices。
 func allowedTopics(kind auth.SessionKind) []string {
 	if kind == auth.KindAdmin {
-		return append(defaultTopics(kind), ui.TopicScreenData, ui.TopicDevices)
+		return append(defaultTopics(kind), ui.TopicScreenData)
 	}
 	return defaultTopics(kind)
 }

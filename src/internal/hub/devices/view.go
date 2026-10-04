@@ -65,7 +65,8 @@ func (v *Viewer) fill(d *model.Device) {
 	}
 	if v.cfg.ClockSkew != nil {
 		if skew, ok := v.cfg.ClockSkew(d.ID); ok {
-			ms := skew.Milliseconds()
+			// 按秒取整：对账每 15 秒比较一次，毫秒级抖动不应触发设备补丁。
+			ms := skew.Round(time.Second).Milliseconds()
 			d.ClockSkewMs = &ms
 		}
 	}

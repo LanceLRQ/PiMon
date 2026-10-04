@@ -57,7 +57,7 @@ const (
 	TopicScreenState = "screen_state"
 	// TopicScreenData 当前布局引用的实例的展示状态与最新数据项：屏幕会话默认订阅，管理员可订阅做预览。
 	TopicScreenData = "screen_data"
-	// TopicDevices 全部设备（不含中枢本机，由前端合成固定首行）的状态（仅管理员会话可订阅，不在默认订阅里）。
+	// TopicDevices 全部设备（不含中枢本机，由前端合成固定首行）的状态（仅管理员会话可订阅，在管理员默认订阅里）。
 	TopicDevices = "devices"
 )
 

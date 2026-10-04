@@ -24,12 +24,12 @@ func TestViewer填入在线状态连接错误与时钟偏差(t *testing.T) {
 			}
 			return ""
 		},
-		ClockSkew: func(got string) (time.Duration, bool) { return 1500 * time.Millisecond, got == id },
+		ClockSkew: func(got string) (time.Duration, bool) { return 1400 * time.Millisecond, got == id },
 	})
 
 	d, err := v.View(ctx, id)
 	must(t, err)
-	if d.Presence != model.PresencePending || d.ConnError != "unreachable" || d.ClockSkewMs == nil || *d.ClockSkewMs != 1500 {
+	if d.Presence != model.PresencePending || d.ConnError != "unreachable" || d.ClockSkewMs == nil || *d.ClockSkewMs != 1000 {
 		t.Fatalf("view = presence %q conn %q skew %v", d.Presence, d.ConnError, d.ClockSkewMs)
 	}
 	pres.Connected(id)
@@ -89,5 +89,52 @@ func TestConfirm重新配对继承维护模式(t *testing.T) {
 	must(t, err)
 	if d, _ := f.s.Get(ctx, newID); !d.Maintenance {
 		t.Fatal("确认后应继承旧设备的维护模式")
+	}
+}
+
+func TestViewer时钟偏差按秒取整避免抖动补丁(t *testing.T) {
+	f := newFixture(t)
+	_, id := f.pairNew(t, PairingOptions{Name: "nas", Role: model.DeviceRoleNAS}, "", "")
+	for _, c := range []struct {
+		skew time.Duration
+		want int64
+	}{{-400 * time.Millisecond, 0}, {499 * time.Millisecond, 0}, {2300 * time.Millisecond, 2000}, {-2600 * time.Millisecond, -3000}} {
+		v := NewViewer(ViewerConfig{Store: f.s, ClockSkew: func(string) (time.Duration, bool) { return c.skew, true }})
+		d, err := v.View(context.Background(), id)
+		must(t, err)
+		if d.ClockSkewMs == nil || *d.ClockSkewMs != c.want {
+			t.Fatalf("skew %v 取整 = %v，期望 %d", c.skew, d.ClockSkewMs, c.want)
+		}
+	}
+}
+
+func TestList与Get带出replaces与confirmed(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	_, oldID := f.pairNew(t, PairingOptions{Name: "nas", Role: model.DeviceRoleNAS}, "", "")
+	if d, _ := f.s.Get(ctx, oldID); d.Confirmed {
+		t.Fatal("配对后尚未握手确认，应 confirmed=false")
+	}
+	_, err := f.s.Confirm(ctx, oldID)
+	must(t, err)
+	d, err := f.s.Get(ctx, oldID)
+	must(t, err)
+	det, err := f.s.Detail(ctx, oldID)
+	must(t, err)
+	if d.Confirmed != det.Confirmed || d.Replaces != det.Replaces {
+		t.Fatalf("Get = confirmed %v replaces %q，Detail = %v %q", d.Confirmed, d.Replaces, det.Confirmed, det.Replaces)
+	}
+	cred, _ := agent.NewCredential()
+	ph, err := f.s.CreateDialOut(ctx, DialOutDevice{Name: "vps", Credential: cred})
+	must(t, err)
+	list, err := f.s.List(ctx)
+	must(t, err)
+	for _, x := range list {
+		if x.ID == ph.ID && x.Confirmed {
+			t.Fatalf("拨出占位未确认，却 confirmed=true")
+		}
+	}
+	if !d.Confirmed {
+		t.Fatal("配对完成的设备应 confirmed=true")
 	}
 }

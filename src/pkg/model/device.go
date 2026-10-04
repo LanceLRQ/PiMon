@@ -52,14 +52,18 @@ type Device struct {
 	OS           string `json:"os"`
 	Arch         string `json:"arch"`
 	// ProtocolVersion 为 0 表示从未握手。
-	ProtocolVersion int                 `json:"protocol_version"`
-	Incompatible    *DeviceIncompatible `json:"incompatible" tstype:"DeviceIncompatible | null,required"`
-	Presence        string              `json:"presence"`
-	ConnError       string              `json:"conn_error,omitempty"`
-	ClockSkewMs     *int64              `json:"clock_skew_ms" tstype:"number | null,required"`
-	LastSeenAt      *time.Time          `json:"last_seen_at" tstype:"string | null,required"`
-	CreatedAt       time.Time           `json:"created_at"`
-	UpdatedAt       time.Time           `json:"updated_at"`
+	ProtocolVersion int `json:"protocol_version"`
+	// Replaces 非空表示这是重新配对产生的占位，值为被替换设备的 id。
+	Replaces string `json:"replaces"`
+	// Confirmed 为 false 表示占位尚未确认（还没成功握手）。
+	Confirmed    bool                `json:"confirmed"`
+	Incompatible *DeviceIncompatible `json:"incompatible" tstype:"DeviceIncompatible | null,required"`
+	Presence     string              `json:"presence"`
+	ConnError    string              `json:"conn_error,omitempty"`
+	ClockSkewMs  *int64              `json:"clock_skew_ms" tstype:"number | null,required"`
+	LastSeenAt   *time.Time          `json:"last_seen_at" tstype:"string | null,required"`
+	CreatedAt    time.Time           `json:"created_at"`
+	UpdatedAt    time.Time           `json:"updated_at"`
 }
 
 // DeviceInput 是更新设备的请求体。Address 与 ProxyID 只对拨出设备生效，缺省表示不改。

@@ -461,7 +461,7 @@ func (s *Store) Credential(ctx context.Context, id string) (string, error) {
 }
 
 const selectCols = `id, name, role, direction, address, hostname, proxy_id, allow_offline, maintenance,
-	agent_version, os, arch, protocol_version, incompatible_reason, required_min, last_seen_at, created_at, updated_at`
+	agent_version, os, arch, protocol_version, incompatible_reason, required_min, replaces, confirmed_at, last_seen_at, created_at, updated_at`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
@@ -471,15 +471,16 @@ func scan(r rowScanner) (model.Device, error) {
 		allow, maint         int
 		reason               string
 		reqMin               int
-		lastSeen             sql.NullString
+		lastSeen, confirmed  sql.NullString
 		created, updatedText string
 	)
 	if err := r.Scan(&d.ID, &d.Name, &d.Role, &d.Direction, &d.Address, &d.Hostname, &d.ProxyID, &allow, &maint,
-		&d.AgentVersion, &d.OS, &d.Arch, &d.ProtocolVersion, &reason, &reqMin, &lastSeen, &created, &updatedText); err != nil {
+		&d.AgentVersion, &d.OS, &d.Arch, &d.ProtocolVersion, &reason, &reqMin, &d.Replaces, &confirmed, &lastSeen, &created, &updatedText); err != nil {
 		return model.Device{}, err
 	}
 	d.AllowOffline = allow == 1
 	d.Maintenance = maint == 1
+	d.Confirmed = confirmed.Valid
 	if reason != "" {
 		d.Incompatible = &model.DeviceIncompatible{Reason: reason, RequiredMin: reqMin}
 	}

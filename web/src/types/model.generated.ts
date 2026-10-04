@@ -261,6 +261,14 @@ export interface Device {
    * ProtocolVersion 为 0 表示从未握手。
    */
   protocol_version: number /* int */;
+  /**
+   * Replaces 非空表示这是重新配对产生的占位，值为被替换设备的 id。
+   */
+  replaces: string;
+  /**
+   * Confirmed 为 false 表示占位尚未确认（还没成功握手）。
+   */
+  confirmed: boolean;
   incompatible: DeviceIncompatible | null;
   presence: string;
   conn_error?: string;

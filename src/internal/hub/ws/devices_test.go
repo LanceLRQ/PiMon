@@ -80,13 +80,22 @@ func newDeviceHarness(t *testing.T, queue int, list ...model.Device) (*harness, 
 	return h, fd
 }
 
+func TestDevices管理员默认订阅devices且屏幕会话不带(t *testing.T) {
+	h, _ := newDeviceHarness(t, 0, dev("d1", "nas", model.PresenceOnline))
+	first := read(t, h.dial(adminToken))
+	list, ok := first["devices"].([]any)
+	if !ok || len(list) != 1 || list[0].(map[string]any)["id"] != "d1" {
+		t.Fatalf("管理员默认 snapshot 应带设备列表: %v", first["devices"])
+	}
+	if _, ok := read(t, h.dial(screenToken))["devices"]; ok {
+		t.Fatal("屏幕会话 snapshot 不应带设备")
+	}
+}
+
 func TestDevices订阅后收到snapshot且合并推送device补丁(t *testing.T) {
 	h, fd := newDeviceHarness(t, 0, dev("d1", "nas", model.PresenceOnline))
 	c := h.dial(adminToken)
-	first := read(t, c)
-	if _, ok := first["devices"]; ok {
-		t.Fatalf("默认订阅不含 devices，snapshot 不应带设备: %v", first["devices"])
-	}
+	read(t, c)
 
 	send(t, c, ui.ClientMessage{Type: ui.TypeSubscribe, Topics: []string{ui.TopicInstances, ui.TopicDevices}})
 	snap := read(t, c)
@@ -143,10 +152,8 @@ func TestDevices吊销推送device_removed且新设备推送device(t *testing.T)
 	}
 }
 
-func TestDevices未订阅的管理员与屏幕会话不收设备推送(t *testing.T) {
+func TestDevices屏幕会话不收设备推送且订阅被拒(t *testing.T) {
 	h, fd := newDeviceHarness(t, 0, dev("d1", "nas", model.PresenceOnline))
-	admin := h.dial(adminToken)
-	read(t, admin)
 	screen := h.dial(screenToken)
 	read(t, screen)
 
@@ -159,7 +166,6 @@ func TestDevices未订阅的管理员与屏幕会话不收设备推送(t *testin
 	fd.set(dev("d1", "nas", model.PresenceOffline))
 	h.hub.NotifyDevice("d1")
 	h.clk.Advance(time.Second)
-	ping(t, admin) // 管理员没订阅 devices
 	ping(t, screen)
 }
 

@@ -92,7 +92,7 @@ export const TopicScreenState = "screen_state";
  */
 export const TopicScreenData = "screen_data";
 /**
- * TopicDevices 全部设备（不含中枢本机，由前端合成固定首行）的状态（仅管理员会话可订阅，不在默认订阅里）。
+ * TopicDevices 全部设备（不含中枢本机，由前端合成固定首行）的状态（仅管理员会话可订阅，在管理员默认订阅里）。
  */
 export const TopicDevices = "devices";
 /**
