@@ -83,6 +83,8 @@ func Install(ctx context.Context, d Deps, o Options) error {
 		steps = []step{
 			{"准备目录", r.ensureDirs},
 			{"安装二进制", r.installBinary},
+			{"检查已装服务", r.installedServiceHint},
+			{"检查端口", r.checkPort},
 			{"配对", r.configure},
 		}
 	} else {
@@ -379,10 +381,24 @@ func (r *run) installBinary(_ context.Context) error {
 	}
 	if err == nil {
 		r.binChanged = true
-		r.rep.Done("升级二进制 "+bin, "服务将在稍后重启")
+		detail := "服务将在稍后重启"
+		if r.o.NoService {
+			detail = "不安装服务，不会重启已有服务"
+		}
+		r.rep.Done("升级二进制 "+bin, detail)
 	} else {
 		r.rep.Done("安装二进制 "+bin, "")
 	}
+	return nil
+}
+
+// installedServiceHint 用于 --no-service：只看服务定义文件是否存在（不执行任何命令），
+// 存在则警告它不会被重启，前台 run 会与它争用同一配置、数据库与端口。
+func (r *run) installedServiceHint(_ context.Context) error {
+	if _, err := r.FS.Stat(r.t.defPath); err != nil {
+		return nil
+	}
+	r.rep.Warn("已装服务", fmt.Sprintf("检测到服务定义 %s；--no-service 不会重启它，前台 run 前请先停止该服务（或 uninstall），否则会争用同一配置、数据库与端口", r.t.defPath))
 	return nil
 }
 

@@ -960,3 +960,37 @@ func TestNoService_用法错误(t *testing.T) {
 		})
 	}
 }
+
+func TestNoService_已装服务定义_警告且不提示重启(t *testing.T) {
+	e := newEnv(t, "linux", 1000)
+	e.fs.dir("/home/alice/.config/systemd/user", 0o755, 1000, 1000)
+	e.fs.put("/home/alice/.config/systemd/user/pimon-agent.service", "unit", 0o644, 1000, 1000)
+	e.fs.dir("/home/alice/.pimon", 0o700, 1000, 1000)
+	e.fs.dir("/home/alice/.pimon/bin", 0o700, 1000, 1000)
+	e.fs.put("/home/alice/.pimon/bin/pimon-agent", "OLD-BINARY", 0o755, 1000, 1000)
+	o := dialIn()
+	o.User, o.NoService = true, true
+	e.mustInstall(t, o)
+	assertNoSystemCmds(t, e)
+	out := e.out.String()
+	assertContains(t, out, "检测到服务定义", "前台 run 前请先停止")
+	assertNotContains(t, out, "服务将在稍后重启")
+}
+
+func TestNoService_拨出仍检查端口_且不调用系统命令(t *testing.T) {
+	e := newEnv(t, "linux", 1000)
+	o := Options{Listen: ":443", User: true, NoService: true}
+	e.mustInstall(t, o)
+	assertNoSystemCmds(t, e)
+	assertContains(t, e.out.String(), "低于 1024")
+	if len(e.ports.got) != 1 || e.ports.got[0] != 443 {
+		t.Fatalf("应检查端口 443: %v", e.ports.got)
+	}
+	e2 := newEnv(t, "linux", 1000)
+	e2.ports.ls = []sysinstall.Listener{{PID: 7, Exe: "/usr/bin/other"}}
+	o.Listen = ":31418"
+	if err := e2.install(t, o); err == nil || !strings.Contains(e2.out.String(), "已被占用") {
+		t.Fatalf("端口被占用应失败: %v", err)
+	}
+	assertNoSystemCmds(t, e2)
+}
