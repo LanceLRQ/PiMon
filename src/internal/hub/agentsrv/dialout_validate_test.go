@@ -7,7 +7,7 @@ import (
 )
 
 func TestValidateDialOut直连规范成空串(t *testing.T) {
-	for _, in := range []string{"direct", " direct ", ""} {
+	for _, in := range []string{"direct", " direct ", "Direct", "DIRECT", ""} {
 		got, err := validateDialOut(model.DialOutRequest{
 			Address: "203.0.113.5:31418", Fingerprint: "SHA256:" + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", Code: "abc", ProxyID: in,
 		})

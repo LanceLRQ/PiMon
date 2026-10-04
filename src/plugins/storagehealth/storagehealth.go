@@ -42,7 +42,7 @@ type Plugin struct {
 	evalSymlinks func(string) (string, error)
 	readFile     func(string) ([]byte, error)
 	readDir      func(string) ([]string, error) // 返回目录下的条目名，用于从 sysfs 枚举 Btrfs 成员设备
-	loc          *time.Location // btrfs scrub 输出里本地时间的时区
+	loc          *time.Location                 // btrfs scrub 输出里本地时间的时区
 	cmdTimeout   time.Duration
 }
 

@@ -577,6 +577,16 @@ func TestUpdate校验与拨出专属字段(t *testing.T) {
 	if d.ProxyID != "" {
 		t.Fatalf("改回直连后 proxy_id 应为空: %+v", d)
 	}
+	for _, v := range []string{"Direct", "DIRECT"} {
+		d, err = f.s.Update(ctx, vd.ID, model.DeviceInput{Name: "v", Role: model.DeviceRoleVPS, ProxyID: &proxy})
+		must(t, err)
+		v := v
+		d, err = f.s.Update(ctx, vd.ID, model.DeviceInput{Name: "v", Role: model.DeviceRoleVPS, ProxyID: &v})
+		must(t, err)
+		if d.ProxyID != "" {
+			t.Fatalf("%q 应规范成空串: %+v", v, d)
+		}
+	}
 	_ = b
 }
 

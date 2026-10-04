@@ -570,7 +570,7 @@ func (s *Store) Update(ctx context.Context, id string, in model.DeviceInput) (mo
 		}
 		if in.ProxyID != nil {
 			proxyID = *in.ProxyID
-			if proxyID == "direct" {
+			if strings.EqualFold(proxyID, "direct") {
 				proxyID = ""
 			}
 		}

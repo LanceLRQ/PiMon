@@ -104,7 +104,7 @@ type BackupUpload struct {
 // LastResult 与 hub-self 判定同口径：跳过因中枢关停被取消的记录，没有记录时为 null。
 type BackupUploadList struct {
 	Uploads    []BackupUpload `json:"uploads"`
-	LastResult *BackupUpload  `json:"last_result"`
+	LastResult *BackupUpload  `json:"last_result" tstype:"BackupUpload | null,required"`
 }
 
 // 上传记录的原因机器码（两端契约，不可随意改名）。前 4 个与 backup.remote_failed 的 details.reason 相同。

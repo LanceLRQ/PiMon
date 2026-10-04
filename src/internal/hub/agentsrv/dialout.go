@@ -567,7 +567,7 @@ func validateDialOut(req model.DialOutRequest) (dialOutInput, error) {
 		autoHostMetrics: req.AutoHostMetrics == nil || *req.AutoHostMetrics,
 	}
 	// "direct" 与空串都表示直连，存库统一为空串
-	if in.proxyID == "direct" {
+	if strings.EqualFold(in.proxyID, "direct") {
 		in.proxyID = ""
 	}
 	fe := model.FieldErrors{}
