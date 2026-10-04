@@ -24,7 +24,8 @@ export const longDeviceName = '超长设备名称-extremely-long-device-name-tha
 
 // 极端数据页用的 20 台设备：部分名称超长，含休眠、维护中、需要升级，外加一个未确认占位（不计入 20 台，也不进灯组）
 export function extremeDevices(): SeedDevice[] {
-  const list: SeedDevice[] = []
+  // 占位放在最前：若灯组没有过滤未确认设备，它会紧跟中枢排在第二格、一定可见，断言才有意义
+  const list: SeedDevice[] = [{ name: '未确认占位', unconfirmed: true }]
   for (let i = 1; i <= 20; i++) {
     const d: SeedDevice = { name: i % 4 === 1 ? `${longDeviceName}-${i}` : `设备${String(i).padStart(2, '0')}`, role: 'server' }
     if (i % 3 === 0) d.allowOffline = true
@@ -32,7 +33,6 @@ export function extremeDevices(): SeedDevice[] {
     if (i === 7) d.incompatibleReason = 'protocol_too_old'
     list.push(d)
   }
-  list.push({ name: '未确认占位', unconfirmed: true })
   return list
 }
 

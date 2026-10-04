@@ -10,8 +10,8 @@ import { startHub } from './support/hub.ts'
 // 主题矩阵（Ruling 29：不做像素基线，只逐项断言）：5 种屏幕 × 3 套主题 × {常规, 降低特效} × {默认首页, 极端数据页}。
 // 每种屏幕自起一个干净的 hub：默认首页取 hub 按显示器自动选出的种子网格，互不影响，也不碰共享 hub 的布局。
 // 设备：每个 hub 启动前往库里造 20 台设备（部分名称超长，含休眠、维护中、需要升级与一个未确认占位），
-// 让默认首页与极端页的主机灯组都面对「放不下」的数据；hub 重启后这些设备处于启动宽限期（pending），起满 90 秒转 offline/dormant，
-// 一次用例通常跨过这个时刻，两种形态都会被检查。
+// 让默认首页与极端页的主机灯组都面对「放不下」的数据；hub 重启后这些设备处于启动宽限期（pending，90 秒后才转 offline/dormant），
+// 单个用例约 20 秒，通常跨不过去，所以这里检查的主要是 pending 形态；offline/dormant 的呈现靠截图目检。
 // 每项断言：页面无滚动、每个小组件不溢出、屏幕页 console 零报错；截图只存为测试产物，不比对。
 // 主题经时段计划切换，同一个页面不刷新，顺带验证「切主题无刷新」。
 
@@ -236,6 +236,8 @@ for (const scr of screens) {
       await expect(extremeHosts.locator('[data-host-state="online"]').first()).toBeVisible()
       await expect(extremeHosts.locator('.tpl-grid__cell')).not.toHaveCount(0)
       await expect(extremeHosts.locator('.tpl-grid__more').first()).toBeVisible()
+      // 未确认占位（库里排第一）不进灯组
+      await expect(extremeHosts).not.toContainText('未确认占位')
       await expect(page.locator('section[data-widget-id] [class*="__unknown"]')).toHaveCount(0)
       const expectedWidgets = extremeScreen(instance.id, cur.layout.grid).widgets.length
       await expect.poll(() => page.locator('section[data-widget-id]').count()).toBe(expectedWidgets)
