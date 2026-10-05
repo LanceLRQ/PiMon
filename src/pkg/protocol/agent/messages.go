@@ -362,18 +362,28 @@ func (m Report) Validate() error {
 	return m.validate(TypeReport)
 }
 
-// Event 是 agent 上报的事件，本期只定义结构，M3 使用。
+// Event 是 agent 上报的事件。Seq 是 agent 持久化队列里的单调序号，可选，缺省为 0。
 type Event struct {
 	ID   string          `json:"id"`
 	Kind string          `json:"kind"`
 	Data json.RawMessage `json:"data,omitempty"`
 	At   time.Time       `json:"at"`
+	Seq  int64           `json:"seq,omitempty"`
 }
+
+// eventIDMaxBytes 是事件 id 的长度上限。
+const eventIDMaxBytes = 128
 
 func (Event) MsgType() Type { return TypeEvent }
 func (m Event) Validate() error {
 	if m.ID == "" {
 		return invalid(TypeEvent, "id", "不能为空")
+	}
+	if len(m.ID) > eventIDMaxBytes {
+		return invalid(TypeEvent, "id", "过长")
+	}
+	if m.Seq < 0 {
+		return invalid(TypeEvent, "seq", "必须 ≥ 0")
 	}
 	if m.Kind == "" {
 		return invalid(TypeEvent, "kind", "不能为空")

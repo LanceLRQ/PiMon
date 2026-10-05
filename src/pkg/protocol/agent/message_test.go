@@ -46,7 +46,7 @@ func allSamples() []Message {
 		&AssignResult{Version: 3, Results: []AssignResultItem{{InstanceID: "i1", Status: AssignStarted, Message: "ok"}}},
 		&Report{InstanceID: "i1", Seq: 1, RunOutcome: sampleOutcomeOK()},
 		&Report{InstanceID: "i1", Seq: 2, RunOutcome: sampleOutcomeErr()},
-		&Event{ID: "e1", Kind: "task", Data: json.RawMessage(`{"x":1}`), At: testTime},
+		&Event{ID: "e1", Kind: "task", Data: json.RawMessage(`{"x":1}`), At: testTime, Seq: 7},
 		&Ack{IDs: []string{"e1"}},
 		&RunNow{RequestID: "r1", InstanceID: "i1"},
 		&RunResult{RequestID: "r1", InstanceID: "i1", RunOutcome: sampleOutcomeOK()},
@@ -283,5 +283,33 @@ func TestAssignedInstance_ContentHash可选且向后兼容(t *testing.T) {
 	old, err := Decode([]byte(`{"type":"assign","version":1,"instances":[{"id":"i","plugin_id":"p","interval_ms":0,"timeout_ms":0,"config_hash":"h"}]}`))
 	if err != nil || old.(*Assign).Instances[0].ContentHash != "" {
 		t.Fatalf("旧格式 assign = %v %v", old, err)
+	}
+}
+
+func TestEvent_Seq可选且向后兼容(t *testing.T) {
+	data, err := Encode(&Event{ID: "e", Kind: "task", At: testTime})
+	if err != nil || strings.Contains(string(data), `"seq"`) {
+		t.Fatalf("空 seq 不应出现: %s %v", data, err)
+	}
+	data, _ = Encode(&Event{ID: "e", Kind: "task", At: testTime, Seq: 5})
+	if !strings.Contains(string(data), `"seq":5`) {
+		t.Fatalf("应带 seq: %s", data)
+	}
+	old, err := Decode([]byte(`{"type":"event","id":"e","kind":"task","at":"2026-10-02T08:30:00Z"}`))
+	if err != nil || old.(*Event).Seq != 0 {
+		t.Fatalf("缺 seq 的旧帧 = %v %v", old, err)
+	}
+}
+
+func TestEvent_校验seq与id长度(t *testing.T) {
+	var ie *InvalidMessageError
+	if err := (&Event{ID: "e", Kind: "task", Seq: -1}).Validate(); !errors.As(err, &ie) || ie.Field != "seq" {
+		t.Errorf("负 seq 应被拒绝: %v", err)
+	}
+	if err := (&Event{ID: strings.Repeat("a", 129), Kind: "task"}).Validate(); !errors.As(err, &ie) || ie.Field != "id" {
+		t.Errorf("过长 id 应被拒绝: %v", err)
+	}
+	if err := (&Event{ID: strings.Repeat("a", 128), Kind: "task"}).Validate(); err != nil {
+		t.Errorf("128 字节 id 应通过: %v", err)
 	}
 }

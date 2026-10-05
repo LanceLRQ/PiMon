@@ -1853,3 +1853,145 @@ export interface LogList {
    */
   capacity: number /* int */;
 }
+
+//////////
+// source: task.go
+
+/**
+ * EventKindTask 是 agent 事件外壳里任务事件的 kind。
+ */
+export const EventKindTask = "task";
+/**
+ * 任务工具。
+ */
+export const TaskToolCodex = "codex";
+/**
+ * 任务工具。
+ */
+export const TaskToolClaude = "claude";
+/**
+ * 任务状态（库存状态）。
+ */
+export const TaskStateRunning = "running";
+/**
+ * 任务状态（库存状态）。
+ */
+export const TaskStateWaitingApproval = "waiting_approval";
+/**
+ * 任务状态（库存状态）。
+ */
+export const TaskStateWaitingInput = "waiting_input";
+/**
+ * 任务状态（库存状态）。
+ */
+export const TaskStateCompleted = "completed";
+/**
+ * 任务状态（库存状态）。
+ */
+export const TaskStateInterrupted = "interrupted";
+/**
+ * 任务状态（库存状态）。
+ */
+export const TaskStateFailed = "failed";
+/**
+ * 任务状态（库存状态）。
+ */
+export const TaskStateIdle = "idle";
+/**
+ * 任务状态（库存状态）。
+ */
+export const TaskStateUnknown = "unknown";
+/**
+ * TaskEventEnded 是 SessionEnd 对应的会话结束标记，只出现在事件里，Task.State 永不取该值。
+ */
+export const TaskEventEnded = "ended";
+/**
+ * TaskDisplayOffline 是设备离线时 hub 叠加的展示状态，不入库。
+ */
+export const TaskDisplayOffline = "offline";
+/**
+ * 任务事件来源。
+ */
+export const TaskSourceHook = "hook";
+/**
+ * 任务事件来源。
+ */
+export const TaskSourceLog = "log";
+/**
+ * 任务事件字段上限。
+ */
+export const TaskIDMaxBytes = 256;
+/**
+ * 任务事件字段上限。
+ */
+export const TaskAgentTypeMaxBytes = 64;
+/**
+ * 任务事件字段上限。
+ */
+export const TaskTextMaxRunes = 200;
+/**
+ * TaskEvent 是 event.data 的内容（kind="task"）。事件 id、at、seq 在协议外壳上。
+ */
+export interface TaskEvent {
+  tool: string;
+  session: string;
+  /**
+   * Parent 非空表示子任务，值为父 session。
+   */
+  parent?: string;
+  /**
+   * Turn 在 state 为 idle 或 ended 时可空，其余必填；只校验长度，不规定格式。
+   */
+  turn?: string;
+  state: string;
+  /**
+   * Project 与 Title 非空时总会合并到任务上；Title 只来自客户端会话标题，永不含提示词。
+   */
+  project?: string;
+  title?: string;
+  source: string;
+  /**
+   * Detail 是短令牌（如 rate_limit、permission_prompt），不含自由文本。
+   */
+  detail?: string;
+  /**
+   * AgentType 是子 agent 类型的短令牌。
+   */
+  agent_type?: string;
+}
+/**
+ * Task 是对外的任务视图（API 与 WS）。时间均为 Unix 毫秒；任务键为 (device_id, tool, session)。
+ */
+export interface Task {
+  id: string;
+  device_id: string;
+  device_name: string;
+  tool: string;
+  session: string;
+  parent?: string;
+  agent_type?: string;
+  project: string;
+  title: string;
+  /**
+   * State 是库存状态，永不为 ended。
+   */
+  state: string;
+  /**
+   * DisplayState 是叠加 offline、unknown 后的展示状态。
+   */
+  display_state: string;
+  detail?: string;
+  turn: string;
+  started_at: number /* int64 */;
+  /**
+   * UpdatedAt 取 hub 接收时间。
+   */
+  updated_at: number /* int64 */;
+  ended_at: number | null;
+  children_total: number /* int */;
+  children_active: number /* int */;
+  /**
+   * Children 仅 API 详情返回。
+   */
+  children?: Task[];
+}
