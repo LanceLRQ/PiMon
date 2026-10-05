@@ -305,3 +305,57 @@ func TestAck中间条目腾出窗口(t *testing.T) {
 		t.Fatalf("got %s", ids(got))
 	}
 }
+
+func TestClaim接管旧在途受窗口约束(t *testing.T) {
+	ctx := context.Background()
+	q, _, _ := newQueue(t, WithWindow(3))
+	for i := 1; i <= 6; i++ {
+		_, _ = q.Enqueue(ctx, ev(fmt.Sprint("e", i)))
+	}
+	o1, o2 := new(int), new(int)
+	got, _, _ := q.Claim(ctx, o1)
+	if ids(got) != "e1,e2,e3" {
+		t.Fatalf("got %s", ids(got))
+	}
+	// o1 未 Release：o2 只能接管旧在途，且不超过窗口
+	got, _, _ = q.Claim(ctx, o2)
+	if ids(got) != "e1,e2,e3" {
+		t.Fatalf("接管应按 seq 优先且受窗口约束: %s", ids(got))
+	}
+	if again, _, _ := q.Claim(ctx, o2); len(again) != 0 {
+		t.Fatalf("o2 在途超过窗口: %s", ids(again))
+	}
+	_ = q.Ack(ctx, []string{"e1"})
+	got, _, _ = q.Claim(ctx, o2)
+	if ids(got) != "e4" {
+		t.Fatalf("got %s", ids(got))
+	}
+}
+
+func TestClaim淘汰在途条目后清标记(t *testing.T) {
+	ctx := context.Background()
+	q, _, _ := newQueue(t, WithWindow(2), WithMaxEntries(3))
+	_, _ = q.Enqueue(ctx, ev("e1"))
+	_, _ = q.Enqueue(ctx, ev("e2"))
+	owner := new(int)
+	_, _, _ = q.Claim(ctx, owner)
+	_, _ = q.Enqueue(ctx, ev("e3"))
+	_, _ = q.Enqueue(ctx, ev("e4")) // 淘汰 e1
+	got, _, _ := q.Claim(ctx, owner)
+	if ids(got) != "e3" {
+		t.Fatalf("被淘汰的在途标记应清除并让出窗口: %s", ids(got))
+	}
+}
+
+func TestRelease后旧owner的ack仍生效(t *testing.T) {
+	ctx := context.Background()
+	q, _, _ := newQueue(t)
+	_, _ = q.Enqueue(ctx, ev("a"))
+	o1, o2 := new(int), new(int)
+	_, _, _ = q.Claim(ctx, o1)
+	q.Release(o1)
+	_ = q.Ack(ctx, []string{"a"})
+	if got, _, _ := q.Claim(ctx, o2); len(got) != 0 {
+		t.Fatalf("已确认条目被补发: %s", ids(got))
+	}
+}

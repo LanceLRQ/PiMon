@@ -144,7 +144,8 @@ func (q *Queue) Pending(ctx context.Context, afterSeq int64, limit int) ([]Entry
 
 // Claim 供发送协程使用：按 seq 升序取出该 owner 应当发送的条目并标记为在途。
 // 取出的包括从未发送的新条目（受发送窗口限制：owner 的在途数不超过窗口）、
-// 在途超过 resendAfter 未确认的条目、以及其他 owner 遗留的在途条目。
+// 在途超过 resendAfter 未确认的条目、以及其他 owner 遗留的在途条目（接管同样占用窗口，
+// owner 的在途总数任何时候不超过窗口，旧在途因 seq 小而优先补发）。
 // nextRetry 是该 owner 最早一条在途条目到期重发的剩余时间，没有在途条目时为 0；
 // 发送协程应同时等待 Subscribe 的唤醒与该时长的计时。
 func (q *Queue) Claim(ctx context.Context, owner any) (out []Entry, nextRetry time.Duration, err error) {
@@ -165,14 +166,18 @@ func (q *Queue) Claim(ctx context.Context, owner any) (out []Entry, nextRetry ti
 			delete(q.flight, seq)
 		}
 	}
-	used := 0
+	used, expired := 0, 0
 	for _, f := range q.flight {
 		if f.owner == owner {
 			used++
+			if now.Sub(f.sentAt) >= q.resendAfter {
+				expired++
+			}
 		}
 	}
+	// 窗口已满且没有到期重发：无需扫描
 	var after int64
-	for {
+	for used < q.window || expired > 0 {
 		page, err := q.st.PendingEvents(ctx, after, pageSize)
 		if err != nil {
 			return nil, 0, err
@@ -180,13 +185,17 @@ func (q *Queue) Claim(ctx context.Context, owner any) (out []Entry, nextRetry ti
 		for _, e := range page {
 			f, ok := q.flight[e.Seq]
 			switch {
-			case !ok:
+			case ok && f.owner == owner:
+				if now.Sub(f.sentAt) < q.resendAfter {
+					continue
+				}
+				expired--
+			default:
+				// 从未发送，或接管其他 owner 遗留的在途条目：都占用该 owner 的窗口
 				if used >= q.window {
 					continue
 				}
 				used++
-			case f.owner == owner && now.Sub(f.sentAt) < q.resendAfter:
-				continue
 			}
 			q.flight[e.Seq] = inflight{id: e.ID, owner: owner, sentAt: now}
 			out = append(out, e)
