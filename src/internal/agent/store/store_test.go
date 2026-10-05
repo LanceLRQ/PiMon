@@ -32,7 +32,7 @@ func TestOpen迁移与权限(t *testing.T) {
 	if _, err := s.db.Exec(`SELECT COUNT(*) FROM instance_state`); err != nil {
 		t.Fatal(err)
 	}
-	// 重复打开幂等；不预建事件表
+	// 重复打开幂等
 	_ = s.Close()
 	s2, err := Open(path)
 	if err != nil {
@@ -41,7 +41,7 @@ func TestOpen迁移与权限(t *testing.T) {
 	defer func() { _ = s2.Close() }()
 	var tables int
 	_ = s2.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`).Scan(&tables)
-	if tables != 2 { // schema_migrations + instance_state
+	if tables != 4 { // schema_migrations + instance_state + event_queue + event_counters
 		t.Fatalf("表数量 %d", tables)
 	}
 }
