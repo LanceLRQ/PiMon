@@ -498,11 +498,11 @@ func TestRouter收到业务消息(t *testing.T) {
 	waitFor(t, "Router 回调", func() bool {
 		e.router.mu.Lock()
 		defer e.router.mu.Unlock()
-		return len(e.router.reports) == 1 && len(e.router.results) == 1 && len(e.router.upgrade) == 1
+		return len(e.router.reports) == 1 && len(e.router.results) == 1 && len(e.router.upgrade) == 1 && len(e.router.events) == 1
 	})
 	e.router.mu.Lock()
 	defer e.router.mu.Unlock()
-	if e.router.reports[0] != p.id+"/i1" || e.router.results[0] != 3 || e.router.upgrade[0] != p.id {
+	if e.router.reports[0] != p.id+"/i1" || e.router.results[0] != 3 || e.router.upgrade[0] != p.id || e.router.events[0] != p.id+"/e1" {
 		t.Fatalf("回调参数不符: %+v", e.router)
 	}
 }

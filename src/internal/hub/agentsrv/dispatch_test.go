@@ -268,7 +268,7 @@ type dfx struct {
 	d     *Dispatcher
 }
 
-func newDFX(t *testing.T) *dfx {
+func newDFX(t *testing.T, opts ...func(*DispatcherConfig)) *dfx {
 	t.Helper()
 	f := &dfx{
 		clk: clock.NewFake(t0), inst: newFakeInst(),
@@ -276,10 +276,14 @@ func newDFX(t *testing.T) *dfx {
 		plugs: &fakePlugs{has: map[string]bool{}},
 		sess:  map[string]*fakeSender{},
 	}
-	d, err := newDispatcher(DispatcherConfig{
+	cfg := DispatcherConfig{
 		Instances: f.inst, Devices: f.devs, Plugins: f.plugs, Clock: f.clk, Log: agentlinktest.QuietLog(),
 		HubVersion: "0.2.0", WebPort: func() int { return 31415 },
-	}, f.session)
+	}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	d, err := newDispatcher(cfg, f.session)
 	must(t, err)
 	f.d = d
 	t.Cleanup(d.Close)

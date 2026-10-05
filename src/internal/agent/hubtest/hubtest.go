@@ -5,6 +5,7 @@ package hubtest
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -124,10 +125,38 @@ func (a *CountingAuth) Pair(ctx context.Context, m agent.Pair) (agent.PairOK, er
 	return a.Inner.Pair(ctx, m)
 }
 
-// Router 记录 hello 被接受的设备，并对升级信息请求回固定内容。
+// Router 记录 hello 被接受的设备与收到的事件，对升级信息请求回固定内容；
+// 事件默认立即 ack，HoldAcks(true) 后只记录不 ack（模拟 hub 写库失败）。
 type Router struct {
-	mu    sync.Mutex
-	ready []string
+	mu     sync.Mutex
+	ready  []string
+	events []*agent.Event
+	hold   bool
+}
+
+// HoldAcks 设置之后收到的事件是否只记录不 ack。
+func (r *Router) HoldAcks(hold bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.hold = hold
+}
+
+// Events 返回按到达顺序收到的全部事件（含重发的重复事件）。
+func (r *Router) Events() []*agent.Event {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.events)
+}
+
+// OnEvent 实现 agentsrv.Router：记录事件，未 HoldAcks 时在原会话上回 ack。
+func (r *Router) OnEvent(s *agentlink.Session, _ string, m *agent.Event) {
+	r.mu.Lock()
+	r.events = append(r.events, m)
+	hold := r.hold
+	r.mu.Unlock()
+	if !hold {
+		_ = s.Send(&agent.Ack{IDs: []string{m.ID}})
+	}
 }
 
 // Ready 返回某设备 OnReady 的次数。

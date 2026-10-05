@@ -20,6 +20,7 @@ import (
 
 	"github.com/LanceLRQ/PiMon/src/internal/agent/config"
 	"github.com/LanceLRQ/PiMon/src/internal/agent/ctl"
+	"github.com/LanceLRQ/PiMon/src/internal/agent/events"
 	"github.com/LanceLRQ/PiMon/src/internal/agent/plugins"
 	"github.com/LanceLRQ/PiMon/src/internal/agent/runner"
 	"github.com/LanceLRQ/PiMon/src/internal/agent/store"
@@ -80,7 +81,9 @@ var (
 // Daemon 是 agent 守护进程。用 New 创建，Run 运行；Status 与各操作可在 Run 期间并发调用。
 //
 // 锁的约定：cfgMu 串行化配置文件的「读取—修改—落盘」；mu 保护内存状态，持有 mu 时不做磁盘与网络操作、
-// 不等待会话关闭（例外：runner.Attach 只创建调度器，在 mu 下调用以保证与会话结束互斥）。
+// 不等待会话关闭（例外：runner.Attach 只创建调度器，在 mu 下调用以保证与会话结束互斥）；
+// evMu 保护 events，读锁覆盖整个队列操作，保证 Run 退出关闭本地数据库前不再有队列读写。
+// 加锁顺序：mu 在前、evMu 在后；持有 evMu 时不取 mu。
 type Daemon struct {
 	cfg     Config
 	clk     clock.Clock
@@ -108,10 +111,15 @@ type Daemon struct {
 	closing   bool                         // Run 正在退出，不再起新协程
 	wg        sync.WaitGroup               // spawn 起的协程
 
+	evMu   sync.RWMutex
+	events *events.Queue // 持久化事件队列，Run 中创建、退出前置空
+
 	// testHookLoaded 在连接循环每轮读完配置后调用（只供测试复现竞争窗口）。
 	testHookLoaded func()
 	// testHookSessionEnd 在会话结束回调开头调用（只供测试固定与重连循环停止处理的先后）。
 	testHookSessionEnd func()
+	// testHookEventWait 在发送协程登记重发计时之后、进入等待之前调用（只供测试同步假时钟）。
+	testHookEventWait func(retry time.Duration)
 }
 
 // New 按 cfg 创建守护进程，填好缺省依赖；不触碰磁盘与网络。
@@ -170,6 +178,17 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return fmt.Errorf("打开本地数据库: %w", err)
 	}
 	defer func() { _ = st.Close() }()
+
+	d.evMu.Lock()
+	d.events = events.New(st, d.clk)
+	d.evMu.Unlock()
+	// 发送协程由 d.wg 等待，但入队（EnqueueEvent）与 ack 来自其他协程：退出时先置空队列，
+	// 等在途的读锁释放后才关闭数据库（defer 后进先出：先于 st.Close 执行）。
+	defer func() {
+		d.evMu.Lock()
+		d.events = nil
+		d.evMu.Unlock()
+	}()
 
 	r := runner.New(runner.Config{Registry: d.reg, Store: st, Clock: d.clk, Log: d.log, Jitter: d.cfg.Jitter})
 	d.mu.Lock()

@@ -268,6 +268,36 @@ func (d *Dispatcher) Logs(ctx context.Context, deviceID string, limit int, minLe
 	return lg.Entries, nil
 }
 
+// ---- event ----
+
+// OnEvent 实现 Router：kind=task 的事件转交 EventSink，处理成功才回 ack；未知 kind 记日志后直接 ack，
+// 免得 agent 队列卡在一条 hub 不认识的事件上。每条事件单独回一个 ack，回在发来事件的会话上
+// （被顶替的旧会话照常处理，不像报告那样丢弃：事件按 id 去重，重复处理无害）。
+func (d *Dispatcher) OnEvent(s *agentlink.Session, deviceID string, m *agent.Event) {
+	d.onEvent(s, deviceID, m)
+}
+
+func (d *Dispatcher) onEvent(s sender, deviceID string, m *agent.Event) {
+	if d.ctx.Err() != nil {
+		return
+	}
+	switch {
+	case m.Kind != model.EventKindTask:
+		d.log.Warn("忽略未知 kind 的 agent 事件", "device_id", deviceID, "kind", clipLog(m.Kind), "event_id", clipLog(m.ID))
+	case d.events == nil:
+		d.log.Debug("未接任务跟踪，暂不确认任务事件", "device_id", deviceID, "event_id", clipLog(m.ID))
+		return
+	default:
+		if err := d.events.Ingest(d.ctx, deviceID, m); err != nil {
+			d.log.Warn("处理 agent 事件失败，等待重发", "device_id", deviceID, "event_id", clipLog(m.ID), "err", err)
+			return
+		}
+	}
+	if err := s.Send(&agent.Ack{IDs: []string{m.ID}}); err != nil {
+		d.log.Debug("回复事件确认失败", "device_id", deviceID, "event_id", clipLog(m.ID), "err", err)
+	}
+}
+
 // ---- upgrade_info ----
 
 // OnUpgradeInfoGet 实现 Router：回复中枢版本、网页端口与内嵌 agent 校验和（M2c 填充，本期为空）。

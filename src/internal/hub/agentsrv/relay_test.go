@@ -3,7 +3,9 @@ package agentsrv
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -407,5 +409,124 @@ func TestRunNow_等待下发受ctx约束(t *testing.T) {
 	// 正在处理中的设备：等那一轮完成后再发 run_now
 	if _, err := f.d.RunNow(bg, "dev1", "i1", time.Second); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// ---- event ----
+
+// fakeSink 是 EventSink 替身：记录调用，err 非空时返回它。
+type fakeSink struct {
+	mu   sync.Mutex
+	got  []string
+	errs map[string]error
+}
+
+func (k *fakeSink) Ingest(ctx context.Context, deviceID string, m *agent.Event) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if ctx == nil {
+		return errors.New("ctx 为空")
+	}
+	k.got = append(k.got, deviceID+"/"+m.ID)
+	return k.errs[m.ID]
+}
+
+func (k *fakeSink) calls() []string {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return slices.Clone(k.got)
+}
+
+// acks 返回会话替身收到的 ack 里的 id（按发送顺序展开）。
+func acks(s *fakeSender) []string {
+	var out []string
+	for _, m := range s.all() {
+		if a, ok := m.(*agent.Ack); ok {
+			out = append(out, strings.Join(a.IDs, "+"))
+		}
+	}
+	return out
+}
+
+func taskEvent(id string) *agent.Event {
+	return &agent.Event{ID: id, Kind: model.EventKindTask, At: t0, Seq: 1}
+}
+
+func TestOnEvent_未知kind记日志并ack(t *testing.T) {
+	sink := &fakeSink{}
+	f := newDFX(t, func(c *DispatcherConfig) { c.Events = sink })
+	s := f.online("dev1")
+	f.d.onEvent(s, "dev1", &agent.Event{ID: "x1", Kind: "weird", At: t0})
+	if got := acks(s); !slices.Equal(got, []string{"x1"}) {
+		t.Fatalf("未知 kind 应 ack: %v", got)
+	}
+	if len(sink.calls()) != 0 {
+		t.Fatalf("未知 kind 不应交给 sink: %v", sink.calls())
+	}
+}
+
+func TestOnEvent_task没有sink时不ack(t *testing.T) {
+	f := newDFX(t)
+	s := f.online("dev1")
+	f.d.onEvent(s, "dev1", taskEvent("t1"))
+	f.d.onEvent(s, "dev1", &agent.Event{ID: "x1", Kind: "weird", At: t0})
+	if got := acks(s); !slices.Equal(got, []string{"x1"}) {
+		t.Fatalf("没有 sink 时 task 不应 ack、未知 kind 照常 ack: %v", got)
+	}
+}
+
+func TestOnEvent_sink成功才ack(t *testing.T) {
+	sink := &fakeSink{errs: map[string]error{"t2": errors.New("database is locked")}}
+	f := newDFX(t, func(c *DispatcherConfig) { c.Events = sink })
+	s := f.online("dev1")
+	for _, id := range []string{"t1", "t2", "t3"} {
+		f.d.onEvent(s, "dev1", taskEvent(id))
+	}
+	if got := sink.calls(); !slices.Equal(got, []string{"dev1/t1", "dev1/t2", "dev1/t3"}) {
+		t.Fatalf("sink 调用 = %v", got)
+	}
+	if got := acks(s); !slices.Equal(got, []string{"t1", "t3"}) {
+		t.Fatalf("入库失败的事件不应 ack，其余每条单独 ack: %v", got)
+	}
+}
+
+func TestOnEvent_非当前会话也处理并在原会话回ack(t *testing.T) {
+	sink := &fakeSink{}
+	f := newDFX(t, func(c *DispatcherConfig) { c.Events = sink })
+	cur := f.online("dev1")
+	old := newFakeSender() // 被顶替的旧会话：不是设备当前会话
+	f.d.onEvent(old, "dev1", taskEvent("t1"))
+	if got := acks(old); !slices.Equal(got, []string{"t1"}) {
+		t.Fatalf("旧会话发来的事件应在旧会话上 ack: %v", got)
+	}
+	if len(cur.all()) != 0 {
+		t.Fatalf("不应在当前会话上回 ack: %v", cur.all())
+	}
+	if got := sink.calls(); !slices.Equal(got, []string{"dev1/t1"}) {
+		t.Fatalf("sink 调用 = %v", got)
+	}
+}
+
+func TestOnEvent_Close之后不再处理(t *testing.T) {
+	sink := &fakeSink{}
+	f := newDFX(t, func(c *DispatcherConfig) { c.Events = sink })
+	s := f.online("dev1")
+	f.d.Close()
+	f.d.onEvent(s, "dev1", taskEvent("t1"))
+	if len(sink.calls()) != 0 || len(acks(s)) != 0 {
+		t.Fatalf("Close 之后不应入库或 ack: %v %v", sink.calls(), acks(s))
+	}
+}
+
+func TestOnEvent_ack发送失败不影响后续(t *testing.T) {
+	sink := &fakeSink{}
+	f := newDFX(t, func(c *DispatcherConfig) { c.Events = sink })
+	s := f.online("dev1")
+	s.setErr(agentlink.ErrSessionClosed)
+	f.d.onEvent(s, "dev1", taskEvent("t1"))
+	s.setErr(nil)
+	f.d.onEvent(s, "dev1", taskEvent("t2"))
+	if got := acks(s); !slices.Equal(got, []string{"t2"}) {
+		t.Fatalf("acks = %v", got)
 	}
 }

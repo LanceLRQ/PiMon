@@ -376,8 +376,7 @@ func (s *Server) route(c *conn, msg agent.Message) {
 	case *agent.UpgradeInfoGet:
 		s.currentRouter().OnUpgradeInfoGet(c.sess, id, m)
 	case *agent.Event:
-		// event/ack 在 M3 使用，本期记录后忽略，不回 ack。
-		s.log.Debug("忽略 agent 事件", "device_id", id, "kind", clipLog(m.Kind))
+		s.currentRouter().OnEvent(c.sess, id, m)
 	default:
 		s.log.Debug("忽略 agent 发来的消息", "device_id", id, "type", string(msg.MsgType()))
 	}

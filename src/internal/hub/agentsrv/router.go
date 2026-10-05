@@ -18,6 +18,9 @@ type Router interface {
 	OnAssignResult(deviceID string, m *agent.AssignResult)
 	// OnUpgradeInfoGet 收到 agent 的升级信息请求，实现经 s 回 upgrade_info。
 	OnUpgradeInfoGet(s *agentlink.Session, deviceID string, m *agent.UpgradeInfoGet)
+	// OnEvent 收到 agent 事件。s 是发来事件的会话：被顶替的旧会话发来的事件也照常处理，
+	// 实现决定是否经 s 回 ack（不 ack 的事件由 agent 稍后重发）。
+	OnEvent(s *agentlink.Session, deviceID string, m *agent.Event)
 }
 
 // NopRouter 是空实现：忽略所有事件。
@@ -34,3 +37,6 @@ func (NopRouter) OnAssignResult(string, *agent.AssignResult) {}
 
 // OnUpgradeInfoGet 实现 Router。
 func (NopRouter) OnUpgradeInfoGet(*agentlink.Session, string, *agent.UpgradeInfoGet) {}
+
+// OnEvent 实现 Router。
+func (NopRouter) OnEvent(*agentlink.Session, string, *agent.Event) {}

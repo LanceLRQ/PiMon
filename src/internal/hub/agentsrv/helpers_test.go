@@ -30,6 +30,7 @@ type recRouter struct {
 	reports []string
 	results []int64
 	upgrade []string
+	events  []string
 }
 
 func (r *recRouter) OnReady(id string) {
@@ -54,6 +55,12 @@ func (r *recRouter) OnUpgradeInfoGet(_ *agentlink.Session, id string, _ *agent.U
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.upgrade = append(r.upgrade, id)
+}
+
+func (r *recRouter) OnEvent(_ *agentlink.Session, id string, m *agent.Event) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, id+"/"+m.ID)
 }
 
 func (r *recRouter) readyCount(id string) int {

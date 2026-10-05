@@ -20,6 +20,8 @@ type conn struct {
 	dirty     bool
 	binding   *runner.Binding
 	instances int
+	// kick 唤醒本会话的事件发送协程（容量 1）：其他会话退出让出在途条目时使用。
+	kick chan struct{}
 }
 
 // handlerFor 为每条会话返回入站消息处理器（拨入与拨出共用）。
@@ -28,7 +30,7 @@ func (d *Daemon) handlerFor(agentlink.Peer) agentlink.Handler { return d.handle 
 // onSession 在会话建立后同步调用（拨入由重连循环、拨出由监听方调用）：登记会话、起协程等它结束，
 // 并立即发 hello（Send 不阻塞，满足「应快速返回」）。
 func (d *Daemon) onSession(s *agentlink.Session) {
-	c := &conn{s: s}
+	c := &conn{s: s, kick: make(chan struct{}, 1)}
 	d.mu.Lock()
 	d.conns[s] = c
 	ok := d.spawnLocked(func() {
@@ -64,7 +66,7 @@ func (d *Daemon) handle(s *agentlink.Session, msg agent.Message) {
 	case *agent.LogsGet:
 		d.sendLogs(s, m)
 	case *agent.Ack:
-		// event/ack 在 M3 使用。
+		d.onAck(m)
 	default:
 		d.log.Debug("忽略 hub 消息", "type", string(msg.MsgType()))
 	}
@@ -85,7 +87,7 @@ func (d *Daemon) binding(s *agentlink.Session, n int) *runner.Binding {
 	return c.binding
 }
 
-// onHelloOK 标记会话就绪并成为当前会话：挂上运行器、另起协程顶替旧会话；
+// onHelloOK 标记会话就绪并成为当前会话：挂上运行器、起事件发送协程、另起协程顶替旧会话；
 // 拨出模式下若这是用当前凭据认证的会话，清空上一个凭据哈希（P10）。
 func (d *Daemon) onHelloOK(s *agentlink.Session, m *agent.HelloOK) {
 	d.mu.Lock()
@@ -103,6 +105,7 @@ func (d *Daemon) onHelloOK(s *agentlink.Session, m *agent.HelloOK) {
 	d.state, d.lastErr, d.incompat = StateRunning, "", nil
 	dirty := c.dirty
 	c.dirty = false
+	d.startSenderLocked(c)
 	if old != nil && old != c {
 		d.spawnLocked(func() { old.s.Close(agent.ReasonReplaced) })
 	}

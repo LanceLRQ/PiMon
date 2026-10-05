@@ -56,6 +56,13 @@ type sender interface {
 	Done() <-chan struct{}
 }
 
+// EventSink 接收 agent 事件（任务跟踪模块实现）。Ingest 返回 nil 表示已处理（下发器随即回 ack），
+// 包括数据不合法、设备已不存在、重复等无需重发的情况；只有需要 agent 重发时（如写库失败）返回错误。
+// 在会话分发协程中同步调用。
+type EventSink interface {
+	Ingest(ctx context.Context, deviceID string, m *agent.Event) error
+}
+
 // DispatcherConfig 是下发器的依赖。
 type DispatcherConfig struct {
 	// Server 提供设备当前会话（NewDispatcher 必填）。
@@ -74,6 +81,8 @@ type DispatcherConfig struct {
 	// AgentChecksums 返回内嵌 agent 的校验和（键 os-arch，值 SHA-256 十六进制），写入 upgrade_info；
 	// 为空或返回 nil 视为没有内嵌。
 	AgentChecksums func() map[string]string
+	// Events 接收 kind=task 的 agent 事件，可为空：为空时 task 事件不 ack（agent 保留并稍后重发）。
+	Events EventSink
 }
 
 // sentInst 是某实例在最近一次送达的 assign 里的摘要：hash 是发给 agent 的下发摘要，
@@ -90,7 +99,7 @@ type sentAssign struct {
 
 // Dispatcher 是远程实例的下发器与中继：实现 instances.Remote（实例变化 → 合并 1 秒后下发；
 // 测试运行经通道转发）与 Router（设备就绪 → 立即全量下发；assign_result → 实例问题；
-// report → 入库；upgrade_info_get → 回复），另提供日志拉取。所有下发由唯一的工作协程串行发出，
+// report → 入库；upgrade_info_get → 回复；event → 转交 EventSink 并回 ack），另提供日志拉取。所有下发由唯一的工作协程串行发出，
 // 保证同一设备的版本号与发送顺序一致；回调只登记工作、不阻塞，也不在持锁时 Send 或等待请求。
 type Dispatcher struct {
 	inst       RemoteInstances
@@ -102,6 +111,7 @@ type Dispatcher struct {
 	hubVersion string
 	webPort    func() int
 	agentSums  func() map[string]string
+	events     EventSink
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -159,7 +169,7 @@ func newDispatcher(cfg DispatcherConfig, sessions func(string) (sender, bool)) (
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &Dispatcher{
 		inst: cfg.Instances, devs: cfg.Devices, plugs: cfg.Plugins, clk: cfg.Clock, log: cfg.Log, sessions: sessions,
-		hubVersion: cfg.HubVersion, webPort: cfg.WebPort, agentSums: cfg.AgentChecksums,
+		hubVersion: cfg.HubVersion, webPort: cfg.WebPort, agentSums: cfg.AgentChecksums, events: cfg.Events,
 		ctx: ctx, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1),
 		pending: map[string]bool{}, due: map[string]bool{},
 		dueWaiters: map[string][]chan struct{}{}, running: map[string][]chan struct{}{},
